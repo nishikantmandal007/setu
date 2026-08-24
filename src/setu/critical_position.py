@@ -20,6 +20,7 @@ both are exact. See `vehicle_placement.along_span` and
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
 import numpy as np
 
@@ -78,40 +79,14 @@ def find_critical_position(
     surface: InfluenceSurface,
     cross_section: DeckCrossSection,
     span_m: float,
-    *,
-    adverse: str = "maximum",
-    vehicles: dict[str, Vehicle] | None = None,
-    carriageways_read_as: str = "separate",
-    material: str = "steel",
-    member_span_m: float | None = None,
-    wearing_course_thickness_m: float = 0.0,
-    apply_impact: bool = True,
-    apply_lane_reduction: bool = True,
-    apply_residual_udl: bool = True,
-    apply_footway_load: bool = False,
-    allow_trains: bool = True,
-    allow_reversed_vehicles: bool = True,
-    sampling: SamplingSettings = DEFAULT_SAMPLING,
+    **options: Any,
 ) -> CriticalPosition:
-    """Returns the worst legal IRC:6 vehicle placement for one response quantity."""
-    return rank_all_positions(
-        surface,
-        cross_section,
-        span_m,
-        adverse=adverse,
-        vehicles=vehicles,
-        carriageways_read_as=carriageways_read_as,
-        material=material,
-        member_span_m=member_span_m,
-        wearing_course_thickness_m=wearing_course_thickness_m,
-        apply_impact=apply_impact,
-        apply_lane_reduction=apply_lane_reduction,
-        apply_residual_udl=apply_residual_udl,
-        apply_footway_load=apply_footway_load,
-        allow_trains=allow_trains,
-        allow_reversed_vehicles=allow_reversed_vehicles,
-        sampling=sampling,
-    )[0]
+    """Returns the worst legal IRC:6 vehicle placement for one response quantity.
+
+    Takes the same options as `rank_all_positions`, which is where they are
+    written out - this is that search, answered with its first result.
+    """
+    return rank_all_positions(surface, cross_section, span_m, **options)[0]
 
 
 def rank_all_positions(
@@ -137,6 +112,23 @@ def rank_all_positions(
 
     `find_critical_position` is the first of these. This one is for seeing why
     it won - what else was considered, and by how much it lost.
+
+    Parameters
+    ----------
+    adverse
+        Which direction hurts: "maximum" for a response that is worse the more
+        positive it gets, "minimum" for one that is worse the more negative.
+    carriageways_read_as
+        "separate" reads each carriageway on its own, "combined" reads them as
+        one. On a deck with a median this changes the design load by 15 to 30
+        per cent, so it is stated rather than guessed at.
+    member_span_m
+        The effective span of the member being checked, when it is not the span
+        of the bridge. Clause 208.5.
+    allow_trains
+        Whether one lane may carry several vehicles nose to tail.
+    allow_reversed_vehicles
+        Whether a vehicle may head either way along the span. Clause 204.1.4.
     """
     carriageways = cross_section.carriageways(split=carriageways_read_as)
     permitted = _vehicles_permitted_in_each_block(vehicles, allow_reversed_vehicles)
