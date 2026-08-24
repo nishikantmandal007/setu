@@ -10,6 +10,7 @@ from setu.irc_code_rules.lane_arrangements import (
     class_a_gap,
     count_design_lanes,
     fit_blocks_between,
+    fits_in_carriageway,
     list_admissible_arrangements,
     narrowest_carriageway_that_fits,
     where_vehicle_sits_in_block,
@@ -99,3 +100,64 @@ def test_class_a_sits_at_the_centre_of_its_lane_but_70r_floats():
 
 def test_an_arrangement_that_does_not_fit_is_refused():
     assert fit_blocks_between([CLASS_A_LANE, CLASS_A_LANE], 0.0, 4.0) is None
+
+
+def test_a_lone_70r_is_searched_wherever_it_fits():
+    """A 70R needs 5.30 m, so any carriageway that wide must consider one.
+
+    It once did not. Arrangements were built by taking the fully loaded case and
+    stripping vehicles off it, and on a 9.60 m carriageway every fully loaded
+    case containing a 70R needs 9.70 m and was thrown away - taking the lone 70R
+    that fits perfectly well down with it. The same happened to a pair of them
+    between 16.60 m and 16.70 m.
+    """
+    for carriageway_width_m in (5.30, 7.00, 9.60, 9.65, 12.00, 16.60, 16.65, 20.00):
+        patterns = [
+            tuple(arrangement.lane_pattern)
+            for arrangement in list_admissible_arrangements(carriageway_width_m)
+        ]
+        assert (ZONE_70R,) in patterns, f"no lone 70R searched on {carriageway_width_m} m"
+
+
+def test_two_70r_vehicles_are_searched_wherever_they_fit():
+    for carriageway_width_m in (16.60, 16.65, 18.00, 22.00):
+        patterns = [
+            tuple(arrangement.lane_pattern)
+            for arrangement in list_admissible_arrangements(carriageway_width_m)
+        ]
+        assert (ZONE_70R, ZONE_70R) in patterns
+
+
+@pytest.mark.parametrize(
+    "carriageway_width_m", [4.25, 5.30, 6.10, 7.50, 9.60, 11.0, 13.10, 16.60, 20.10, 23.60]
+)
+def test_nothing_legal_is_left_out(carriageway_width_m):
+    """Checked against enumerating every pattern from scratch.
+
+    Anything that fits between the kerbs and uses no more lanes than Table 6
+    allows is a case someone could legally drive into, so it has to be searched.
+    """
+    from itertools import product
+
+    searched = {
+        tuple(arrangement.lane_pattern)
+        for arrangement in list_admissible_arrangements(carriageway_width_m)
+    }
+
+    design_lanes = count_design_lanes(carriageway_width_m)
+    everything_legal = set()
+    for blocks in range(1, design_lanes + 1):
+        for pattern in product((CLASS_A_LANE, ZONE_70R), repeat=blocks):
+            lanes_used = sum(2 if block == ZONE_70R else 1 for block in pattern)
+            if lanes_used <= design_lanes and fits_in_carriageway(
+                list(pattern), carriageway_width_m
+            ):
+                everything_legal.add(pattern)
+
+    assert searched == everything_legal
+
+
+def test_a_fully_loaded_case_uses_every_lane():
+    for arrangement in list_admissible_arrangements(13.10):
+        if arrangement.is_fully_loaded:
+            assert arrangement.design_lanes == count_design_lanes(13.10)

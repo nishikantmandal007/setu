@@ -17,7 +17,7 @@ it is why `list_admissible_arrangements` returns subsets as well as full ones.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from itertools import combinations
+from itertools import product
 
 from .code_tables import (
     CLASS_A_GAP_OPENS_UP_BELOW_M,
@@ -185,64 +185,39 @@ def fits_in_carriageway(lane_pattern: LanePattern, carriageway_width_m: float) -
 def list_admissible_arrangements(carriageway_width_m: float) -> list[LaneArrangement]:
     """Returns every way this carriageway may be loaded, most heavily loaded first.
 
-    Table 6 fixes how many design lanes there are; Table 6A fixes how they may be
-    shared between Class A and 70R vehicles; and Table 6A note (b) says a partly
-    loaded bridge may govern, so every subset of every full arrangement is
-    returned too.
+    An arrangement is admissible when it fits between the kerbs and uses no more
+    design lanes than Table 6 gives the carriageway. A 70R zone uses two.
+
+    Every arrangement is returned, not only the ones that fill every lane. Table
+    6A note (b) is explicit that a partly loaded carriageway may govern, and it
+    genuinely does: leaving a lane empty can be more onerous than filling it when
+    the empty lane sits where the influence surface changes sign.
     """
     if not can_carry_vehicles(carriageway_width_m):
         return []
 
     design_lanes = count_design_lanes(carriageway_width_m)
-    arrangements: list[LaneArrangement] = []
-    already_seen: set[tuple[str, ...]] = set()
+    arrangements = []
 
-    most_70r_vehicles = design_lanes // 2
+    for blocks in range(1, design_lanes + 1):
+        for pattern in product((CLASS_A_LANE, ZONE_70R), repeat=blocks):
+            lanes_used = sum(2 if block == ZONE_70R else 1 for block in pattern)
 
-    for vehicles_70r in range(most_70r_vehicles + 1):
-        class_a_vehicles = design_lanes - 2 * vehicles_70r
-        blocks = vehicles_70r + class_a_vehicles
-        if blocks == 0:
-            continue
-
-        for zone_positions in combinations(range(blocks), vehicles_70r):
-            full_pattern = tuple(
-                ZONE_70R if position in zone_positions else CLASS_A_LANE
-                for position in range(blocks)
-            )
-            if not fits_in_carriageway(list(full_pattern), carriageway_width_m):
+            if lanes_used > design_lanes:
+                continue
+            if not fits_in_carriageway(list(pattern), carriageway_width_m):
                 continue
 
-            for pattern in _with_every_subset(full_pattern):
-                if pattern in already_seen:
-                    continue
-                if not fits_in_carriageway(list(pattern), carriageway_width_m):
-                    continue
-
-                already_seen.add(pattern)
-                arrangements.append(
-                    _describe_arrangement(
-                        pattern, carriageway_width_m, is_fully_loaded=pattern == full_pattern
-                    )
+            arrangements.append(
+                _describe_arrangement(
+                    pattern,
+                    carriageway_width_m,
+                    is_fully_loaded=lanes_used == design_lanes,
                 )
+            )
 
     arrangements.sort(key=lambda a: (-a.design_lanes, a.lane_pattern))
     return arrangements
-
-
-def _with_every_subset(full_pattern: tuple[str, ...]) -> list[tuple[str, ...]]:
-    """Returns the full pattern followed by every smaller pattern inside it.
-
-    Table 6A note (b): leaving a lane empty can be more onerous than filling it,
-    so a partly loaded carriageway is a load case in its own right.
-    """
-    patterns = [full_pattern]
-
-    for smaller_size in range(1, len(full_pattern)):
-        for kept in combinations(range(len(full_pattern)), smaller_size):
-            patterns.append(tuple(full_pattern[position] for position in kept))
-
-    return patterns
 
 
 def _describe_arrangement(
