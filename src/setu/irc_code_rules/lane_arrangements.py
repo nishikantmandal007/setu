@@ -25,6 +25,7 @@ from .code_tables import (
     CLASS_A_LANE_WIDTH_M,
     CLASS_A_VEHICLE_GAP_M,
     DESIGN_LANES_BY_WIDTH,
+    MOST_70R_VEHICLES_DRAWN,
     MOST_DESIGN_LANES,
     NARROWEST_LOADED_CARRIAGEWAY_M,
     ROUND_TO_DECIMALS,
@@ -182,7 +183,40 @@ def fits_in_carriageway(lane_pattern: LanePattern, carriageway_width_m: float) -
     return needed_m <= carriageway_width_m + TOLERANCE_M
 
 
-def list_admissible_arrangements(carriageway_width_m: float) -> list[LaneArrangement]:
+def is_70r_placed_as_the_code_draws_it(lane_pattern: LanePattern) -> bool:
+    """Returns True when every 70R zone has a kerb or another 70R zone beside it.
+
+    Put another way: starting from a 70R zone and stepping only through other
+    70R zones, you must be able to reach a kerb. The heavy vehicles are worked
+    inwards from the edges of the carriageway and never boxed in behind a lane
+    of Class A.
+
+    That is how all thirteen combination drawings place them, without exception.
+    A 70R between two Class A lanes is never drawn, nor is a pair of them with
+    Class A on both sides - even at widths where either would fit.
+    """
+    last = len(lane_pattern) - 1
+
+    for position, block in enumerate(lane_pattern):
+        if block != ZONE_70R:
+            continue
+
+        reaches_the_left_kerb = all(
+            lane_pattern[nearer] == ZONE_70R for nearer in range(position)
+        )
+        reaches_the_right_kerb = all(
+            lane_pattern[further] == ZONE_70R for further in range(position + 1, last + 1)
+        )
+
+        if not (reaches_the_left_kerb or reaches_the_right_kerb):
+            return False
+
+    return True
+
+
+def list_admissible_arrangements(
+    carriageway_width_m: float, follow_combination_drawings: bool = True
+) -> list[LaneArrangement]:
     """Returns every way this carriageway may be loaded, most heavily loaded first.
 
     An arrangement is admissible when it fits between the kerbs and uses no more
@@ -190,8 +224,15 @@ def list_admissible_arrangements(carriageway_width_m: float) -> list[LaneArrange
 
     Every arrangement is returned, not only the ones that fill every lane. Table
     6A note (b) is explicit that a partly loaded carriageway may govern, and it
-    genuinely does: leaving a lane empty can be more onerous than filling it when
-    the empty lane sits where the influence surface changes sign.
+    genuinely does - and by more than a little. Fewer loaded lanes attract a
+    smaller reduction under Table 8, so a single 70R standing over a deck panel
+    can be worse than every lane of the bridge filled with Class A.
+
+    `follow_combination_drawings` keeps to what the standard drawings show: a
+    70R always reaches a kerb through 70R zones only, and never more than two of
+    them on one carriageway. Turning it off searches every arrangement the
+    geometry permits, which is the more conservative reading and can only make
+    the answer more adverse.
     """
     if not can_carry_vehicles(carriageway_width_m):
         return []
@@ -207,6 +248,8 @@ def list_admissible_arrangements(carriageway_width_m: float) -> list[LaneArrange
                 continue
             if not fits_in_carriageway(list(pattern), carriageway_width_m):
                 continue
+            if follow_combination_drawings and not _is_drawn_in_the_combinations(pattern):
+                continue
 
             arrangements.append(
                 _describe_arrangement(
@@ -218,6 +261,13 @@ def list_admissible_arrangements(carriageway_width_m: float) -> list[LaneArrange
 
     arrangements.sort(key=lambda a: (-a.design_lanes, a.lane_pattern))
     return arrangements
+
+
+def _is_drawn_in_the_combinations(pattern: tuple[str, ...]) -> bool:
+    """Returns True when the drawings would show an arrangement like this one."""
+    if pattern.count(ZONE_70R) > MOST_70R_VEHICLES_DRAWN:
+        return False
+    return is_70r_placed_as_the_code_draws_it(list(pattern))
 
 
 def _describe_arrangement(

@@ -106,6 +106,7 @@ def find_worst_placement(
     apply_lane_reduction: bool = True,
     curve_breakpoints_m: np.ndarray | None = None,
     sampling: SamplingSettings = DEFAULT_SAMPLING,
+    follow_combination_drawings: bool = True,
 ) -> list[TransversePlacement]:
     """Returns every way of loading the deck, worst first.
 
@@ -119,7 +120,8 @@ def find_worst_placement(
 
     cases_per_carriageway = [
         _cases_for_one_carriageway(
-            carriageway, curves, adverse, apply_lane_reduction, curve_breakpoints_m, sampling
+            carriageway, curves, adverse, apply_lane_reduction, curve_breakpoints_m,
+            sampling, follow_combination_drawings,
         )
         for carriageway, curves in zip(carriageways, response_curves, strict=True)
     ]
@@ -140,11 +142,14 @@ def _cases_for_one_carriageway(
     apply_lane_reduction: bool,
     curve_breakpoints_m: np.ndarray | None,
     sampling: SamplingSettings,
+    follow_combination_drawings: bool,
 ) -> list[CarriagewayCase]:
     """Places every admissible arrangement on one carriageway at its worst."""
     cases = []
 
-    for arrangement in list_admissible_arrangements(carriageway.width_m):
+    for arrangement in list_admissible_arrangements(
+        carriageway.width_m, follow_combination_drawings
+    ):
         layout = fit_blocks_between(
             arrangement.lane_pattern, carriageway.left_m, carriageway.right_m
         )

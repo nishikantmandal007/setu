@@ -69,6 +69,23 @@ class CriticalPosition:
     footway_response: float = 0.0
     residual_udl_applied: bool = False
 
+    resultant_centred_response: float | None = None
+    """What the same vehicles cause with their resultant on the carriageway centreline.
+
+    The code asks for both transverse conditions. This one can never govern - it
+    is a single position inside the set the sweep searches - so it is reported
+    beside the answer rather than competing with it.
+    """
+
+    @property
+    def resultant_centred_shortfall(self) -> float | None:
+        """How much lower the resultant-centred position is, as a percentage."""
+        if self.resultant_centred_response is None or self.response == 0:
+            return None
+        return 100.0 * (abs(self.response) - abs(self.resultant_centred_response)) / abs(
+            self.response
+        )
+
     def describe(self) -> str:
         """Returns the result as a report block."""
         lines = [
@@ -80,6 +97,11 @@ class CriticalPosition:
             f"   on {self.design_lanes} lanes",
         ]
 
+        if self.resultant_centred_response is not None:
+            lines.append(
+                f"  Resultant at mid-width   = {self.resultant_centred_response:14.3f}"
+                f"   {self.resultant_centred_shortfall:.1f}% lower"
+            )
         if self.footway_response:
             lines.append(f"  Footway load (Cl. 206)   = {self.footway_response:14.3f}")
         if self.residual_udl_applied:

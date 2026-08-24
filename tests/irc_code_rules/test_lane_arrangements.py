@@ -11,6 +11,7 @@ from setu.irc_code_rules.lane_arrangements import (
     count_design_lanes,
     fit_blocks_between,
     fits_in_carriageway,
+    is_70r_placed_as_the_code_draws_it,
     list_admissible_arrangements,
     narrowest_carriageway_that_fits,
     where_vehicle_sits_in_block,
@@ -120,7 +121,7 @@ def test_a_lone_70r_is_searched_wherever_it_fits():
 
 
 def test_two_70r_vehicles_are_searched_wherever_they_fit():
-    for carriageway_width_m in (16.60, 16.65, 18.00, 22.00):
+    for carriageway_width_m in (14.50, 16.60, 18.00, 22.00):
         patterns = [
             tuple(arrangement.lane_pattern)
             for arrangement in list_admissible_arrangements(carriageway_width_m)
@@ -131,30 +132,125 @@ def test_two_70r_vehicles_are_searched_wherever_they_fit():
 @pytest.mark.parametrize(
     "carriageway_width_m", [4.25, 5.30, 6.10, 7.50, 9.60, 11.0, 13.10, 16.60, 20.10, 23.60]
 )
-def test_nothing_legal_is_left_out(carriageway_width_m):
-    """Checked against enumerating every pattern from scratch.
+def test_nothing_that_fits_is_left_out(carriageway_width_m):
+    """With the placement rule lifted, everything that fits must be searched.
 
     Anything that fits between the kerbs and uses no more lanes than Table 6
-    allows is a case someone could legally drive into, so it has to be searched.
+    allows is a position someone could legally drive into.
     """
     from itertools import product
 
     searched = {
         tuple(arrangement.lane_pattern)
-        for arrangement in list_admissible_arrangements(carriageway_width_m)
+        for arrangement in list_admissible_arrangements(
+            carriageway_width_m, follow_combination_drawings=False
+        )
     }
 
     design_lanes = count_design_lanes(carriageway_width_m)
-    everything_legal = set()
+    everything_that_fits = set()
     for blocks in range(1, design_lanes + 1):
         for pattern in product((CLASS_A_LANE, ZONE_70R), repeat=blocks):
             lanes_used = sum(2 if block == ZONE_70R else 1 for block in pattern)
             if lanes_used <= design_lanes and fits_in_carriageway(
                 list(pattern), carriageway_width_m
             ):
-                everything_legal.add(pattern)
+                everything_that_fits.add(pattern)
 
-    assert searched == everything_legal
+    assert searched == everything_that_fits
+
+
+@pytest.mark.parametrize(
+    "carriageway_width_m", [4.25, 5.30, 9.60, 13.10, 16.60, 20.10, 23.60]
+)
+def test_by_default_a_70r_is_never_boxed_in(carriageway_width_m):
+    """A 70R must reach a kerb through 70R zones only, as the drawings place them."""
+    for arrangement in list_admissible_arrangements(carriageway_width_m):
+        assert is_70r_placed_as_the_code_draws_it(arrangement.lane_pattern)
+
+
+def test_the_placement_rule_is_what_rules_a_boxed_in_70r_out():
+    assert not is_70r_placed_as_the_code_draws_it([CLASS_A_LANE, ZONE_70R, CLASS_A_LANE])
+    assert not is_70r_placed_as_the_code_draws_it(
+        [CLASS_A_LANE, ZONE_70R, ZONE_70R, CLASS_A_LANE]
+    )
+
+    assert is_70r_placed_as_the_code_draws_it([ZONE_70R])
+    assert is_70r_placed_as_the_code_draws_it([CLASS_A_LANE, ZONE_70R])
+    assert is_70r_placed_as_the_code_draws_it([CLASS_A_LANE, ZONE_70R, ZONE_70R])
+    assert is_70r_placed_as_the_code_draws_it([ZONE_70R, CLASS_A_LANE, ZONE_70R])
+    assert is_70r_placed_as_the_code_draws_it([ZONE_70R, CLASS_A_LANE, CLASS_A_LANE, ZONE_70R])
+
+
+def test_lifting_the_rule_only_ever_adds_cases():
+    for step in range(425, 2400, 5):
+        carriageway_width_m = step / 100.0
+        strict = {
+            tuple(a.lane_pattern) for a in list_admissible_arrangements(carriageway_width_m)
+        }
+        open_ = {
+            tuple(a.lane_pattern)
+            for a in list_admissible_arrangements(
+                carriageway_width_m, follow_combination_drawings=False
+            )
+        }
+        assert strict <= open_
+
+
+# Every band and every case of the standard combination document, as drawn.
+# (Class A count, 70R count) for the cases that fill every design lane.
+COMBINATION_DOCUMENT = [
+    (4.25, 5.30, {(1, 0)}),
+    (5.30, 9.60, {(2, 0), (0, 1)}),
+    (9.60, 9.70, {(3, 0)}),
+    (9.70, 13.10, {(3, 0), (1, 1)}),
+    (13.10, 13.20, {(4, 0)}),
+    (13.20, 14.50, {(4, 0), (2, 1)}),
+    (14.50, 16.60, {(4, 0), (2, 1), (0, 2)}),
+    (16.60, 16.70, {(5, 0)}),
+    (16.70, 16.80, {(5, 0), (3, 1), (1, 2)}),
+    (16.80, 20.10, {(5, 0), (3, 1), (1, 2)}),
+    (20.10, 20.20, {(6, 0)}),
+    (20.20, 20.30, {(6, 0), (4, 1), (2, 2)}),
+    (20.30, 23.60, {(6, 0), (4, 1), (2, 2)}),
+]
+
+
+@pytest.mark.parametrize(("band_from_m", "band_to_m", "expected"), COMBINATION_DOCUMENT)
+def test_matches_the_combination_document(band_from_m, band_to_m, expected):
+    """The fully loaded cases must be exactly those the document draws."""
+    from collections import Counter
+
+    for carriageway_width_m in (band_from_m + 0.005, (band_from_m + band_to_m) / 2):
+        counted = {
+            (Counter(a.lane_pattern)[CLASS_A_LANE], Counter(a.lane_pattern)[ZONE_70R])
+            for a in list_admissible_arrangements(carriageway_width_m)
+            if a.is_fully_loaded
+        }
+        assert counted == expected, f"at {carriageway_width_m} m"
+
+
+@pytest.mark.parametrize(
+    ("carriageway_width_m", "pattern", "should_be_searched"),
+    [
+        # S.No.9 draws Class A + two 70R from 16.70 m, but the arrangement with
+        # a Class A between the two 70R needs 16.80 m and only appears there.
+        (16.75, (CLASS_A_LANE, ZONE_70R, ZONE_70R), True),
+        (16.75, (ZONE_70R, CLASS_A_LANE, ZONE_70R), False),
+        (16.85, (ZONE_70R, CLASS_A_LANE, ZONE_70R), True),
+        # The same distinction again at six lanes, S.No.12 against S.No.13.
+        (20.25, (CLASS_A_LANE, CLASS_A_LANE, ZONE_70R, ZONE_70R), True),
+        (20.25, (ZONE_70R, CLASS_A_LANE, CLASS_A_LANE, ZONE_70R), False),
+        (20.35, (ZONE_70R, CLASS_A_LANE, CLASS_A_LANE, ZONE_70R), True),
+    ],
+)
+def test_the_document_distinguishes_orderings(
+    carriageway_width_m, pattern, should_be_searched
+):
+    searched = {
+        tuple(a.lane_pattern) for a in list_admissible_arrangements(carriageway_width_m)
+    }
+    assert (pattern in searched) is should_be_searched
 
 
 def test_a_fully_loaded_case_uses_every_lane():

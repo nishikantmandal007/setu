@@ -333,3 +333,34 @@ def test_the_surface_looks_like_a_bridge_influence_surface(built):
     peak = np.abs(surface.values).max()
     assert np.abs(surface.values[0, :]).max() < 0.01 * peak
     assert np.abs(surface.values[-1, :]).max() < 0.01 * peak
+
+
+@pytest.mark.parametrize("adverse", ["maximum", "minimum"])
+def test_the_resultant_centred_case_can_never_govern(built, deck_cross_section, adverse):
+    """It is one position inside the set the sweep already searches.
+
+    So the sweep either lands on it or finds something worse. If the centred
+    position ever came out more adverse than the swept answer, the sweep would
+    have missed a placement it was supposed to cover.
+    """
+    *_, surface, _, _ = built
+
+    worst = find_critical_position(
+        surface, deck_cross_section, span_m=SPAN_M, adverse=adverse
+    )
+
+    assert worst.resultant_centred_response is not None
+    assert abs(worst.resultant_centred_response) <= abs(worst.response) + 1e-9
+    assert worst.resultant_centred_shortfall >= -1e-9
+
+
+def test_the_report_shows_both_transverse_conditions(built, deck_cross_section):
+    """The code asks for both to be analysed and the governing one identified."""
+    *_, surface, _, _ = built
+
+    described = find_critical_position(
+        surface, deck_cross_section, span_m=SPAN_M, adverse="minimum"
+    ).describe()
+
+    assert "Resultant at mid-width" in described
+    assert "lower" in described

@@ -44,6 +44,7 @@ from .results import CriticalPosition, VehiclePlacement
 from .settings import DEFAULT_SAMPLING, SamplingSettings
 from .vehicle_placement.across_carriageway import TransversePlacement, find_worst_placement
 from .vehicle_placement.response_curve import VehicleResponses, positions_across_width
+from .vehicle_placement.resultant_centred import centre_the_resultant
 
 
 @dataclass(frozen=True)
@@ -106,6 +107,7 @@ def rank_all_positions(
     apply_footway_load: bool = False,
     allow_trains: bool = True,
     allow_reversed_vehicles: bool = True,
+    follow_combination_drawings: bool = True,
     sampling: SamplingSettings = DEFAULT_SAMPLING,
 ) -> list[CriticalPosition]:
     """Returns every legal way of loading the deck, worst first.
@@ -129,6 +131,11 @@ def rank_all_positions(
         Whether one lane may carry several vehicles nose to tail.
     allow_reversed_vehicles
         Whether a vehicle may head either way along the span. Clause 204.1.4.
+    follow_combination_drawings
+        Keep to the arrangements the standard combination drawings show: a 70R
+        always reaching a kerb, and never more than two on one carriageway. On
+        by default, so results match those drawings. Turning it off searches
+        every arrangement the geometry allows, which can only be more adverse.
     """
     carriageways = cross_section.carriageways(split=carriageways_read_as)
     permitted = _vehicles_permitted_in_each_block(vehicles, allow_reversed_vehicles)
@@ -180,6 +187,17 @@ def rank_all_positions(
         if apply_footway_load
         else 0.0
     )
+
+    # The second transverse condition the code asks for. Reported, never raced
+    # against the sweep - it is one position the sweep has already been over.
+    centred = centre_the_resultant(
+        carriageways, curves_per_carriageway, adverse=adverse,
+        apply_lane_reduction=apply_lane_reduction,
+        follow_combination_drawings=follow_combination_drawings,
+    )
+    centred_response = (
+        sum(placed.response for placed in centred) + footway if centred else None
+    )
     udl_applied = apply_residual_udl and any(
         needs_residual_udl(carriageway.width_m) for carriageway in carriageways
     )
@@ -195,6 +213,7 @@ def rank_all_positions(
             carriageways_read_as,
             footway,
             udl_applied,
+            centred_response,
         )
         for placement in placements
     ]
@@ -308,6 +327,7 @@ def _describe(
     carriageways_read_as: str,
     footway: float,
     udl_applied: bool,
+    centred_response: float | None,
 ) -> CriticalPosition:
     """Turns one swept placement into a result anyone can check or redraw."""
     placed_vehicles = []
@@ -334,6 +354,7 @@ def _describe(
         vehicles=placed_vehicles,
         footway_response=footway,
         residual_udl_applied=udl_applied,
+        resultant_centred_response=centred_response,
     )
 
 

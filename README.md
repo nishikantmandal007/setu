@@ -78,6 +78,7 @@ which a response curve can bend, and between those points the total is linear.
 | Clause 204.3, Table 3 | kerb clearance, gaps between vehicles, 70R zones |
 | Table 6 | design lanes from carriageway width |
 | Table 6A | which vehicles may share a carriageway, and note (b) — partly loaded cases |
+| combination drawings | all thirteen carriageway-width bands, case for case |
 | Table 6 S.No.1 | the 500 kg/m² residual load, moving with the vehicle |
 | Clause 205, Table 8 | reduction for several lanes loaded together |
 | Clause 206 | footway and cycle track loading |
@@ -85,6 +86,41 @@ which a response curve can bend, and between those points the total is linear.
 
 Uniform loads are placed on the adverse area only — a uniform load may stand
 anywhere, so the worst case stands only where it hurts.
+
+Both transverse conditions are answered: the swept position, and the position
+with the load resultant on the carriageway centreline. The second can never
+govern — it is one position inside the set the sweep searches — so it is
+reported beside the answer, with the gap between them.
+
+### The combination drawings
+
+The standard drawings define thirteen carriageway-width bands and the cases
+permitted in each. setu reproduces every one of them, and every band boundary
+follows from the same handful of numbers:
+
+| boundary | from |
+|---|---|
+| 5.30 m | a lone 70R: 2.90 wide, 1.20 clear either side |
+| 9.70 m | 0.15 kerb + 2.30 Class A + **7.25 70R zone at a kerb** |
+| 13.20 m | 0.15 + 2.30 + 1.20 gap + 2.30 + 7.25 |
+| 14.50 m | 7.25 + 7.25 |
+| 16.70 m | 0.15 + 2.30 + **7.00 70R zone between lanes** + 7.25 |
+| 16.80 m | 7.25 + 2.30 + 7.25 |
+| 20.30 m | 7.25 + 2.30 + 1.20 + 2.30 + 7.25 |
+
+Two placement rules come from the drawings rather than from any table, and both
+are enforced by default:
+
+- a 70R always reaches a kerb, stepping only through other 70R zones — never
+  boxed in behind a lane of Class A
+- never more than two 70R on one carriageway
+
+The second is inferred: six lanes would hold three, and 21.50 m is wide enough,
+but the drawings stop at two and there is no band boundary at 21.50 m where a
+third would first fit. Every other case has one.
+
+`follow_combination_drawings=False` lifts both and searches every arrangement
+the geometry permits, which can only be more adverse.
 
 ---
 
@@ -146,7 +182,7 @@ one class.
 ## Running it
 
 ```bash
-uv run pytest                              # 638 tests
+uv run pytest                              # 666 tests
 uv run python examples/plate_girder_35m.py # a 35 m bridge, end to end
 uv run ruff check src tests examples
 uv run mypy

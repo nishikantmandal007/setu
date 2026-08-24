@@ -75,6 +75,14 @@ WIDEST_TABULATED_CARRIAGEWAY_M = 23.60
 
 MOST_DESIGN_LANES = 6
 
+MOST_70R_VEHICLES_DRAWN = 2
+"""The combination drawings never put a third 70R on a carriageway.
+
+Six design lanes would hold three of them, and 21.50 m of carriageway is enough
+- but the drawings stop at two, and there is no band boundary at 21.50 m where a
+third would first become possible. Every other case has one.
+"""
+
 
 # ---------------------------------------------------------------------------
 # Clause 205, Table 8 - reduction for several lanes loaded together
