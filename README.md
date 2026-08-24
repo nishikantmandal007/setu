@@ -88,10 +88,32 @@ anywhere, so the worst case stands only where it hurts.
 
 ---
 
+## Seeing it
+
+```bash
+uv sync --extra plot
+uv run python examples/draw_the_answer.py
+```
+
+Four panels that together explain one answer: the influence surface as the deck
+shape it really is with the wheels sitting on it; the deck head on with the
+vehicles in place; what each vehicle could do from every position across the
+width, with the ones that will not fit drawn dotted and labelled; and the
+influence line along the span with every axle marked where it stopped.
+
+![the critical position](examples/critical_position.png)
+
+It also writes an animation of the governing vehicle driving across the deck,
+tracing what it causes from each position — the trace bottoms out exactly where
+the search put it.
+
+---
+
 ## Install
 
 ```bash
 uv sync --extra dev     # everything, including the solver and the tests
+uv sync --extra plot    # + matplotlib, for the drawings
 uv sync                 # just the library (numpy only)
 ```
 
@@ -112,6 +134,7 @@ src/setu/
     influence_surfaces/    one adjoint solve per response quantity
     vehicle_placement/     the two searches
     critical_position.py   the entry point that ties them together
+    drawing.py             the pictures (matplotlib, imported only when used)
 ```
 
 `openseespy` is imported in exactly one file, behind a four-method protocol
@@ -123,7 +146,7 @@ one class.
 ## Running it
 
 ```bash
-uv run pytest                              # 625 tests
+uv run pytest                              # 638 tests
 uv run python examples/plate_girder_35m.py # a 35 m bridge, end to end
 uv run ruff check src tests examples
 uv run mypy

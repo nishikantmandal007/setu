@@ -12,6 +12,9 @@ dependencies = ["numpy>=1.24"]
 [project.optional-dependencies]
 fe = ["openseespy>=3.5"]
 dev = ["openseespy>=3.5", "pytest>=8", "ruff>=0.6", "mypy>=1.11"]
+plot = [
+    "matplotlib>=3.8",
+]
 
 [tool.setuptools.packages.find]
 where = ["src"]
