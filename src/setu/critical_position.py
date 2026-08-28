@@ -180,6 +180,7 @@ def rank_all_positions(
         apply_lane_reduction=apply_lane_reduction,
         curve_breakpoints_m=z_positions_m,
         sampling=sampling,
+        follow_combination_drawings=follow_combination_drawings,
     )
 
     footway = (

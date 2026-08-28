@@ -291,6 +291,29 @@ def test_a_two_lane_carriageway_has_a_case_left_empty(built):
     assert ranked[0].response == min(case.response for case in ranked)
 
 
+def test_lifting_the_combination_drawings_reaches_the_sweep(built):
+    """The flag has to change the arrangements the sweep searches, not just the report.
+
+    A 70R between two Class A lanes fits a 13.10 m carriageway but is never drawn,
+    so `follow_combination_drawings=True` must leave it out and `False` must find
+    it. The flag was once accepted and then not forwarded, which made it a no-op.
+    """
+    *_, surface, _, _ = built
+    wide = DeckCrossSection.from_widths(
+        {"kerb_left": 0.45, "carriageway": 13.10, "kerb_right": 0.45}
+    )
+
+    as_drawn = rank_all_positions(surface, wide, span_m=SPAN_M, adverse="minimum")
+    every_arrangement = rank_all_positions(
+        surface, wide, span_m=SPAN_M, adverse="minimum", follow_combination_drawings=False
+    )
+
+    boxed_in_70r = "class_a + zone_70r + class_a"
+    assert boxed_in_70r not in {case.lane_pattern for case in as_drawn}
+    assert boxed_in_70r in {case.lane_pattern for case in every_arrangement}
+    assert len(every_arrangement) > len(as_drawn)
+
+
 def test_impact_falls_as_the_member_gets_longer(built, deck_cross_section):
     """Clause 208.5 - the member's own span, which is not always the bridge's."""
     *_, surface, _, _ = built
