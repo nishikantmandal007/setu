@@ -17,6 +17,7 @@ from typing import Any
 
 import numpy as np
 
+from .adverse_direction import where_a_load_hurts
 from .deck_cross_section import DeckCrossSection
 from .influence_surfaces.surface import InfluenceSurface
 from .irc_code_rules.vehicles import IRC_VEHICLES, TrackedVehicle, Vehicle, facing_backwards
@@ -302,7 +303,7 @@ def draw_influence_along_span(surface: InfluenceSurface, critical: CriticalPosit
     along_m = np.linspace(surface.length_mesh_m[0], surface.length_mesh_m[-1], 600)
     line = surface.influence_at(along_m, np.full_like(along_m, governing.z_centre_m))
 
-    hurts = line < 0 if critical.adverse == "minimum" else line > 0
+    hurts = where_a_load_hurts(line, critical.adverse)
     ax.fill_between(along_m, 0, line, where=hurts, color=ADVERSE_COLOUR, alpha=0.30,
                     label="loading here hurts")
     ax.fill_between(along_m, 0, line, where=~hurts, color=HELPFUL_COLOUR, alpha=0.22,
@@ -376,7 +377,7 @@ def animate_vehicle_along_span(
 
     along_m = np.linspace(surface.length_mesh_m[0], surface.length_mesh_m[-1], 600)
     line = surface.influence_at(along_m, np.full_like(along_m, governing.z_centre_m))
-    hurts = line < 0 if critical.adverse == "minimum" else line > 0
+    hurts = where_a_load_hurts(line, critical.adverse)
     top.fill_between(along_m, 0, line, where=hurts, color=ADVERSE_COLOUR, alpha=0.28)
     top.fill_between(along_m, 0, line, where=~hurts, color=HELPFUL_COLOUR, alpha=0.20)
     top.plot(along_m, line, color="#222222", linewidth=1.5)

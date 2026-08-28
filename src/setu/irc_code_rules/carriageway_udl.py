@@ -21,6 +21,7 @@ from collections.abc import Sequence
 
 import numpy as np
 
+from ..adverse_direction import where_a_load_hurts
 from ..sampling import DEFAULT_SAMPLING, SamplingSettings
 from .code_tables import (
     CLASS_A_LANE_WIDTH_M,
@@ -103,8 +104,9 @@ def response_to_area_load(
         cells = ordinates * x_widths_m[:, None] * z_widths_m[None, :]
 
         if adverse_area_only:
-            hurts = ordinates < 0.0 if adverse == "minimum" else ordinates > 0.0
-            cells = np.where(hurts, cells, 0.0)
+            cells = np.where(
+                where_a_load_hurts(ordinates, adverse), cells, 0.0
+            )
 
         total += float(cells.sum())
 

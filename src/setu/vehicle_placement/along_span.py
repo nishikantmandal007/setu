@@ -22,6 +22,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from ..adverse_direction import adverse_sign, is_worse
 from .best_prefix import best_so_far
 
 
@@ -55,7 +56,7 @@ def place_train(
     """
     response_to_one_vehicle = np.asarray(response_to_one_vehicle, float)
     positions_m = np.asarray(positions_m, float)
-    adverse_sign = _adverse_sign(adverse)
+    worse_is_positive = adverse_sign(adverse)
 
     # For each position, the last position a vehicle in front could occupy while
     # still leaving the required gap. Resolved on the real coordinates rather
@@ -66,7 +67,7 @@ def place_train(
     )
     has_room_in_front = furthest_vehicle_in_front >= 0
 
-    best_total = adverse_sign * response_to_one_vehicle
+    best_total = worse_is_positive * response_to_one_vehicle
     where_the_vehicle_in_front_sat: list[np.ndarray | None] = [None]
 
     for _ in range(1, vehicles_in_train):
@@ -74,7 +75,7 @@ def place_train(
 
         best_with_one_more = np.full(len(positions_m), -np.inf)
         best_with_one_more[has_room_in_front] = (
-            adverse_sign * response_to_one_vehicle[has_room_in_front]
+            worse_is_positive * response_to_one_vehicle[has_room_in_front]
             + best_behind[furthest_vehicle_in_front[has_room_in_front]]
         )
 
@@ -121,7 +122,9 @@ def find_worst_train(
         if placement is None:
             break
 
-        if worst is None or _is_worse(placement.response, worst.response, adverse):
+        if worst is None or is_worse(
+            placement.response, worst.response, adverse
+        ):
             worst = placement
 
     return worst
@@ -144,22 +147,3 @@ def _walk_back_through_the_train(
 
     chosen.reverse()
     return chosen
-
-
-def _adverse_sign(adverse: str) -> float:
-    """Returns +1 when a larger response is worse, -1 when a smaller one is.
-
-    Every search here maximises. Flipping the sign is what lets the same code
-    find the worst hogging as well as the worst sagging.
-    """
-    if adverse == "maximum":
-        return 1.0
-    if adverse == "minimum":
-        return -1.0
-    raise ValueError(f"adverse must be 'maximum' or 'minimum', got {adverse!r}")
-
-
-def _is_worse(candidate: float, best: float, adverse: str) -> bool:
-    if adverse == "maximum":
-        return candidate > best
-    return candidate < best

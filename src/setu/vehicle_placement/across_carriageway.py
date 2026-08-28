@@ -30,6 +30,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from ..adverse_direction import adverse_sign, index_of_worst, is_worst_first
 from ..deck_cross_section import Carriageway
 from ..errors import NoAdmissibleArrangementError
 from ..irc_code_rules.code_tables import ROUND_TO_DECIMALS, TOLERANCE_M
@@ -84,14 +85,16 @@ def place_vehicles(
     `block_curves[b][s]` is what block b contributes when it slides by offset s.
     Returns the worst total and the offset each block ended up at.
     """
-    adverse_sign = _adverse_sign(adverse)
+    worse_is_positive = adverse_sign(adverse)
 
-    best_total = adverse_sign * np.asarray(block_curves[0], float)
+    best_total = worse_is_positive * np.asarray(block_curves[0], float)
     where_the_block_to_the_left_sat: list[np.ndarray | None] = [None]
 
     for block in range(1, len(block_curves)):
         best_to_the_left, came_from = best_so_far(best_total)
-        best_total = adverse_sign * np.asarray(block_curves[block], float) + best_to_the_left
+        best_total = (
+            worse_is_positive * np.asarray(block_curves[block], float) + best_to_the_left
+        )
         where_the_block_to_the_left_sat.append(came_from)
 
     chosen = _walk_back_through_the_blocks(best_total, where_the_block_to_the_left_sat)
@@ -262,7 +265,6 @@ def _block_contribution(
         centres_m = packed_left_m + offsets_m + nearest_m
         return _read_curve(curves[block], centres_m), centres_m
 
-    pick_worst = np.argmax if adverse == "maximum" else np.argmin
     from_m = packed_left_m + offsets_m + nearest_m
     to_m = packed_left_m + offsets_m + furthest_m
 
@@ -274,7 +276,7 @@ def _block_contribution(
             from_m[offset], to_m[offset], curve_breakpoints_m, sampling
         )
         responses = _read_curve(curves[block], inside_the_zone_m)
-        worst = int(pick_worst(responses))
+        worst = int(index_of_worst(responses, adverse))
         values[offset] = responses[worst]
         centres_m[offset] = inside_the_zone_m[worst]
 
@@ -353,8 +355,10 @@ def _combine_across_carriageways(
             )
         )
 
-    worst_first = adverse == "maximum"
-    combinations.sort(key=lambda placement: placement.response, reverse=worst_first)
+    combinations.sort(
+        key=lambda placement: placement.response,
+        reverse=is_worst_first(adverse),
+    )
     return combinations
 
 
@@ -384,11 +388,3 @@ def _check_one_set_of_curves_per_carriageway(
             "of response curves; a narrow carriageway carries its own residual UDL, so "
             "each one needs its own curves"
         )
-
-
-def _adverse_sign(adverse: str) -> float:
-    if adverse == "maximum":
-        return 1.0
-    if adverse == "minimum":
-        return -1.0
-    raise ValueError(f"adverse must be 'maximum' or 'minimum', got {adverse!r}")

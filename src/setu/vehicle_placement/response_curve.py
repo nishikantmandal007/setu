@@ -27,6 +27,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from ..adverse_direction import index_of_worst
 from ..influence_surfaces.surface import InfluenceSurface
 from ..irc_code_rules.code_tables import ROUND_TO_DECIMALS, TOLERANCE_M
 from ..irc_code_rules.impact_factor import impact_factor
@@ -205,8 +206,9 @@ class VehicleResponses:
         self, response_to_one_vehicle: np.ndarray, x_positions_m: np.ndarray, adverse: str
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray, list[tuple[float, ...]]]:
         """Puts one vehicle in the lane, at whichever spot along the span is worst."""
-        pick_worst = np.argmax if adverse == "maximum" else np.argmin
-        worst_at = pick_worst(response_to_one_vehicle, axis=0)
+        worst_at = index_of_worst(
+            response_to_one_vehicle, adverse, axis=0
+        )
         across = np.arange(response_to_one_vehicle.shape[1])
         where_it_stopped_m = x_positions_m[worst_at]
 

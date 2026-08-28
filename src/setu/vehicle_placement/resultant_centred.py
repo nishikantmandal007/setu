@@ -24,6 +24,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from ..adverse_direction import is_worse
 from ..deck_cross_section import Carriageway
 from ..irc_code_rules.code_tables import GRAVITY_KN_PER_TONNE, TOLERANCE_M
 from ..irc_code_rules.lane_arrangements import (
@@ -79,7 +80,9 @@ def centre_the_resultant(
             )
             if placed is None:
                 continue
-            if worst is None or _is_worse(placed.response, worst.response, adverse):
+            if worst is None or is_worse(
+                placed.response, worst.response, adverse
+            ):
                 worst = placed
 
         if worst is not None:
@@ -186,7 +189,3 @@ def _fraction_that_centres_the_resultant(
 def _representative_vehicle(block: str) -> Vehicle:
     """The vehicle whose weight stands for this kind of lane block."""
     return CLASS_A if block == CLASS_A_LANE else CLASS_70R_WHEELED
-
-
-def _is_worse(candidate: float, best: float, adverse: str) -> bool:
-    return candidate > best if adverse == "maximum" else candidate < best

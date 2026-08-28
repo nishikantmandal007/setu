@@ -24,6 +24,7 @@ from typing import Any
 
 import numpy as np
 
+from .adverse_direction import index_of_worst
 from .deck_cross_section import Carriageway, DeckCrossSection
 from .influence_surfaces.surface import InfluenceSurface
 from .irc_code_rules.carriageway_udl import (
@@ -272,8 +273,7 @@ def _envelope_every_block(
         curves = [responses.for_vehicle(vehicle, z_positions_m, adverse) for vehicle in choices]
         stacked = np.vstack([curve.response for curve in curves])
 
-        pick_worst = np.argmax if adverse == "maximum" else np.argmin
-        worst = pick_worst(stacked, axis=0)
+        worst = index_of_worst(stacked, adverse, axis=0)
         response = stacked[worst, np.arange(len(z_positions_m))]
 
         # Table 6 S.No.1: on a narrow carriageway the strip the vehicle does not
