@@ -19,7 +19,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from ..settings import DEFAULT_SAMPLING, SamplingSettings
+from ..sampling import DEFAULT_SAMPLING, SamplingSettings
 from .code_tables import GRAVITY_KN_PER_TONNE
 from .vehicles import AxleVehicle, TrackedVehicle, Vehicle, pitch_between_vehicles_m
 

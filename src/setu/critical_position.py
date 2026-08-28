@@ -41,7 +41,7 @@ from .irc_code_rules.vehicles import (
     find_vehicle,
 )
 from .results import CriticalPosition, VehiclePlacement
-from .settings import DEFAULT_SAMPLING, SamplingSettings
+from .sampling import DEFAULT_SAMPLING, SamplingSettings
 from .vehicle_placement.across_carriageway import TransversePlacement, find_worst_placement
 from .vehicle_placement.response_curve import VehicleResponses, positions_across_width
 from .vehicle_placement.resultant_centred import centre_the_resultant

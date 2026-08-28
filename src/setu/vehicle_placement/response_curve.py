@@ -37,7 +37,7 @@ from ..irc_code_rules.vehicles import (
     pitch_between_vehicles_m,
 )
 from ..irc_code_rules.wheel_loads import wheel_load_offsets
-from ..settings import DEFAULT_SAMPLING, SamplingSettings
+from ..sampling import DEFAULT_SAMPLING, SamplingSettings
 from .along_span import find_worst_train
 
 

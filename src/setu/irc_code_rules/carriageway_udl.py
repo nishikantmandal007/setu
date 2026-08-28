@@ -21,7 +21,7 @@ from collections.abc import Sequence
 
 import numpy as np
 
-from ..settings import DEFAULT_SAMPLING, SamplingSettings
+from ..sampling import DEFAULT_SAMPLING, SamplingSettings
 from .code_tables import (
     CLASS_A_LANE_WIDTH_M,
     CYCLE_TRACK_UDL_KPA,

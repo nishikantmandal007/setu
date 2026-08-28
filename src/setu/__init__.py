@@ -46,6 +46,7 @@ from .errors import (
     BackendError,
     CrossSectionError,
     InfluenceSurfaceError,
+    ModelAlreadyLoadedError,
     NoAdmissibleArrangementError,
     NotLinearError,
     SetuError,
@@ -69,7 +70,7 @@ from .irc_code_rules import (
 )
 from .reporting import enable_reports
 from .results import CriticalPosition, VehiclePlacement
-from .settings import DEFAULT_SAMPLING, SamplingSettings
+from .sampling import DEFAULT_SAMPLING, SamplingSettings
 
 __all__ = [
     "CLASS_70R_TRACKED",
@@ -90,6 +91,7 @@ __all__ = [
     "InfluenceSolver",
     "InfluenceSurface",
     "InfluenceSurfaceError",
+    "ModelAlreadyLoadedError",
     "NoAdmissibleArrangementError",
     "NotLinearError",
     "OpenSeesBackend",

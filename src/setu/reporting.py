@@ -1,10 +1,7 @@
-"""How setu says what it is doing.
-
-A library must not print. It logs, and the program using it decides whether
-anyone sees that. But the reports the original bridge scripts printed were
-genuinely useful to read while a model was being built, so `enable_reports()`
-turns them back on in one line.
-"""
+# How setu says what it is doing. A library must not print - it logs, and the
+# host program decides whether anyone sees that. The original bridge scripts'
+# progress reports were genuinely useful to read while a model was being
+# built, so enable_reports() turns them back on in one line.
 
 from __future__ import annotations
 
@@ -15,16 +12,17 @@ log.addHandler(logging.NullHandler())
 
 
 def enable_reports(level: int = logging.INFO) -> None:
-    """Prints setu's progress reports to the console, as the original scripts did."""
     handler = logging.StreamHandler()
     handler.setFormatter(logging.Formatter("%(message)s"))
 
+    # Replaces any handlers a host application already installed on this
+    # logger (Osdag, for one) - fine for a script, but a host that wants its
+    # own handlers kept should attach to "setu" itself rather than call this.
     log.handlers = [handler]
     log.setLevel(level)
 
 
 def report(title: str, rows: dict[str, str]) -> None:
-    """Logs one aligned report block, with its values in a column."""
     label_width = max((len(label) for label in rows), default=0)
 
     log.info("")
