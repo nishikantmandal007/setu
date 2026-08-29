@@ -90,3 +90,19 @@ def test_a_saved_surface_reads_back_the_same(tmp_path):
 
     assert read_back.values == pytest.approx(surface.values)
     assert read_back.name == surface.name
+
+
+def test_a_saved_surface_keeps_what_it_describes(tmp_path):
+    """describes must round-trip too, not just the grid and the name."""
+    surface = InfluenceSurface(
+        values=np.zeros((3, 3)),
+        length_mesh_m=np.linspace(0.0, 1.0, 3),
+        width_mesh_m=np.linspace(0.0, 1.0, 3),
+        describes={"response": "girder_moment", "element": 12, "dof": 5},
+    )
+    path = tmp_path / "surface.npz"
+    surface.save(str(path))
+
+    read_back = InfluenceSurface.load(str(path))
+
+    assert read_back.describes == surface.describes

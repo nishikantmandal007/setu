@@ -189,6 +189,6 @@ def _report_dead_loads(model: BridgeModel, totals: DeadLoadTotals) -> None:
 
 
 def _opensees():
-    from ..influence_surfaces.opensees_backend import _opensees as load
+    from ..influence_surfaces.opensees_backend import import_opensees as load
 
     return load()
