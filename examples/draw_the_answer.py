@@ -20,7 +20,7 @@ from plate_girder_35m import BRIDGE, CROSS_SECTION  # noqa: E402
 
 from setu import InfluenceSolver, find_critical_position  # noqa: E402
 from setu.bridge_model import build_bridge_model  # noqa: E402
-from setu.drawing import animate_vehicle_along_span, draw_everything  # noqa: E402
+from setu.drawings import animate_vehicle_along_span, draw_everything  # noqa: E402
 
 HERE = Path(__file__).parent
 
@@ -42,7 +42,13 @@ def main() -> None:
     )
     print(worst.describe())
 
-    figure = draw_everything(surface, CROSS_SECTION, worst, span_m=BRIDGE.span_m)
+    figure = draw_everything(
+        surface,
+        CROSS_SECTION,
+        worst,
+        span_m=BRIDGE.span_m,
+        wearing_course_thickness_m=BRIDGE.deck.wearing_course_thickness_m,
+    )
     figure.savefig(HERE / "critical_position.png", dpi=130, bbox_inches="tight")
     print(f"\nwrote {HERE / 'critical_position.png'}")
 

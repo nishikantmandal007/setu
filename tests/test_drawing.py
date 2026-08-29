@@ -21,7 +21,7 @@ from setu import (  # noqa: E402
     InfluenceSurface,
     find_critical_position,
 )
-from setu.drawing import (  # noqa: E402
+from setu.drawings import (  # noqa: E402
     animate_vehicle_along_span,
     draw_cross_section,
     draw_everything,
@@ -117,6 +117,23 @@ def test_the_response_across_the_width_draws_a_line_per_vehicle(surface, deck, c
 
     assert ax.lines
     assert ax.get_legend() is not None
+
+
+def test_the_response_across_the_width_honours_the_wearing_course(surface, deck, critical):
+    # Class_70R_Tracked disperses its load through the wearing course, so its curve is the
+    # one that must move; a wheeled vehicle's curve would not, and would prove nothing.
+    def tracked_curve(ax):
+        for line in ax.lines:
+            if "70R Tracked" in line.get_label():
+                return line.get_ydata()
+        raise AssertionError("no curve was drawn for Class_70R_Tracked")
+
+    thin = draw_response_across_width(surface, deck, critical, span_m=SPAN_M)
+    thick = draw_response_across_width(
+        surface, deck, critical, span_m=SPAN_M, wearing_course_thickness_m=0.075
+    )
+
+    assert not np.allclose(tracked_curve(thin), tracked_curve(thick))
 
 
 def test_the_influence_line_along_the_span_draws(surface, critical):

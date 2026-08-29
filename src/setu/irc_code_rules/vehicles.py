@@ -237,6 +237,19 @@ def facing_backwards(vehicle: Vehicle) -> Vehicle:
     )
 
 
+def find_vehicle_or_its_reverse(name: str) -> Vehicle:
+    # A placed vehicle's name may carry REVERSED_SUFFIX for one Clause 204.1.4 let face
+    # the other way - this looks it up either way, so a caller need not care which.
+    if name in IRC_VEHICLES:
+        return IRC_VEHICLES[name]
+
+    forwards = name.removesuffix(REVERSED_SUFFIX)
+    if forwards in IRC_VEHICLES:
+        return facing_backwards(IRC_VEHICLES[forwards])
+
+    return find_vehicle(name)  # raises VehicleNotFoundError, a KeyError, with its message
+
+
 def vehicles_allowed_in_each_block(
     vehicles: dict[str, Vehicle] | None, allow_reversed_vehicles: bool
 ) -> dict[str, list[Vehicle]]:
