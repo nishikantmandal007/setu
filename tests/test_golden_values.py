@@ -283,3 +283,27 @@ def test_the_report_block_still_reads(golden_and_ranked):
 
     assert golden.lane_pattern in report
     assert f"{golden.response:14.3f}" in report
+
+
+def test_describe_survives_a_zero_response():
+    # The shortfall is None when there is nothing to take a percentage of, and describe()
+    # used to format that None straight into the report and raise TypeError.
+    from setu.results import CriticalPosition
+
+    nothing_happened = CriticalPosition(
+        response_name="a response that came out at zero",
+        adverse="maximum",
+        response=0.0,
+        response_before_reduction=0.0,
+        lane_reduction=1.0,
+        design_lanes=1,
+        lane_pattern="class_a",
+        carriageways_read_as="separate",
+        resultant_centred_response=0.0,
+    )
+
+    report = nothing_happened.describe()
+
+    assert nothing_happened.resultant_centred_shortfall is None
+    assert "Resultant at mid-width" in report
+    assert "% lower" not in report

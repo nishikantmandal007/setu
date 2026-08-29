@@ -18,7 +18,11 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from ..deck_cross_section import KERB_PREFIX, MEDIAN_PREFIX
+from ..deck_cross_section import (
+    CRASH_BARRIER_PREFIX,
+    KERB_PREFIX,
+    MEDIAN_PREFIX,
+)
 from ..reporting import report
 from .build_model import BridgeModel
 from .model_tags import SolverCommands
@@ -99,10 +103,9 @@ def surfacing_pressure_at(model: BridgeModel, z_m: float) -> float:
     # what is on top of it. A carriageway carries the wearing course, a footpath its own
     # surfacing, and so on.
     #
-    # This does not recognise crash_barrier, which OsdagBridge uses heavily - a
-    # crash_barrier strip falls through every branch and picks up zero surfacing dead load
-    # via the final return below. That is a real gap, left alone here because fixing it
-    # is out of scope for this pass.
+    # A strip whose name matches none of these carries nothing. That is right for a strip
+    # that really is bare deck, but it means a misspelt name loads nothing and says
+    # nothing - so name strips with the prefixes deck_cross_section defines.
     bridge = model.bridge
     added = bridge.added_dead_loads
 
@@ -118,6 +121,8 @@ def surfacing_pressure_at(model: BridgeModel, z_m: float) -> float:
             return added.kerb.pressure_kpa
         if strip.name.startswith(MEDIAN_PREFIX):
             return added.median.pressure_kpa
+        if strip.name.startswith(CRASH_BARRIER_PREFIX):
+            return added.crash_barrier.pressure_kpa
         return 0.0
 
     return 0.0

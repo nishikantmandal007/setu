@@ -133,6 +133,11 @@ class AddedDeadLoads:
     kerb: SurfacingLayer = SurfacingLayer(0.300, 24.0)
     median: SurfacingLayer = SurfacingLayer(0.250, 24.0)
 
+    # A crash barrier is concrete like a kerb, so it starts from the kerb's figures. A
+    # real barrier is heavier than that - state its own thickness here rather than
+    # letting the default stand.
+    crash_barrier: SurfacingLayer = SurfacingLayer(0.300, 24.0)
+
 
 @dataclass(frozen=True)
 class BridgeInput:

@@ -21,6 +21,7 @@ FOOTWAY_PREFIXES = ("footway", "footpath")
 # added surfacing sits on a kerb or a median.
 KERB_PREFIX = "kerb"
 MEDIAN_PREFIX = "median"
+CRASH_BARRIER_PREFIX = "crash_barrier"
 
 
 @dataclass(frozen=True)

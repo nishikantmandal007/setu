@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+from types import SimpleNamespace
+
 import numpy as np
 import pytest
 
@@ -102,3 +105,22 @@ def test_the_girders_are_evenly_spaced_between_the_overhangs():
     assert mesh.girder_lines_m[0] == pytest.approx(BRIDGE.deck.overhang_m)
     assert mesh.girder_lines_m[-1] == pytest.approx(BRIDGE.width_m - BRIDGE.deck.overhang_m)
     assert np.diff(mesh.girder_lines_m) == pytest.approx(mesh.girder_spacing_m)
+
+
+def test_a_crash_barrier_strip_carries_its_own_dead_load():
+    # It used to match none of the named prefixes and fall through to zero, so a deck with
+    # crash barriers silently lost their weight. OsdagBridge names strips this way.
+    from setu.bridge_model.dead_loads import surfacing_pressure_at
+
+    with_barriers = replace(
+        BRIDGE,
+        cross_section=DeckCrossSection.from_widths(
+            {"crash_barrier_left": 0.45, "carriageway": 7.5, "crash_barrier_right": 0.45}
+        ),
+    )
+    model = SimpleNamespace(bridge=with_barriers)
+
+    on_the_barrier = surfacing_pressure_at(model, 0.2)
+
+    assert on_the_barrier == with_barriers.added_dead_loads.crash_barrier.pressure_kpa
+    assert on_the_barrier > 0.0

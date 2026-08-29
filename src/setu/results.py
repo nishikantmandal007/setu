@@ -88,10 +88,18 @@ class CriticalPosition:
             f"   on {self.design_lanes} lanes",
         ]
 
-        if self.resultant_centred_response is not None:
+        # The shortfall is None when the response is zero and there is nothing to be a
+        # percentage of, so the line has to be built without it in that case.
+        if self.resultant_centred_response is not None and (
+            self.resultant_centred_shortfall is not None
+        ):
             lines.append(
                 f"  Resultant at mid-width   = {self.resultant_centred_response:14.3f}"
                 f"   {self.resultant_centred_shortfall:.1f}% lower"
+            )
+        elif self.resultant_centred_response is not None:
+            lines.append(
+                f"  Resultant at mid-width   = {self.resultant_centred_response:14.3f}"
             )
         if self.footway_response:
             lines.append(f"  Footway load (Cl. 206)   = {self.footway_response:14.3f}")
