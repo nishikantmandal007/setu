@@ -21,7 +21,12 @@ from .adverse_direction import where_a_load_hurts
 from .deck_cross_section import DeckCrossSection
 from .influence_surfaces.surface import InfluenceSurface
 from .irc_code_rules.vehicles import IRC_VEHICLES, TrackedVehicle, Vehicle, facing_backwards
-from .irc_code_rules.wheel_loads import wheel_load_offsets
+from .irc_code_rules.wheel_loads import (
+    OFFSET_DX_M,
+    OFFSET_DZ_M,
+    OFFSET_LOAD_KN,
+    wheel_load_offsets,
+)
 from .results import CriticalPosition
 
 STRIP_COLOURS = {
@@ -129,8 +134,8 @@ def _mark_wheels_on_surface(ax, surface, critical, peak) -> None:
         offsets = wheel_load_offsets(vehicle)
 
         for x_front_m in placed.train_x_front_m:
-            wheel_x_m = x_front_m + offsets[:, 0]
-            wheel_z_m = placed.z_centre_m + offsets[:, 1]
+            wheel_x_m = x_front_m + offsets[:, OFFSET_DX_M]
+            wheel_z_m = placed.z_centre_m + offsets[:, OFFSET_DZ_M]
             on_the_deck = (
                 (wheel_x_m >= surface.length_mesh_m[0])
                 & (wheel_x_m <= surface.length_mesh_m[-1])
@@ -311,7 +316,7 @@ def draw_influence_along_span(surface: InfluenceSurface, critical: CriticalPosit
     ax.plot(along_m, line, color="#222222", linewidth=1.6)
 
     vehicle = _vehicle_named(governing.vehicle_name)
-    axle_dx_m = np.unique(wheel_load_offsets(vehicle)[:, 0])
+    axle_dx_m = np.unique(wheel_load_offsets(vehicle)[:, OFFSET_DX_M])
     for number, x_front_m in enumerate(governing.train_x_front_m, start=1):
         axle_x_m = x_front_m + axle_dx_m
         on_the_deck = (axle_x_m >= along_m[0]) & (axle_x_m <= along_m[-1])
@@ -354,17 +359,17 @@ def animate_vehicle_along_span(
     governing = critical.vehicles[0]
     vehicle = _vehicle_named(governing.vehicle_name)
     offsets = wheel_load_offsets(vehicle)
-    axle_dx_m = np.unique(offsets[:, 0])
+    axle_dx_m = np.unique(offsets[:, OFFSET_DX_M])
 
-    first_m = surface.length_mesh_m[0] - float(offsets[:, 0].max())
+    first_m = surface.length_mesh_m[0] - float(offsets[:, OFFSET_DX_M].max())
     last_m = float(surface.length_mesh_m[-1])
     where_m = np.linspace(first_m, last_m, frames)
 
     def response_with_front_at(x_front_m: float) -> float:
-        wheel_x_m = x_front_m + offsets[:, 0]
-        wheel_z_m = governing.z_centre_m + offsets[:, 1]
+        wheel_x_m = x_front_m + offsets[:, OFFSET_DX_M]
+        wheel_z_m = governing.z_centre_m + offsets[:, OFFSET_DZ_M]
         return float(
-            (surface.influence_at(wheel_x_m, wheel_z_m) * offsets[:, 2]).sum()
+            (surface.influence_at(wheel_x_m, wheel_z_m) * offsets[:, OFFSET_LOAD_KN]).sum()
             * governing.impact_factor
         )
 

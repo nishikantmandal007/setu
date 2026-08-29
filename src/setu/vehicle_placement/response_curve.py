@@ -37,7 +37,12 @@ from ..irc_code_rules.vehicles import (
     most_vehicles_that_fit,
     pitch_between_vehicles_m,
 )
-from ..irc_code_rules.wheel_loads import wheel_load_offsets
+from ..irc_code_rules.wheel_loads import (
+    OFFSET_DX_M,
+    OFFSET_DZ_M,
+    split_offsets,
+    wheel_load_offsets,
+)
 from ..sampling import DEFAULT_SAMPLING, SamplingSettings
 from .along_span import find_worst_train
 
@@ -162,7 +167,7 @@ class VehicleResponses:
         real load case and often the worst one near a support.
         """
         stations_m = self.surface.length_mesh_m
-        wheel_dx_m = np.asarray(wheel_offsets, float)[:, 0]
+        wheel_dx_m = np.asarray(wheel_offsets, float)[:, OFFSET_DX_M]
 
         candidates_m = np.unique((stations_m[None, :] - wheel_dx_m[:, None]).ravel())
         first_m = -wheel_dx_m.max()
@@ -195,7 +200,7 @@ class VehicleResponses:
     ) -> np.ndarray:
         """Returns sum over wheels of load times influence, for every position pair."""
         offsets = np.asarray(wheel_offsets, float)
-        wheel_dx_m, wheel_dz_m, wheel_loads_kn = offsets[:, 0], offsets[:, 1], offsets[:, 2]
+        wheel_dx_m, wheel_dz_m, wheel_loads_kn = split_offsets(offsets)
 
         wheel_x_m = np.asarray(x_positions_m, float)[:, None, None] + wheel_dx_m[None, None, :]
         wheel_z_m = np.asarray(z_positions_m, float)[None, :, None] + wheel_dz_m[None, None, :]
@@ -280,7 +285,7 @@ class VehicleResponses:
         wheel_offsets = wheel_load_offsets(
             vehicle, self.wearing_course_thickness_m, self.sampling
         )
-        wheel_dz_m = np.asarray(wheel_offsets, float)[:, 1]
+        wheel_dz_m = np.asarray(wheel_offsets, float)[:, OFFSET_DZ_M]
         stations_m = self.surface.width_mesh_m
 
         bends_m = np.unique(

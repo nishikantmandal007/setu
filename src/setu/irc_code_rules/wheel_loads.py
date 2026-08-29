@@ -1,17 +1,8 @@
-"""Turning a vehicle into the loads it puts on a deck.
-
-A vehicle definition is geometry. This module turns that geometry into loads,
-in the two forms the rest of setu needs:
-
-    offsets    (dx, dz, load) measured from the vehicle datum, for the searches.
-               The searches move one vehicle over thousands of positions, so
-               they want the shape once and add the position afterwards.
-
-    placed     absolute (x, z, load) for a vehicle actually sitting somewhere,
-               for reporting a result or applying it back to the model.
-
-The two agree by construction: a placed load is an offset plus the datum.
-"""
+# Turning a vehicle into the loads it puts on a deck: wheel_load_offsets gives the shape of
+# a vehicle's loads relative to its own datum - the front of the vehicle, on its centreline
+# - for the searches that slide one vehicle over thousands of positions; wheel_loads_at and
+# friends place that shape absolutely, for reporting a result or applying it to the model. A
+# placed load is always an offset plus the datum.
 
 from __future__ import annotations
 
@@ -23,24 +14,22 @@ from ..sampling import DEFAULT_SAMPLING, SamplingSettings
 from .code_tables import GRAVITY_KN_PER_TONNE
 from .vehicles import AxleVehicle, TrackedVehicle, Vehicle, pitch_between_vehicles_m
 
+# ---------------------------------------------------------------------------
+# Loads On The Deck
+# ---------------------------------------------------------------------------
+
 
 @dataclass(frozen=True)
 class WheelLoad:
-    """One concentrated load sitting somewhere on the deck."""
-
-    x_m: float
-    """Along the span."""
-
-    z_m: float
-    """Across the deck width."""
-
+    # One concentrated load sitting somewhere on the deck.
+    x_m: float  # along the span
+    z_m: float  # across the deck width
     load_kn: float
 
 
 @dataclass(frozen=True)
 class ContactPatch:
-    """One rectangle of uniform pressure - a tracked vehicle's footprint."""
-
+    # One rectangle of uniform pressure - a tracked vehicle's footprint.
     x_from_m: float
     x_to_m: float
     z_from_m: float
@@ -54,14 +43,34 @@ class ContactPatch:
 
 @dataclass(frozen=True)
 class LaneAssignment:
-    """One lane's worth of traffic: which vehicle, where, and how many of them."""
-
+    # One lane's worth of traffic: which vehicle, where, and how many of them.
     vehicle: Vehicle
     x_front_m: float
     z_centre_m: float
     how_many: int = 1
-    gap_m: float | None = None
-    """Nose-to-tail gap. None means the smallest the code allows."""
+    gap_m: float | None = None  # nose-to-tail gap; None means the smallest the code allows
+
+
+# ---------------------------------------------------------------------------
+# Columns Of The Offsets Array
+# ---------------------------------------------------------------------------
+
+# Columns of the offsets array returned by wheel_load_offsets: distance along the span
+# from the vehicle's front, distance across the width from its centreline, and the load
+# in kilonewtons.
+OFFSET_DX_M = 0
+OFFSET_DZ_M = 1
+OFFSET_LOAD_KN = 2
+
+
+def split_offsets(offsets: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    # dx along the span, dz across the width, load in kN
+    return offsets[:, OFFSET_DX_M], offsets[:, OFFSET_DZ_M], offsets[:, OFFSET_LOAD_KN]
+
+
+# ---------------------------------------------------------------------------
+# The Shape Of A Vehicle's Loads
+# ---------------------------------------------------------------------------
 
 
 def wheel_load_offsets(
@@ -69,17 +78,15 @@ def wheel_load_offsets(
     wearing_course_thickness_m: float = 0.0,
     sampling: SamplingSettings = DEFAULT_SAMPLING,
 ) -> np.ndarray:
-    """Returns an (n, 3) array of (dx, dz, load_kN) measured from the vehicle datum.
-
-    The datum is the front of the vehicle, on its centreline.
-    """
+    # An (n, 3) array of offsets from the vehicle datum - the front of the vehicle, on its
+    # centreline. See OFFSET_DX_M, OFFSET_DZ_M and OFFSET_LOAD_KN for the columns.
     if isinstance(vehicle, TrackedVehicle):
-        return _offsets_for_tracks(vehicle, wearing_course_thickness_m, sampling)
-    return _offsets_for_axles(vehicle)
+        return offsets_for_tracks(vehicle, wearing_course_thickness_m, sampling)
+    return offsets_for_axles(vehicle)
 
 
-def _offsets_for_axles(vehicle: AxleVehicle) -> np.ndarray:
-    """Each axle load splits into two wheels, half the gauge either side."""
+def offsets_for_axles(vehicle: AxleVehicle) -> np.ndarray:
+    # Each axle load splits into two wheels, half the gauge either side of the centreline.
     half_gauge_m = vehicle.transverse_gauge_m / 2.0
 
     offsets = []
@@ -91,19 +98,15 @@ def _offsets_for_axles(vehicle: AxleVehicle) -> np.ndarray:
     return np.array(offsets, float)
 
 
-def _offsets_for_tracks(
+def offsets_for_tracks(
     vehicle: TrackedVehicle,
     wearing_course_thickness_m: float,
     sampling: SamplingSettings,
 ) -> np.ndarray:
-    """Each track's contact patch becomes an even grid of point loads.
-
-    A load on the wearing course reaches the deck spread wider than it started,
-    because it disperses through the surfacing on the way down. Clause 204.2
-    sets that spread at 45 degrees, so the footprint grows by the thickness of
-    the wearing course on every side. The total load is unchanged - it is the
-    same load over a larger area.
-    """
+    # Each track's contact patch is spread into an even grid of point loads, whose density
+    # comes from SamplingSettings. Clause 204.2 disperses a load through the wearing course
+    # at 45 degrees on its way down, so the footprint grows by the surfacing thickness on
+    # every side; the total load is unchanged, only spread over a larger area.
     length_m = vehicle.track_length_m + 2.0 * wearing_course_thickness_m
     width_m = vehicle.track_width_m + 2.0 * wearing_course_thickness_m
 
@@ -117,14 +120,21 @@ def _offsets_for_tracks(
     dz_m = (np.arange(steps_across) + 0.5) * width_m / steps_across - width_m / 2.0
     half_gauge_m = vehicle.transverse_gauge_m / 2.0
 
-    offsets = []
-    for side in (-1, +1):
-        track_centre_m = side * half_gauge_m
-        for along_m in dx_m:
-            for across_m in dz_m:
-                offsets.append((along_m, track_centre_m + across_m, load_per_point_kn))
+    # side in (-1, +1): the two tracks, either side of the vehicle's centreline. Nested in
+    # this order - side, then along, then across - so the row order matches exactly.
+    offsets = [
+        (along_m, side * half_gauge_m + across_m, load_per_point_kn)
+        for side in (-1, +1)
+        for along_m in dx_m
+        for across_m in dz_m
+    ]
 
     return np.array(offsets, float)
+
+
+# ---------------------------------------------------------------------------
+# Placing A Vehicle On The Deck
+# ---------------------------------------------------------------------------
 
 
 def wheel_loads_at(
@@ -133,25 +143,25 @@ def wheel_loads_at(
     z_centre_m: float,
     wearing_course_thickness_m: float = 0.0,
 ) -> list[WheelLoad]:
-    """Returns the wheel loads of one vehicle placed with its front at x_front_m."""
+    # The wheel loads of one vehicle placed with its front at x_front_m.
     offsets = wheel_load_offsets(vehicle, wearing_course_thickness_m)
 
     return [
-        WheelLoad(x_m=x_front_m + dx, z_m=z_centre_m + dz, load_kn=load)
-        for dx, dz, load in offsets
+        WheelLoad(x_m=x_front_m + dx_m, z_m=z_centre_m + dz_m, load_kn=load_kn)
+        for dx_m, dz_m, load_kn in offsets
     ]
 
 
 def contact_patches_at(
     vehicle: TrackedVehicle, x_front_m: float, z_centre_m: float
 ) -> list[ContactPatch]:
-    """Returns the two rectangular footprints of a tracked vehicle placed here."""
+    # The two rectangular footprints of a tracked vehicle placed here.
     half_gauge_m = vehicle.transverse_gauge_m / 2.0
     half_track_m = vehicle.track_width_m / 2.0
     pressure_kpa = vehicle.contact_pressure_kpa
 
     patches = []
-    for side in (-1, +1):
+    for side in (-1, +1):  # the two tracks, either side of the vehicle's centreline
         track_centre_m = z_centre_m + side * half_gauge_m
         patches.append(
             ContactPatch(
@@ -166,6 +176,11 @@ def contact_patches_at(
     return patches
 
 
+# ---------------------------------------------------------------------------
+# Trains And Multi-Lane Load Cases
+# ---------------------------------------------------------------------------
+
+
 def train_at(
     vehicle: Vehicle,
     x_front_of_leader_m: float,
@@ -173,7 +188,7 @@ def train_at(
     how_many: int = 1,
     gap_m: float | None = None,
 ) -> tuple[list[WheelLoad], list[ContactPatch]]:
-    """Returns the loads of several of the same vehicle, nose to tail in one lane."""
+    # The loads of several of the same vehicle, nose to tail in one lane.
     if gap_m is None:
         gap_m = vehicle.min_nose_to_tail_m
 
@@ -195,11 +210,8 @@ def train_at(
 def loads_for_lanes(
     lanes: list[LaneAssignment],
 ) -> tuple[list[WheelLoad], list[ContactPatch]]:
-    """Returns the loads of every lane at once - one complete load case.
-
-    This is how a multi-lane case is assembled: Class A in one lane and a 70R
-    in another, present on the deck at the same time, as Table 6A intends.
-    """
+    # Every lane at once, one complete load case - Class A in one lane and a 70R in another,
+    # present on the deck together, as Table 6A intends.
     all_wheel_loads: list[WheelLoad] = []
     all_patches: list[ContactPatch] = []
 
@@ -214,12 +226,16 @@ def loads_for_lanes(
 
 
 __all__ = [
+    "OFFSET_DX_M",
+    "OFFSET_DZ_M",
+    "OFFSET_LOAD_KN",
     "ContactPatch",
     "LaneAssignment",
     "WheelLoad",
     "contact_patches_at",
     "loads_for_lanes",
     "pitch_between_vehicles_m",
+    "split_offsets",
     "train_at",
     "wheel_load_offsets",
     "wheel_loads_at",
