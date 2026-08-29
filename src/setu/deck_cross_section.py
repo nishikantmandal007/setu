@@ -17,6 +17,11 @@ from .irc_code_rules.code_tables import ROUND_TO_DECIMALS
 CARRIAGEWAY_PREFIX = "carriageway"
 FOOTWAY_PREFIXES = ("footway", "footpath")
 
+# The remaining two prefixes dead_loads.surfacing_pressure_at dispatches on, to decide what
+# added surfacing sits on a kerb or a median.
+KERB_PREFIX = "kerb"
+MEDIAN_PREFIX = "median"
+
 
 @dataclass(frozen=True)
 class DeckStrip:

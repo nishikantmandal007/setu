@@ -1,17 +1,16 @@
-"""The weight the bridge carries before any traffic arrives.
-
-Five things, each worked out where it actually sits:
-
-    the slab, everywhere,
-    the wearing course, on the carriageways only,
-    the footpath, kerb and median surfacing, each on its own strip,
-    the girders, along their own length,
-    and the bracing, shared between the nodes at its ends.
-
-The slab and everything on it are lumped to the deck nodes by tributary area:
-each node takes the load standing on the patch of deck that is nearer to it than
-to any other node.
-"""
+# The weight the bridge carries before any traffic arrives.
+#
+# Five things, each worked out where it actually sits:
+#
+#     the slab, everywhere,
+#     the wearing course, on the carriageways only,
+#     the footpath, kerb and median surfacing, each on its own strip,
+#     the girders, along their own length,
+#     and the bracing, shared between the nodes at its ends.
+#
+# The slab and everything on it are lumped to the deck nodes by tributary area:
+# each node takes the load standing on the patch of deck that is nearer to it than
+# to any other node.
 
 from __future__ import annotations
 
@@ -19,17 +18,20 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from ..deck_cross_section import KERB_PREFIX, MEDIAN_PREFIX
 from ..reporting import report
 from .build_model import BridgeModel
+from .model_tags import SolverCommands
 
+# opensees load pattern/time series tags for the dead load case. Kept apart from every other
+# pattern so the dead load can be found and removed on its own when a load case is re-run.
 DEAD_LOAD_PATTERN = 1
 DEAD_LOAD_TIME_SERIES = 1
 
 
 @dataclass(frozen=True)
 class DeadLoadTotals:
-    """What was applied, so it can be checked against the support reactions."""
-
+    # What was applied, so it can be checked against the support reactions.
     deck_and_surfacing_kn: float
     girders_kn: float
     bracing_kn: float
@@ -39,14 +41,16 @@ class DeadLoadTotals:
         return self.deck_and_surfacing_kn + self.girders_kn + self.bracing_kn
 
 
-def apply_dead_loads(model: BridgeModel, ops=None, new_pattern: bool = True) -> DeadLoadTotals:
-    """Applies the bridge's own weight, and returns what was applied."""
-    ops = _opensees() if ops is None else ops
+def apply_dead_loads(
+    model: BridgeModel, ops: SolverCommands | None = None, new_pattern: bool = True
+) -> DeadLoadTotals:
+    # Applies the bridge's own weight, and returns what was applied.
+    ops = load_opensees() if ops is None else ops
 
     if new_pattern:
-        # Starting a load case means starting from a known state. The load factor
-        # of a Linear time series follows the pseudo-time, so a model that has
-        # already been analysed once would otherwise pick up twice its own weight.
+        # Starting a load case means starting from a known state. The load factor of a
+        # Linear time series follows the pseudo-time, so a model that has already been
+        # analysed once would otherwise pick up twice its own weight.
         ops.remove("loadPattern", DEAD_LOAD_PATTERN)
         ops.remove("timeSeries", DEAD_LOAD_TIME_SERIES)
         ops.timeSeries("Linear", DEAD_LOAD_TIME_SERIES)
@@ -54,19 +58,19 @@ def apply_dead_loads(model: BridgeModel, ops=None, new_pattern: bool = True) -> 
         ops.reset()
         ops.setTime(0.0)
 
-    deck_kn = _apply_deck_and_surfacing(ops, model)
-    girders_kn = _apply_girder_weight(ops, model)
-    bracing_kn = _apply_bracing_weight(ops, model)
+    deck_kn = apply_deck_and_surfacing(ops, model)
+    girders_kn = apply_girder_weight(ops, model)
+    bracing_kn = apply_bracing_weight(ops, model)
 
     totals = DeadLoadTotals(
         deck_and_surfacing_kn=deck_kn, girders_kn=girders_kn, bracing_kn=bracing_kn
     )
-    _report_dead_loads(model, totals)
+    report_dead_loads(model, totals)
     return totals
 
 
-def _apply_deck_and_surfacing(ops, model: BridgeModel) -> float:
-    """Lumps the slab and everything lying on it onto the deck nodes."""
+def apply_deck_and_surfacing(ops: SolverCommands, model: BridgeModel) -> float:
+    # Lumps the slab and everything lying on it onto the deck nodes.
     mesh = model.mesh
     bridge = model.bridge
 
@@ -74,27 +78,31 @@ def _apply_deck_and_surfacing(ops, model: BridgeModel) -> float:
     applied_kn = 0.0
 
     for i in range(mesh.stations_along_span):
-        along_span_m = _tributary_length_m(mesh.length_mesh_m, i)
+        along_span_m = tributary_length_m(mesh.length_mesh_m, i)
 
         for j in range(mesh.stations_across_width):
-            across_width_m = _tributary_length_m(mesh.width_mesh_m, j)
+            across_width_m = tributary_length_m(mesh.width_mesh_m, j)
             area_m2 = along_span_m * across_width_m
             z_m = float(mesh.width_mesh_m[j])
 
-            load_kn = (slab_kpa + _surfacing_pressure_at(model, z_m)) * area_m2
+            load_kn = (slab_kpa + surfacing_pressure_at(model, z_m)) * area_m2
             ops.load(model.deck_nodes[(i, j)], 0.0, -load_kn, 0.0, 0.0, 0.0, 0.0)
             applied_kn += load_kn
 
     return applied_kn
 
 
-def _surfacing_pressure_at(model: BridgeModel, z_m: float) -> float:
-    """Returns what is lying on the slab at this position across the deck.
-
-    Read straight off the cross-section: whichever strip this position falls in
-    decides what is on top of it. A carriageway carries the wearing course, a
-    footpath its own surfacing, and so on.
-    """
+def surfacing_pressure_at(model: BridgeModel, z_m: float) -> float:
+    # Returns what is lying on the slab at this position across the deck.
+    #
+    # Read straight off the cross-section: whichever strip this position falls in decides
+    # what is on top of it. A carriageway carries the wearing course, a footpath its own
+    # surfacing, and so on.
+    #
+    # This does not recognise crash_barrier, which OsdagBridge uses heavily - a
+    # crash_barrier strip falls through every branch and picks up zero surfacing dead load
+    # via the final return below. That is a real gap, left alone here because fixing it
+    # is out of scope for this pass.
     bridge = model.bridge
     added = bridge.added_dead_loads
 
@@ -106,24 +114,23 @@ def _surfacing_pressure_at(model: BridgeModel, z_m: float) -> float:
             return bridge.wearing_course.pressure_kpa
         if strip.carries_pedestrians:
             return added.footpath.pressure_kpa
-        if strip.name.startswith("kerb"):
+        if strip.name.startswith(KERB_PREFIX):
             return added.kerb.pressure_kpa
-        if strip.name.startswith("median"):
+        if strip.name.startswith(MEDIAN_PREFIX):
             return added.median.pressure_kpa
         return 0.0
 
     return 0.0
 
 
-def _apply_girder_weight(ops, model: BridgeModel) -> float:
-    """Spreads each girder's own weight along its length.
-
-    For a 3D beam, a uniform element load is given in the element's *local* axes.
-    With the girder's local y axis on global Y, the vertical component is the
-    first of the two. Putting the weight in the second component instead points
-    it sideways, which once took 18 per cent of the dead load out of the vertical
-    load path without any error being raised.
-    """
+def apply_girder_weight(ops: SolverCommands, model: BridgeModel) -> float:
+    # Spreads each girder's own weight along its length.
+    #
+    # For a 3D beam, a uniform element load is given in the element's local axes. With the
+    # girder's local y axis on global Y, the vertical component is the first of the two.
+    # Putting the weight in the second component instead points it sideways, which once
+    # took 18 per cent of the dead load out of the vertical load path without any error
+    # being raised.
     weight_kn_per_m = model.bridge.steel.unit_weight_kn_m3 * model.girder.area_m2
 
     for element in model.girder_elements.values():
@@ -132,8 +139,8 @@ def _apply_girder_weight(ops, model: BridgeModel) -> float:
     return weight_kn_per_m * model.bridge.span_m * model.bridge.girders.count
 
 
-def _apply_bracing_weight(ops, model: BridgeModel) -> float:
-    """Hangs half of each brace's weight on each of the nodes it spans between."""
+def apply_bracing_weight(ops: SolverCommands, model: BridgeModel) -> float:
+    # Hangs half of each brace's weight on each of the nodes it spans between.
     unit_weight_kn_m3 = model.bridge.steel.unit_weight_kn_m3
     area_m2 = model.bridge.bracing.area_m2
     applied_kn = 0.0
@@ -152,12 +159,9 @@ def _apply_bracing_weight(ops, model: BridgeModel) -> float:
     return applied_kn
 
 
-def _tributary_length_m(stations_m: np.ndarray, station: int) -> float:
-    """Returns how much length a station is responsible for.
-
-    Halfway to its neighbour on each side; at the ends, halfway to the only
-    neighbour there is.
-    """
+def tributary_length_m(stations_m: np.ndarray, station: int) -> float:
+    # Returns how much length a station is responsible for: halfway to its neighbour on
+    # each side, or at the ends, halfway to the only neighbour there is.
     if station == 0:
         return float(stations_m[1] - stations_m[0]) / 2
     if station == len(stations_m) - 1:
@@ -165,7 +169,7 @@ def _tributary_length_m(stations_m: np.ndarray, station: int) -> float:
     return float(stations_m[station + 1] - stations_m[station - 1]) / 2
 
 
-def _report_dead_loads(model: BridgeModel, totals: DeadLoadTotals) -> None:
+def report_dead_loads(model: BridgeModel, totals: DeadLoadTotals) -> None:
     bridge = model.bridge
     added = bridge.added_dead_loads
     slab_kpa = bridge.concrete.unit_weight_kn_m3 * bridge.deck.thickness_m
@@ -188,7 +192,7 @@ def _report_dead_loads(model: BridgeModel, totals: DeadLoadTotals) -> None:
     )
 
 
-def _opensees():
+def load_opensees() -> SolverCommands:
     from ..influence_surfaces.opensees_backend import import_opensees as load
 
     return load()
