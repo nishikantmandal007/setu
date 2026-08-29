@@ -1,20 +1,7 @@
-"""The deck read across its width, strip by strip.
-
-A cross-section is written the way an engineer would draw it: named strips in
-order from the left edge of the deck to the right.
-
-    DeckCrossSection.from_widths({
-        "footpath_left": 1.50, "kerb_left": 0.45,
-        "carriageway_1": 4.5, "median": 0.60, "carriageway_2": 4.5,
-        "kerb_right": 0.45, "footpath_right": 1.50,
-    })
-
-Strips named `carriageway...` carry traffic. Strips named `footpath...` or
-`footway...` carry the Clause 206 crowd loading. Everything else - kerbs,
-medians, crash barriers - takes up width and carries no live load.
-
-Distances across the deck are called z, measured from the left edge.
-"""
+# The deck read across its width as named, ordered strips, left to right from the deck's
+# left edge - the way an engineer would draw it. z is measured across the deck from that
+# same left edge. This is the file an OsdagBridge maintainer will recognise fastest: it
+# plays the part CrossSectionLayout plays there, walking named components left to right.
 
 from __future__ import annotations
 
@@ -24,14 +11,16 @@ from dataclasses import dataclass
 from .errors import CrossSectionError
 from .irc_code_rules.code_tables import ROUND_TO_DECIMALS
 
+# A strip is classified by its name prefix: carriageway* carries traffic, footway*/
+# footpath* carries the Clause 206 crowd, and everything else - kerbs, medians, crash
+# barriers - takes up width and carries no live load.
 CARRIAGEWAY_PREFIX = "carriageway"
 FOOTWAY_PREFIXES = ("footway", "footpath")
 
 
 @dataclass(frozen=True)
 class DeckStrip:
-    """One named strip of the deck, and where it sits across the width."""
-
+    # One named strip of the deck, and where it sits across the width.
     name: str
     width_m: float
     z_from_m: float
@@ -48,8 +37,7 @@ class DeckStrip:
 
 @dataclass(frozen=True)
 class Carriageway:
-    """A stretch of deck that traffic runs on, and where it starts and ends."""
-
+    # A stretch of deck that traffic runs on, and where it starts and ends.
     left_m: float
     right_m: float
 
@@ -60,15 +48,14 @@ class Carriageway:
 
 @dataclass(frozen=True)
 class DeckCrossSection:
-    """The whole deck width, as ordered strips."""
-
+    # The whole deck width, as ordered strips.
     strips: tuple[DeckStrip, ...]
 
     @classmethod
     def from_widths(cls, widths: Mapping[str, float]) -> DeckCrossSection:
-        """Builds a cross-section by walking named widths from the left deck edge."""
+        # Walks the named widths from the left deck edge, building a strip for each.
         strips = []
-        z_m = 0.0
+        edge_m = 0.0
 
         for name, width_m in widths.items():
             if width_m < 0:
@@ -77,11 +64,11 @@ class DeckCrossSection:
                 DeckStrip(
                     name=name,
                     width_m=float(width_m),
-                    z_from_m=round(z_m, ROUND_TO_DECIMALS),
-                    z_to_m=round(z_m + width_m, ROUND_TO_DECIMALS),
+                    z_from_m=round(edge_m, ROUND_TO_DECIMALS),
+                    z_to_m=round(edge_m + width_m, ROUND_TO_DECIMALS),
                 )
             )
-            z_m += width_m
+            edge_m += width_m
 
         cross_section = cls(strips=tuple(strips))
         if not cross_section.has_carriageway:
@@ -101,28 +88,27 @@ class DeckCrossSection:
         return any(strip.carries_traffic for strip in self.strips)
 
     def strip_named(self, name: str) -> DeckStrip | None:
-        """Returns the first strip whose name starts with this, or None."""
+        # No caller in setu itself - public API for a caller that addresses a strip by name.
         for strip in self.strips:
             if strip.name.startswith(name):
                 return strip
         return None
 
     def footways(self) -> list[DeckStrip]:
-        """Returns every footway and footpath strip, left to right."""
         return [strip for strip in self.strips if strip.carries_pedestrians]
 
     def carriageways(self, *, split: str = "separate") -> list[Carriageway]:
-        """Returns the stretches of deck that traffic runs on, left to right.
-
-        `split="separate"` treats each carriageway on its own, which is the right
-        reading for a deck with a median. It matters: a carriageway under 5.30 m
-        wide attracts its own residual UDL beside the vehicle, so two narrow
-        carriageways read separately can be more onerous than the same width read
-        as one. Whether a median separates the traffic or not changes the design
-        load by 15 to 30 per cent, so setu never guesses - it is stated here.
-
-        `split="combined"` reads all the traffic strips as one continuous stretch.
-        """
+        # split is stringly-typed - two magic values, checked by the trailing raise below -
+        # because it propagates up to rank_all_positions(carriageways_read_as=...), which is
+        # public API. Left exactly as it is.
+        #
+        # "separate" reads each carriageway on its own, which is right for a deck with a
+        # median: a carriageway under 5.30 m attracts its own residual UDL beside the
+        # vehicle, so two narrow carriageways read separately can be more onerous than the
+        # same width read as one. Whether a median separates the traffic changes the design
+        # load by 15 to 30 per cent, so setu never guesses - it is stated here.
+        #
+        # "combined" reads all the traffic strips as one continuous stretch instead.
         stretches = [
             Carriageway(left_m=strip.z_from_m, right_m=strip.z_to_m)
             for strip in self.strips
