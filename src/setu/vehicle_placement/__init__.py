@@ -9,7 +9,7 @@ from .across_carriageway import (
 )
 from .along_span import TrainPlacement, find_worst_train, place_train
 from .response_curve import ResponseCurve, VehicleResponses, positions_across_width
-from .resultant_centred import ResultantCentredPlacement, centre_the_resultant
+from .resultant_at_mid_width import ResultantCentredPlacement, centre_the_resultant
 
 __all__ = [
     "CarriagewayCase",
