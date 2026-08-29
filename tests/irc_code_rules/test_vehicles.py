@@ -146,3 +146,40 @@ def test_a_measurement_cannot_be_zero_or_negative():
 def test_the_registry_holds_the_three_standard_vehicles():
     assert set(IRC_VEHICLES) == {"Class_A", "Class_70R_Wheeled", "Class_70R_Tracked"}
     assert np.isfinite([v.total_load_t for v in IRC_VEHICLES.values()]).all()
+
+
+def test_the_fatigue_and_special_vehicles_are_defined_but_not_placed():
+    """Clause 204.6 and 204.5.1 - both exist, neither belongs in a lane arrangement.
+
+    The special vehicle has Clause 204.5.3's own placement regime (alone on the
+    carriageway, crawling, no impact) and the fatigue vehicle answers a different
+    question, so neither may leak into the ordinary transverse search.
+    """
+    from setu.irc_code_rules.vehicles import (
+        FATIGUE_VEHICLE,
+        SPECIAL_VEHICLE,
+        VEHICLES_ALLOWED_IN_BLOCK,
+        VEHICLES_OUTSIDE_LANE_ARRANGEMENTS,
+    )
+
+    placeable = {name for names in VEHICLES_ALLOWED_IN_BLOCK.values() for name in names}
+
+    assert FATIGUE_VEHICLE.name not in placeable
+    assert SPECIAL_VEHICLE.name not in placeable
+    assert set(VEHICLES_OUTSIDE_LANE_ARRANGEMENTS) == {"Fatigue_Vehicle", "Special_Vehicle"}
+    assert set(IRC_VEHICLES).isdisjoint(VEHICLES_OUTSIDE_LANE_ARRANGEMENTS)
+
+
+def test_the_special_vehicle_carries_what_clause_204_5_says():
+    from setu.irc_code_rules.vehicles import SPECIAL_VEHICLE
+
+    # One steering axle, two bogie axles, twenty trailer axles.
+    assert len(SPECIAL_VEHICLE.axle_loads_t) == 23
+    assert SPECIAL_VEHICLE.total_load_t == pytest.approx(385.0)
+
+
+def test_the_fatigue_vehicle_carries_what_clause_204_6_says():
+    from setu.irc_code_rules.vehicles import FATIGUE_VEHICLE
+
+    assert FATIGUE_VEHICLE.axle_loads_t == (12.0, 14.0, 14.0)
+    assert FATIGUE_VEHICLE.total_load_t == pytest.approx(40.0)

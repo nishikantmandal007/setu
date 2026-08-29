@@ -185,6 +185,53 @@ IRC_VEHICLES: dict[str, Vehicle] = {
 
 
 # ---------------------------------------------------------------------------
+# The two vehicles that are not part of a normal lane arrangement
+# ---------------------------------------------------------------------------
+
+# Clause 204.6, the fatigue vehicle: a single three-axle truck used to check fatigue, not
+# to find the worst static load. Axle loads, spacings and gauge are OsdagBridge's
+# cl_204_6_fatigue_load. It is checked on its own, so it has no clearances to a vehicle
+# in front and none behind - min_nose_to_tail_m is set beyond any span setu will see, so
+# a train of them can never form by accident.
+FATIGUE_VEHICLE = AxleVehicle(
+    name="Fatigue_Vehicle",
+    axle_loads_t=(12.0, 14.0, 14.0),
+    axle_spacing_m=(4.50, 1.40),
+    transverse_gauge_m=1.68,
+    lead_clearance_m=0.0,
+    trail_clearance_m=0.0,
+    min_nose_to_tail_m=1000.0,
+)
+
+# Clause 204.5.1, the special vehicle: a prime mover and a twenty-axle hydraulic trailer,
+# 385 t in all. Axle loads, spacings and gauge are OsdagBridge's
+# cl_204_5_1_special_vehicle.
+#
+# Clause 204.5.3 gives it a placement regime of its own - it crawls, alone on the
+# carriageway, with no other vehicle beside it and no impact allowance. That is not the
+# lane-arrangement problem the rest of this package solves, which is why it is defined
+# here but not listed in VEHICLES_ALLOWED_IN_BLOCK below. Placing it needs those rules
+# written down first.
+SPECIAL_VEHICLE = AxleVehicle(
+    name="Special_Vehicle",
+    axle_loads_t=(6.0, 9.5, 9.5) + (18.0,) * 20,
+    axle_spacing_m=(3.200, 1.370, 5.389) + (1.500,) * 19,
+    transverse_gauge_m=1.8,
+    lead_clearance_m=0.0,
+    trail_clearance_m=0.0,
+    min_nose_to_tail_m=1000.0,
+)
+
+# Kept out of IRC_VEHICLES on purpose. That registry is what the lane-arrangement search
+# places, and neither of these belongs in a lane arrangement: the fatigue vehicle answers
+# a different question, and the special vehicle has Clause 204.5.3's rules instead. Pass
+# one explicitly to use it.
+VEHICLES_OUTSIDE_LANE_ARRANGEMENTS: dict[str, Vehicle] = {
+    vehicle.name: vehicle for vehicle in (FATIGUE_VEHICLE, SPECIAL_VEHICLE)
+}
+
+
+# ---------------------------------------------------------------------------
 # Which vehicles may fill which kind of lane block
 # ---------------------------------------------------------------------------
 
