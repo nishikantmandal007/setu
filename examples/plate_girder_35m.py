@@ -24,7 +24,7 @@ from setu.bridge_model import (
     BridgeInput,
     DeckSlab,
     Girders,
-    Mesh,
+    MeshSettings,
     PlateGirderSection,
     apply_dead_loads,
     build_bridge_model,
@@ -62,7 +62,7 @@ BRIDGE = BridgeInput(
         ),
     ),
     bracing=Bracing(station_count=7, area_m2=0.01, arrangement="XT"),
-    mesh=Mesh(panels_between_braces=25, target_size_across_width_m=0.25),
+    mesh=MeshSettings(panels_between_braces=25, target_size_across_width_m=0.25),
 )
 
 

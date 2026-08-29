@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from setu.bridge_model import PlateGirderSection, properties_of
+from setu.bridge_model import PlateGirderSection, girder_properties
 
 # The section from the worked example.
 SECTION = PlateGirderSection(
@@ -23,12 +23,12 @@ def test_depth_is_the_three_plates_stacked():
 
 def test_area_is_the_three_plates_added_up():
     expected_m2 = 0.550 * 0.025 + 0.650 * 0.040 + 0.014 * 2.100
-    assert properties_of(SECTION).area_m2 == pytest.approx(expected_m2)
+    assert girder_properties(SECTION).area_m2 == pytest.approx(expected_m2)
 
 
 def test_the_neutral_axis_sits_below_mid_depth():
     """The bottom flange is the heavier of the two, so it pulls the axis down."""
-    girder = properties_of(SECTION)
+    girder = girder_properties(SECTION)
     assert 0 < girder.neutral_axis_from_bottom_m < girder.depth_m / 2
 
 
@@ -38,19 +38,19 @@ def test_the_strong_axis_is_far_stiffer_than_the_weak_one():
     Getting these two the wrong way round once handed vertical bending to a
     stiffness 42 times too small.
     """
-    girder = properties_of(SECTION)
+    girder = girder_properties(SECTION)
     assert girder.strong_axis_inertia_m4 > 40 * girder.weak_axis_inertia_m4
 
 
 def test_the_weak_axis_needs_no_parallel_axis_term():
     """Sideways, every plate is already centred on the girder's own centreline."""
     expected_m4 = 0.025 * 0.550**3 / 12 + 0.040 * 0.650**3 / 12 + 2.100 * 0.014**3 / 12
-    assert properties_of(SECTION).weak_axis_inertia_m4 == pytest.approx(expected_m4)
+    assert girder_properties(SECTION).weak_axis_inertia_m4 == pytest.approx(expected_m4)
 
 
 def test_torsion_is_the_sum_of_the_plates():
     expected_m4 = (0.550 * 0.025**3 + 0.650 * 0.040**3 + 2.100 * 0.014**3) / 3
-    assert properties_of(SECTION).torsion_constant_m4 == pytest.approx(expected_m4)
+    assert girder_properties(SECTION).torsion_constant_m4 == pytest.approx(expected_m4)
 
 
 def test_a_symmetric_section_has_its_axis_at_mid_depth():
@@ -62,5 +62,5 @@ def test_a_symmetric_section_has_its_axis_at_mid_depth():
         web_thickness_m=0.02,
         web_height_m=1.0,
     )
-    girder = properties_of(symmetric)
+    girder = girder_properties(symmetric)
     assert girder.neutral_axis_from_bottom_m == pytest.approx(girder.depth_m / 2)

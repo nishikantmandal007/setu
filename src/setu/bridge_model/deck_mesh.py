@@ -1,13 +1,17 @@
-"""Dividing the deck into a grid of elements.
-
-Along the span, a station at every bracing point with an even number of elements
-between them, so a brace always lands on a node.
-
-Across the width, a station at every line that matters - each girder, and every
-boundary in the cross-section - with the gaps between filled to roughly the
-requested size. That way a kerb line or a girder never falls in the middle of an
-element, where the model could not represent it.
-"""
+# Dividing the deck into a grid of elements.
+#
+# Along the span, a station sits at every bracing point, with an even number of elements
+# between them, so a brace always lands on a node.
+#
+# Across the width, a station sits at every line that matters - each girder line, and every
+# boundary in the cross-section - with the gaps between filled to roughly the requested
+# size. That way a kerb line or a girder never falls in the middle of an element, where the
+# model could not represent it.
+#
+# "Panel" is used for two different things here: a span panel is the length between one
+# bracing station and the next, a width panel is the gap between two lines that matter
+# across the width. Which one is meant is always clear from context (along the span or
+# across the width), but the two are not the same kind of panel.
 
 from __future__ import annotations
 
@@ -16,28 +20,31 @@ from dataclasses import dataclass
 import numpy as np
 
 from ..deck_cross_section import DeckCrossSection
-from .inputs import BridgeInput
+from .bridge_input import BridgeInput
 
+# Coordinates are rounded to this many decimal places before being used as dict/lookup
+# keys, so that a girder line and a mesh station that should be the same place compare as
+# the same place. Deliberately different from irc_code_rules.code_tables.ROUND_TO_DECIMALS
+# (9) - the two round different things for different reasons, and changing either changes
+# results, so they are not unified.
 COORDINATE_DECIMALS = 5
-"""Coordinates are rounded here so that a girder line and a mesh station that
-should be the same place compare as the same place."""
 
 
 @dataclass(frozen=True, eq=False)
 class DeckMesh:
-    """Where every line of the deck grid runs."""
+    # Where every line of the deck grid runs.
 
+    # Stations along the span.
     length_mesh_m: np.ndarray
-    """Stations along the span."""
 
+    # Stations across the width.
     width_mesh_m: np.ndarray
-    """Stations across the width."""
 
+    # Where each girder runs, across the width.
     girder_lines_m: np.ndarray
-    """Where each girder runs, across the width."""
 
+    # Where each bracing station is, along the span.
     brace_lines_m: np.ndarray
-    """Where each bracing station is, along the span."""
 
     @property
     def stations_along_span(self) -> int:
@@ -52,10 +59,9 @@ class DeckMesh:
         return float(self.girder_lines_m[1] - self.girder_lines_m[0])
 
     def width_station_of_girder(self, girder: int) -> int:
-        """Returns which width station a girder sits on.
-
-        Every girder line is put into the mesh, so one always does.
-        """
+        # Every girder line is put into the mesh, so one always does. atol is looser here
+        # (1e-4) than build_model._station_at's default (1e-8) - deliberately, not a typo -
+        # so do not unify the two.
         on_this_station = np.where(
             np.isclose(self.width_mesh_m, self.girder_lines_m[girder], atol=1e-4)
         )[0]
@@ -68,19 +74,19 @@ class DeckMesh:
 
 
 def build_mesh(bridge: BridgeInput) -> DeckMesh:
-    """Returns the grid of stations the deck will be modelled on."""
-    girder_lines_m = _round(
+    # Returns the grid of stations the deck will be modelled on.
+    girder_lines_m = rounded(
         np.linspace(
             bridge.deck.overhang_m,
             bridge.width_m - bridge.deck.overhang_m,
             bridge.girders.count,
         )
     )
-    brace_lines_m = _round(np.linspace(0, bridge.span_m, bridge.bracing.station_count))
+    brace_lines_m = rounded(np.linspace(0, bridge.span_m, bridge.bracing.station_count))
 
     return DeckMesh(
-        length_mesh_m=_stations_along_span(brace_lines_m, bridge.mesh.panels_between_braces),
-        width_mesh_m=_stations_across_width(
+        length_mesh_m=stations_along_span(brace_lines_m, bridge.mesh.panels_between_braces),
+        width_mesh_m=stations_across_width(
             bridge.cross_section, girder_lines_m, bridge.mesh.target_size_across_width_m
         ),
         girder_lines_m=girder_lines_m,
@@ -88,8 +94,8 @@ def build_mesh(bridge: BridgeInput) -> DeckMesh:
     )
 
 
-def _stations_along_span(brace_lines_m: np.ndarray, panels_between_braces: int) -> np.ndarray:
-    """Returns the mesh stations along the span, evenly filling each bracing panel."""
+def stations_along_span(brace_lines_m: np.ndarray, panels_between_braces: int) -> np.ndarray:
+    # Returns the mesh stations along the span, evenly filling each bracing panel.
     stations_m: list[float] = []
 
     for panel_start_m, panel_end_m in zip(brace_lines_m, brace_lines_m[1:], strict=False):
@@ -97,17 +103,17 @@ def _stations_along_span(brace_lines_m: np.ndarray, panels_between_braces: int) 
         stations_m.extend(within_panel_m[:-1])
 
     stations_m.append(float(brace_lines_m[-1]))
-    return _round(np.array(stations_m))
+    return rounded(np.array(stations_m))
 
 
-def _stations_across_width(
+def stations_across_width(
     cross_section: DeckCrossSection, girder_lines_m: np.ndarray, target_size_m: float
 ) -> np.ndarray:
-    """Returns the mesh stations across the width, keeping every line that matters."""
+    # Returns the mesh stations across the width, keeping every line that matters.
     keep_these_m = [strip.z_from_m for strip in cross_section.strips]
     keep_these_m.append(cross_section.total_width_m)
     keep_these_m.extend(float(line) for line in girder_lines_m)
-    lines_that_matter_m = np.unique(_round(np.array(keep_these_m)))
+    lines_that_matter_m = np.unique(rounded(np.array(keep_these_m)))
 
     stations_m: list[float] = []
     for panel_start_m, panel_end_m in zip(
@@ -118,8 +124,8 @@ def _stations_across_width(
         stations_m.extend(within_panel_m[:-1])
 
     stations_m.append(float(lines_that_matter_m[-1]))
-    return np.unique(_round(np.array(stations_m)))
+    return np.unique(rounded(np.array(stations_m)))
 
 
-def _round(values: np.ndarray) -> np.ndarray:
+def rounded(values: np.ndarray) -> np.ndarray:
     return np.round(values, COORDINATE_DECIMALS)

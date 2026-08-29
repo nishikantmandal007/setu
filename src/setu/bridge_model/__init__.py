@@ -1,21 +1,21 @@
 """Building the bridge: its cross-section, its mesh, its members and its own weight."""
 
-from .build_model import BridgeModel, build_bridge_model
-from .dead_loads import DeadLoadTotals, apply_dead_loads
-from .deck_mesh import DeckMesh, build_mesh
-from .girder_sections import GirderProperties, properties_of
-from .inputs import (
+from .bridge_input import (
     AddedDeadLoads,
     Bracing,
     BridgeInput,
     Concrete,
     DeckSlab,
     Girders,
-    Mesh,
+    MeshSettings,
     PlateGirderSection,
     Steel,
     SurfacingLayer,
 )
+from .build_model import BridgeModel, build_bridge_model
+from .dead_loads import DeadLoadTotals, apply_dead_loads
+from .deck_mesh import DeckMesh, build_mesh
+from .girder_sections import GirderProperties, girder_properties
 
 __all__ = [
     "AddedDeadLoads",
@@ -28,12 +28,12 @@ __all__ = [
     "DeckSlab",
     "GirderProperties",
     "Girders",
-    "Mesh",
+    "MeshSettings",
     "PlateGirderSection",
     "Steel",
     "SurfacingLayer",
     "apply_dead_loads",
     "build_bridge_model",
     "build_mesh",
-    "properties_of",
+    "girder_properties",
 ]

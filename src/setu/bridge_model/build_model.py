@@ -22,9 +22,9 @@ import numpy as np
 
 from ..deck_model import DeckModel
 from ..reporting import log, report
+from .bridge_input import BridgeInput
 from .deck_mesh import DeckMesh, build_mesh
-from .girder_sections import GirderProperties, properties_of
-from .inputs import BridgeInput
+from .girder_sections import GirderProperties, girder_properties
 
 DECK_NODE_BASE = 1000
 DECK_ELEMENT_BASE = 1000
@@ -76,7 +76,7 @@ def build_bridge_model(bridge: BridgeInput, ops=None) -> BridgeModel:
     """Builds the whole bridge in the solver and returns what was built."""
     ops = _opensees() if ops is None else ops
     mesh = build_mesh(bridge)
-    girder = properties_of(bridge.girders.section)
+    girder = girder_properties(bridge.girders.section)
 
     _report_layout(bridge, mesh)
 
