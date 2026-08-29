@@ -133,8 +133,7 @@ def walk_back_through_the_train(
     position = int(np.argmax(best_total))
     chosen = [position]
 
-    for vehicles_behind in range(len(where_the_vehicle_in_front_sat) - 1, 0, -1):
-        came_from = where_the_vehicle_in_front_sat[vehicles_behind]
+    for came_from in reversed(where_the_vehicle_in_front_sat[1:]):
         if came_from is None:
             # Guards a genuine invariant of the backtracking: every entry from index 1
             # onwards is appended inside the DP loop and is never None. If this fires,

@@ -7,7 +7,8 @@ import pytest
 
 from setu import Carriageway
 from setu.irc_code_rules.lane_arrangements import CLASS_A_LANE, ZONE_70R
-from setu.vehicle_placement.across_carriageway import find_worst_placement, place_vehicles
+from setu.vehicle_placement.across_carriageway import find_worst_placement
+from setu.vehicle_placement.sliding_blocks import place_vehicles
 from tests.oracles import worst_chain_by_enumeration
 
 ADVERSE = ("maximum", "minimum")
