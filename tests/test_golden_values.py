@@ -187,24 +187,28 @@ GOLDEN_ANSWERS = [
     GoldenAnswer(
         # A 70R boxed in by Class A is never drawn, so this arrangement only
         # appears once the combination drawings are lifted. It then governs.
+        #
+        # These figures moved by ~0.5 in 16,000 when the 70R Wheeled first axle spacing
+        # was corrected from 3.95 m to 3.96 m. They are the only pinned numbers a 70R
+        # Wheeled takes part in, which is why nothing else here changed.
         name="a 70r between two class a lanes, drawings lifted",
         surface=sagging_surface(),
         cross_section=WIDE_CARRIAGEWAY,
         span_m=SPAN_M,
         options={"adverse": "maximum", "follow_combination_drawings": False},
         cases=8,
-        response=16335.889497808994,
-        response_before_reduction=20419.86187226124,
+        response=16335.39080706197,
+        response_before_reduction=20419.23850882746,
         lane_reduction=0.8,
         design_lanes=4,
         lane_pattern="class_a + zone_70r + class_a",
         footway_response=0.0,
         residual_udl_applied=False,
-        resultant_centred_response=16329.213559820204,
-        total_over_all_cases=101776.98106379125,
+        resultant_centred_response=16328.715138053403,
+        total_over_all_cases=101774.74837333518,
         vehicles=[
             ("Class_A_reversed", 2.0625, 4.199999999999999, (4.199999999999999,)),
-            ("Class_70R_Wheeled", 6.7325, 8.53, (8.53,)),
+            ("Class_70R_Wheeled", 6.7325, 8.52, (8.52,)),
             ("Class_A", 11.3625, 12.0, (12.0,)),
         ],
     ),

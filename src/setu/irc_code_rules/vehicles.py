@@ -146,7 +146,10 @@ Vehicle = AxleVehicle | TrackedVehicle
 CLASS_70R_WHEELED = AxleVehicle(
     name="Class_70R_Wheeled",
     axle_loads_t=(8, 12, 12, 17, 17, 17, 17),
-    axle_spacing_m=(3.95, 1.52, 2.13, 1.37, 3.05, 1.37),
+    # 3.96 m to the second axle, matching Figure 1 and OsdagBridge's own
+    # cl_204_1_Class70R_vehicle_wheel. The earlier scripts this was ported from carried
+    # 3.95, which is where the 10 mm came from.
+    axle_spacing_m=(3.96, 1.52, 2.13, 1.37, 3.05, 1.37),
     transverse_gauge_m=2.06,
     lead_clearance_m=0.81,
     trail_clearance_m=0.91,
