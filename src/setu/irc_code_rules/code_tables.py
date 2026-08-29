@@ -105,6 +105,48 @@ CYCLE_TRACK_UDL_KPA = 2.5
 
 
 # ---------------------------------------------------------------------------
+# Clause 208, Figure 9 - dynamic impact allowance
+# ---------------------------------------------------------------------------
+
+# Figure 9 is drawn between these two spans; outside that range the curve is held at its
+# end value rather than extrapolated, because extrapolating a fitted curve past its data
+# is not something the code authorises.
+SHORTEST_TABULATED_SPAN_M = 3.0
+LONGEST_TABULATED_SPAN_M = 45.0
+
+# Clause 208.2's curve itself - 9.0/(13.5 + span) for steel, 4.5/(6.0 + span) for RC -
+# is written out in impact_factor.py rather than named here. It is a formula, not a
+# tabulated value, and four constants standing in for its coefficients read worse than
+# the formula the standard prints.
+
+# Clause 208.3(a) - flat 25% impact below 9 m. Clause 208.3(b) reuses the same figure as
+# the plateau a wheeled 70R holds until the Figure 9 curve drops below it.
+SHORT_SPAN_IMPACT_FRACTION = 0.25
+
+# The floor a tracked vehicle's fraction falls to at 9 m, and holds above that until the
+# Figure 9 curve drops below it in turn (steel: never; RC: until 40 m).
+TRACKED_IMPACT_FRACTION_FLOOR = 0.10
+
+# Clause 208.3(a) ends and 208.3(b) begins at this span; it is also where a tracked
+# vehicle's transition (below) finishes falling to TRACKED_IMPACT_FRACTION_FLOOR.
+SHORT_SPAN_UPPER_LIMIT_M = 9.0
+
+# Clause 208.3(a) - between these two spans a tracked vehicle's impact fraction falls
+# linearly from SHORT_SPAN_IMPACT_FRACTION to TRACKED_IMPACT_FRACTION_FLOOR.
+TRACKED_TRANSITION_START_SPAN_M = 5.0
+TRACKED_TRANSITION_SPAN_WIDTH_M = 4.0  # SHORT_SPAN_UPPER_LIMIT_M minus the start above
+
+# Clause 208.3(b) - a tracked vehicle on RC holds its flat 10% only up to this span;
+# beyond it the Figure 9 curve takes over.
+TRACKED_RC_IMPACT_PLATEAU_LIMIT_M = 40.0
+
+# Clause 208.3(b) - a wheeled 70R holds SHORT_SPAN_IMPACT_FRACTION up to this span, the
+# point where the Figure 9 curve has fallen to the same value and takes over.
+WHEELED_70R_IMPACT_CURVE_TAKES_OVER_STEEL_M = 23.0
+WHEELED_70R_IMPACT_CURVE_TAKES_OVER_RC_M = 12.0
+
+
+# ---------------------------------------------------------------------------
 # Units and numerical conventions
 # ---------------------------------------------------------------------------
 
