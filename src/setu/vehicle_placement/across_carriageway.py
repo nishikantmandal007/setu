@@ -42,7 +42,7 @@ from ..irc_code_rules.lane_arrangements import (
 )
 from ..irc_code_rules.lane_reduction import lane_reduction_factor
 from ..sampling import DEFAULT_SAMPLING, SamplingSettings
-from .best_prefix import best_so_far
+from .running_best import best_so_far
 
 ResponseCurves = Mapping[str, Callable[[np.ndarray], np.ndarray]]
 """One curve per kind of lane block. Each returns the response of one vehicle of
