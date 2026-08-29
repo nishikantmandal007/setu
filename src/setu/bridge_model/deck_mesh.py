@@ -60,7 +60,7 @@ class DeckMesh:
 
     def width_station_of_girder(self, girder: int) -> int:
         # Every girder line is put into the mesh, so one always does. atol is looser here
-        # (1e-4) than build_model._station_at's default (1e-8) - deliberately, not a typo -
+        # (1e-4) than station_at's default (1e-8) below - deliberately, not a typo -
         # so do not unify the two.
         on_this_station = np.where(
             np.isclose(self.width_mesh_m, self.girder_lines_m[girder], atol=1e-4)
@@ -71,6 +71,18 @@ class DeckMesh:
                 "on a width mesh station, so the deck cannot be tied to it"
             )
         return int(on_this_station[0])
+
+
+def station_at(stations_m: np.ndarray, position_m: float) -> int:
+    # Returns which station sits at this position.
+    #
+    # Uses np.isclose's default tolerance (atol 1e-8), not the looser atol=1e-4 that
+    # DeckMesh.width_station_of_girder deliberately uses - the two compare different
+    # things for different reasons, so do not unify them.
+    found = np.where(np.isclose(stations_m, position_m))[0]
+    if len(found) == 0:
+        raise ValueError(f"no mesh station at {position_m:.5f} m")
+    return int(found[0])
 
 
 def build_mesh(bridge: BridgeInput) -> DeckMesh:
