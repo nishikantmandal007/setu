@@ -1,39 +1,35 @@
-"""setu - the worst legal IRC:6 vehicle position on a bridge deck.
-
-Finding where traffic does the most damage normally means moving the vehicles,
-analysing, moving them again, and analysing again - tens of thousands of times.
-setu does it with one analysis per response quantity, and gets the exact answer
-rather than the best of whatever positions happened to be tried.
-
-Two ideas do the work.
-
-An influence surface, built by solving the model once with the response applied
-as an imaginary load, gives the effect of a unit load at every point of the deck.
-After that, a vehicle position costs an interpolation instead of an analysis.
-
-Two dynamic programs then find the worst position that the code actually allows:
-one along the span, for the worst train of vehicles in a lane, and one across the
-width, for the worst arrangement of vehicles in every lane at once.
-
-    from setu import DeckCrossSection, InfluenceSolver, find_critical_position
-
-    influence = InfluenceSolver(deck)
-    surface = influence.for_girder_moment("girder 3 midspan", element)
-
-    cross_section = DeckCrossSection.from_widths({
-        "footpath_left": 1.50, "kerb_left": 0.45,
-        "carriageway_1": 4.5, "median": 0.60, "carriageway_2": 4.5,
-        "kerb_right": 0.45, "footpath_right": 1.50,
-    })
-
-    worst = find_critical_position(surface, cross_section, span_m=35.0)
-    print(worst.describe())
-
-Coordinates: x runs along the span, y is vertical and positive upwards, z runs
-across the deck from its left edge. Lengths are metres, loads kilonewtons.
-
-('setu' is Sanskrit for bridge.)
-"""
+# setu - the worst legal IRC:6 vehicle position on a bridge deck.
+#
+# Finding where traffic does the most damage normally means moving the vehicles,
+# analysing, moving them again, and analysing again - tens of thousands of times. setu
+# does it with one analysis per response quantity, and gets the exact answer rather than
+# the best of whatever positions happened to be tried.
+#
+# Two ideas do the work. An influence surface, built by solving the model once with the
+# response applied as an imaginary load, gives the effect of a unit load at every point of
+# the deck - after that a vehicle position costs an interpolation instead of an analysis.
+# Then two dynamic programs find the worst position the code actually allows: one along
+# the span for the worst train of vehicles in a lane, one across the width for the worst
+# arrangement of vehicles in every lane at once.
+#
+#     from setu import DeckCrossSection, InfluenceSolver, find_critical_position
+#
+#     influence = InfluenceSolver(deck)
+#     surface = influence.for_girder_moment("girder 3 midspan", element)
+#
+#     cross_section = DeckCrossSection.from_widths({
+#         "footpath_left": 1.50, "kerb_left": 0.45,
+#         "carriageway_1": 4.5, "median": 0.60, "carriageway_2": 4.5,
+#         "kerb_right": 0.45, "footpath_right": 1.50,
+#     })
+#
+#     worst = find_critical_position(surface, cross_section, span_m=35.0)
+#     print(worst.describe())
+#
+# Coordinates: x runs along the span, y is vertical and positive upwards, z runs across
+# the deck from its left edge. Lengths are metres, loads kilonewtons.
+#
+# ('setu' is Sanskrit for bridge.)
 
 from __future__ import annotations
 

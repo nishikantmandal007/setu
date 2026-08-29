@@ -167,22 +167,25 @@ Folders are named for the work they do.
 src/setu/
     bridge_model/          builds the deck in the solver, and its own weight
     irc_code_rules/        the IRC:6 rules — vehicles, tables, lanes, impact
-    influence_surfaces/    one adjoint solve per response quantity
+    influence_surfaces/    one solve per response quantity, and the beam stiffness
     vehicle_placement/     the two searches
+    drawings/              the pictures (matplotlib, imported only when used)
     critical_position.py   the entry point that ties them together
-    drawing.py             the pictures (matplotlib, imported only when used)
 ```
 
-`openseespy` is imported in exactly one file, behind a four-method protocol
+`openseespy` is imported in exactly one file, behind a five-method protocol
 (`influence_surfaces/fe_backend.py`). Swapping in another solver means writing
-one class.
+one class against it - the protocol's comments say what each method has to
+promise, and the one that matters most is that a backend must be safe to call
+again and again, because a solve that leaks state into the next one gives wrong
+answers everywhere downstream, silently.
 
 ---
 
 ## Running it
 
 ```bash
-uv run pytest                              # 666 tests
+uv run pytest                              # 722 tests
 uv run python examples/plate_girder_35m.py # a 35 m bridge, end to end
 uv run ruff check src tests examples
 uv run mypy
