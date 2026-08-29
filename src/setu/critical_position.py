@@ -27,7 +27,7 @@ import numpy as np
 from .adverse_direction import index_of_worst
 from .deck_cross_section import Carriageway, DeckCrossSection
 from .influence_surfaces.surface import InfluenceSurface
-from .irc_code_rules.carriageway_udl import (
+from .irc_code_rules.area_loads import (
     footway_response,
     needs_residual_udl,
     response_to_area_load,

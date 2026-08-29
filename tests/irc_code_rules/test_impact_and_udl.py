@@ -5,7 +5,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from setu.irc_code_rules.carriageway_udl import (
+from setu.irc_code_rules.area_loads import (
     needs_residual_udl,
     response_to_area_load,
     strips_beside_class_a,
