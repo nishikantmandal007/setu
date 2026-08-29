@@ -26,6 +26,7 @@ from .vehicles import (
     most_vehicles_that_fit,
     pitch_between_vehicles_m,
     register_vehicle,
+    vehicles_allowed_in_each_block,
 )
 from .wheel_loads import (
     OFFSET_DX_M,
@@ -79,6 +80,7 @@ __all__ = [
     "response_to_area_load",
     "split_offsets",
     "train_at",
+    "vehicles_allowed_in_each_block",
     "wheel_load_offsets",
     "wheel_loads_at",
 ]

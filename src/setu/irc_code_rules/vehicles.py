@@ -237,6 +237,38 @@ def facing_backwards(vehicle: Vehicle) -> Vehicle:
     )
 
 
+def vehicles_allowed_in_each_block(
+    vehicles: dict[str, Vehicle] | None, allow_reversed_vehicles: bool
+) -> dict[str, list[Vehicle]]:
+    # Clause 204.1.4 lets a vehicle drive in either direction, so a vehicle that is not
+    # symmetric front to back is added twice, once facing each way - the two are different
+    # load cases. Table 6A note (a) is why a zone_70r block gets both 70R vehicles, above.
+    known = IRC_VEHICLES if vehicles is None else vehicles
+
+    permitted: dict[str, list[Vehicle]] = {}
+    for block, names in VEHICLES_ALLOWED_IN_BLOCK.items():
+        choices = []
+        for name in names:
+            if name not in known:
+                continue
+            vehicle = find_vehicle(name, known)
+            choices.append(vehicle)
+
+            if allow_reversed_vehicles:
+                reversed_vehicle = facing_backwards(vehicle)
+                if reversed_vehicle is not vehicle:
+                    choices.append(reversed_vehicle)
+
+        if not choices:
+            raise ValueError(
+                f"no vehicle available for a {block!r} lane block; "
+                f"expected one of {list(names)} among {sorted(known)}"
+            )
+        permitted[block] = choices
+
+    return permitted
+
+
 def pitch_between_vehicles_m(vehicle: Vehicle) -> float:
     # Front-to-front spacing in a train of these vehicles: one whole vehicle plus the
     # smallest gap the code allows behind it.
