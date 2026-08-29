@@ -6,7 +6,10 @@ import numpy as np
 import pytest
 
 from setu import GirderSection
-from setu.influence_surfaces.adjoint_solve import beam_stiffness_matrix, element_rotation_matrix
+from setu.influence_surfaces.beam_stiffness import (
+    beam_stiffness_matrix,
+    element_rotation_matrix,
+)
 
 SECTION = GirderSection(
     area_m2=0.1,
