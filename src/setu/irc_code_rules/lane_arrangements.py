@@ -1,23 +1,14 @@
-"""Clause 204.3 and Tables 3, 6 and 6A - how vehicles may be arranged across a carriageway.
-
-A carriageway of a given width has a number of design lanes (Table 6), and those
-lanes may be filled by Class A vehicles and 70R vehicles in a number of ways
-(Table 6A). Each way is an *arrangement*.
-
-An arrangement is an ordered list of lane blocks read left to right, so
-`['zone_70r', 'class_a']` means a 70R zone at the left of the carriageway with a
-Class A lane to its right. A 70R vehicle needs two design lanes and gets an
-exclusive zone; a Class A vehicle gets one lane block.
-
-Every arrangement also has to be searched with *fewer* vehicles than it allows,
-because a partly loaded bridge sometimes governs. That is Table 6A note (b), and
-it is why `list_admissible_arrangements` returns subsets as well as full ones.
-"""
+# Clause 204.3 and Tables 3, 6 and 6A - how vehicles may be arranged across a carriageway.
+# An arrangement is an ordered list of lane blocks, left to right: a 70R vehicle takes an
+# exclusive zone two design lanes wide, a Class A vehicle takes one lane block. Table 6A
+# note (b) - a partly loaded carriageway is a load case of its own and can genuinely govern,
+# since fewer loaded lanes attract a smaller Table 8 reduction - so list_admissible_arrangements
+# returns subsets too, not only fully loaded arrangements.
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from itertools import product
+from itertools import product, zip_longest
 
 from .code_tables import (
     CLASS_A_GAP_OPENS_UP_BELOW_M,
@@ -31,6 +22,7 @@ from .code_tables import (
     ROUND_TO_DECIMALS,
     SMALLEST_CLASS_A_GAP_M,
     TOLERANCE_M,
+    TWO_CLASS_A_LANES_AND_KERB_CLEARANCES_M,
     VEHICLE_70R_CLEARANCE_M,
     VEHICLE_70R_WIDTH_M,
     WIDEST_TABULATED_CARRIAGEWAY_M,
@@ -39,49 +31,58 @@ from .code_tables import (
     ZONE_70R_INSIDE_M,
 )
 
+# One Class A vehicle in one design lane.
 CLASS_A_LANE = "class_a"
-"""One Class A vehicle in one design lane."""
 
+# One 70R vehicle in an exclusive zone two design lanes wide.
 ZONE_70R = "zone_70r"
-"""One 70R vehicle in an exclusive zone two design lanes wide."""
 
 LanePattern = list[str]
 
 
+# ---------------------------------------------------------------------------
+# What the search returns
+# ---------------------------------------------------------------------------
+
+
 @dataclass(frozen=True)
 class LaneArrangement:
-    """One admissible way of filling a carriageway with vehicles."""
+    # One admissible way of filling a carriageway with vehicles.
 
+    # The lane blocks, left to right.
     lane_pattern: LanePattern
-    """The lane blocks, left to right."""
 
+    # Design lanes this arrangement consumes - a 70R zone consumes two.
     design_lanes: int
-    """Design lanes this arrangement consumes. A 70R zone consumes two."""
 
+    # The narrowest carriageway this arrangement fits in.
     narrowest_carriageway_m: float
-    """The narrowest carriageway this arrangement fits in."""
 
+    # How far the whole arrangement can slide across the carriageway.
     sliding_room_m: float
-    """How far the whole arrangement can slide across the carriageway."""
 
+    # True when this arrangement fills every design lane the carriageway has.
     is_fully_loaded: bool
-    """True when this arrangement fills every design lane the carriageway has."""
 
 
 @dataclass(frozen=True)
 class BlockLayout:
-    """Where each lane block may sit, once an arrangement is fitted to a carriageway."""
+    # Where each lane block may sit, once an arrangement is fitted to a carriageway.
 
+    # Left edge of each block with the whole arrangement pushed as far left as it goes.
     packed_left_edges_m: list[float]
-    """Left edge of each block with the whole arrangement pushed as far left as it goes."""
 
     block_widths_m: list[float]
     gaps_between_blocks_m: list[float]
     sliding_room_m: float
 
 
+# ---------------------------------------------------------------------------
+# Table 6 - how many design lanes a carriageway has
+# ---------------------------------------------------------------------------
+
+
 def count_design_lanes(carriageway_width_m: float) -> int:
-    """Returns the number of design lanes for a clear carriageway width, from Table 6."""
     for width_from, width_up_to, design_lanes in DESIGN_LANES_BY_WIDTH:
         if width_from <= carriageway_width_m < width_up_to:
             return design_lanes
@@ -92,34 +93,36 @@ def count_design_lanes(carriageway_width_m: float) -> int:
 
 
 def can_carry_vehicles(carriageway_width_m: float) -> bool:
-    """Returns True when this carriageway is wide enough to be loaded at all."""
+    # IRC:5-2015 Clause 104.3 - below NARROWEST_LOADED_CARRIAGEWAY_M nothing is loaded.
     if count_design_lanes(carriageway_width_m) == 0:
         return False
     return carriageway_width_m >= NARROWEST_LOADED_CARRIAGEWAY_M
 
 
-def class_a_gap(carriageway_width_m: float) -> float:
-    """Returns the Table 3 gap between two adjacent Class A vehicles.
+# ---------------------------------------------------------------------------
+# Table 3 - fitting lane blocks into a carriageway
+# ---------------------------------------------------------------------------
 
-    Above 6.10 m the gap is the full 1.20 m. On a narrower two-lane carriageway
-    the gap is simply whatever width is left once the two 2.30 m lane blocks and
-    their two 0.15 m kerb clearances have been taken out - which is why the
-    subtraction below is 4.90 m. Table 3 never lets it fall under 0.40 m.
-    """
+
+def class_a_gap(carriageway_width_m: float) -> float:
+    # Above 6.10 m the gap between two adjacent Class A vehicles is the full 1.20 m. Below
+    # that, on a narrow two-lane carriageway, the gap is whatever width is left once the
+    # two lane blocks and their kerb clearances are taken out - Table 3 never lets it fall
+    # under 0.40 m.
     if carriageway_width_m > CLASS_A_GAP_OPENS_UP_BELOW_M:
         return CLASS_A_VEHICLE_GAP_M
 
-    width_left_over_m = round(carriageway_width_m - 4.90, 6)
+    # The 6 decimal places here is its own thing - not ROUND_TO_DECIMALS or
+    # COORDINATE_DECIMALS - so leave it exactly as it is; changing it changes results.
+    width_left_over_m = round(
+        carriageway_width_m - TWO_CLASS_A_LANES_AND_KERB_CLEARANCES_M, 6
+    )
     return max(SMALLEST_CLASS_A_GAP_M, min(CLASS_A_VEHICLE_GAP_M, width_left_over_m))
 
 
 def block_widths(lane_pattern: LanePattern) -> list[float]:
-    """Returns the width of each lane block in this pattern.
-
-    A 70R zone is wider at the edge of the carriageway than between other lanes,
-    and wider still is not needed when it is the only thing on the carriageway -
-    then it only has to hold the vehicle and its two clearances.
-    """
+    # A 70R zone is wider at the carriageway edge than between lanes, and narrower still
+    # when it is alone - then it only has to hold the vehicle and its two clearances.
     widths_m = []
 
     for position, block in enumerate(lane_pattern):
@@ -138,11 +141,9 @@ def block_widths(lane_pattern: LanePattern) -> list[float]:
 def narrowest_carriageway_that_fits(
     lane_pattern: LanePattern, carriageway_width_m: float | None = None
 ) -> float:
-    """Returns the narrowest carriageway this pattern fits in.
-
-    Pass the actual carriageway width to pick up the reduced Table 3 gap on a
-    narrow two-lane carriageway; leave it out to assume the full 1.20 m gap.
-    """
+    # Pass the actual carriageway width to pick up the reduced Table 3 gap on a narrow
+    # two-lane carriageway; leave it out (None) to assume the full 1.20 m gap instead -
+    # callers rely on both paths.
     if not lane_pattern:
         return 0.0
 
@@ -158,18 +159,15 @@ def narrowest_carriageway_that_fits(
         if carriageway_width_m is None
         else class_a_gap(carriageway_width_m)
     )
-    for gap in _gaps_between(lane_pattern, gap_m):
+    for gap in gaps_between(lane_pattern, gap_m):
         width_m += gap
 
     return round(width_m, ROUND_TO_DECIMALS)
 
 
-def _gaps_between(lane_pattern: LanePattern, class_a_to_class_a_gap_m: float) -> list[float]:
-    """Returns the gap required after each block except the last.
-
-    Only two adjacent Class A vehicles need a gap. A 70R zone already carries its
-    own clearance inside its width, so nothing extra is required beside it.
-    """
+def gaps_between(lane_pattern: LanePattern, class_a_to_class_a_gap_m: float) -> list[float]:
+    # Only two adjacent Class A vehicles need a gap. A 70R zone already carries its own
+    # clearance inside its width, so nothing extra is needed beside it.
     gaps_m = []
     for left, right in zip(lane_pattern, lane_pattern[1:], strict=False):
         both_are_class_a = left == CLASS_A_LANE and right == CLASS_A_LANE
@@ -178,23 +176,24 @@ def _gaps_between(lane_pattern: LanePattern, class_a_to_class_a_gap_m: float) ->
 
 
 def fits_in_carriageway(lane_pattern: LanePattern, carriageway_width_m: float) -> bool:
-    """Returns True when this pattern fits inside a carriageway of this width."""
     needed_m = narrowest_carriageway_that_fits(lane_pattern, carriageway_width_m)
     return needed_m <= carriageway_width_m + TOLERANCE_M
 
 
+# ---------------------------------------------------------------------------
+# Table 6A - which arrangements are admissible
+# ---------------------------------------------------------------------------
+
+
 def is_70r_placed_as_the_code_draws_it(lane_pattern: LanePattern) -> bool:
-    """Returns True when every 70R zone has a kerb or another 70R zone beside it.
-
-    Put another way: starting from a 70R zone and stepping only through other
-    70R zones, you must be able to reach a kerb. The heavy vehicles are worked
-    inwards from the edges of the carriageway and never boxed in behind a lane
-    of Class A.
-
-    That is how all thirteen combination drawings place them, without exception.
-    A 70R between two Class A lanes is never drawn, nor is a pair of them with
-    Class A on both sides - even at widths where either would fit.
-    """
+    # True when every 70R zone has a kerb or another 70R zone beside it: starting from a
+    # 70R zone and stepping only through other 70R zones, you must be able to reach a
+    # kerb. The heavy vehicles are worked inwards from the edges of the carriageway and
+    # never boxed in behind a lane of Class A.
+    #
+    # That is how all thirteen combination drawings place them, without exception. A 70R
+    # between two Class A lanes is never drawn, nor is a pair of them with Class A on both
+    # sides - even at widths where either would fit.
     last = len(lane_pattern) - 1
 
     for position, block in enumerate(lane_pattern):
@@ -217,23 +216,20 @@ def is_70r_placed_as_the_code_draws_it(lane_pattern: LanePattern) -> bool:
 def list_admissible_arrangements(
     carriageway_width_m: float, follow_combination_drawings: bool = True
 ) -> list[LaneArrangement]:
-    """Returns every way this carriageway may be loaded, most heavily loaded first.
-
-    An arrangement is admissible when it fits between the kerbs and uses no more
-    design lanes than Table 6 gives the carriageway. A 70R zone uses two.
-
-    Every arrangement is returned, not only the ones that fill every lane. Table
-    6A note (b) is explicit that a partly loaded carriageway may govern, and it
-    genuinely does - and by more than a little. Fewer loaded lanes attract a
-    smaller reduction under Table 8, so a single 70R standing over a deck panel
-    can be worse than every lane of the bridge filled with Class A.
-
-    `follow_combination_drawings` keeps to what the standard drawings show: a
-    70R always reaches a kerb through 70R zones only, and never more than two of
-    them on one carriageway. Turning it off searches every arrangement the
-    geometry permits, which is the more conservative reading and can only make
-    the answer more adverse.
-    """
+    # Every way this carriageway may be loaded, most heavily loaded first. An arrangement
+    # is admissible when it fits between the kerbs and uses no more design lanes than
+    # Table 6 gives the carriageway - a 70R zone uses two.
+    #
+    # Table 6A note (b): a partly loaded carriageway is a load case of its own, and it
+    # genuinely governs - by more than a little. Fewer loaded lanes attract a smaller
+    # Table 8 reduction, so a single 70R standing over a deck panel can be worse than every
+    # lane of the bridge filled with Class A. That is why every arrangement is returned
+    # here, not only the ones that fill every lane.
+    #
+    # follow_combination_drawings keeps to what the standard drawings show: a 70R always
+    # reaches a kerb through 70R zones only, and never more than two of them on one
+    # carriageway. Turning it off searches every arrangement the geometry permits, which is
+    # the more conservative reading and can only make the answer more adverse.
     if not can_carry_vehicles(carriageway_width_m):
         return []
 
@@ -248,29 +244,30 @@ def list_admissible_arrangements(
                 continue
             if not fits_in_carriageway(list(pattern), carriageway_width_m):
                 continue
-            if follow_combination_drawings and not _is_drawn_in_the_combinations(pattern):
+            if follow_combination_drawings and not is_drawn_in_the_combinations(pattern):
                 continue
 
             arrangements.append(
-                _describe_arrangement(
+                describe_arrangement(
                     pattern,
                     carriageway_width_m,
                     is_fully_loaded=lanes_used == design_lanes,
                 )
             )
 
-    arrangements.sort(key=lambda a: (-a.design_lanes, a.lane_pattern))
+    arrangements.sort(
+        key=lambda arrangement: (-arrangement.design_lanes, arrangement.lane_pattern)
+    )
     return arrangements
 
 
-def _is_drawn_in_the_combinations(pattern: tuple[str, ...]) -> bool:
-    """Returns True when the drawings would show an arrangement like this one."""
+def is_drawn_in_the_combinations(pattern: tuple[str, ...]) -> bool:
     if pattern.count(ZONE_70R) > MOST_70R_VEHICLES_DRAWN:
         return False
     return is_70r_placed_as_the_code_draws_it(list(pattern))
 
 
-def _describe_arrangement(
+def describe_arrangement(
     pattern: tuple[str, ...], carriageway_width_m: float, *, is_fully_loaded: bool
 ) -> LaneArrangement:
     narrowest_m = narrowest_carriageway_that_fits(list(pattern), carriageway_width_m)
@@ -284,34 +281,34 @@ def _describe_arrangement(
     )
 
 
+# ---------------------------------------------------------------------------
+# Placing blocks across the carriageway
+# ---------------------------------------------------------------------------
+
+
 def fit_blocks_between(
     lane_pattern: LanePattern, carriageway_left_m: float, carriageway_right_m: float
 ) -> BlockLayout | None:
-    """Returns where each lane block sits when the arrangement is pushed fully left.
-
-    Returns None when the arrangement does not fit between these two edges.
-
-    Everything the search needs follows from this one layout: each block may
-    slide right by anything from zero to `sliding_room_m`, and the clearances
-    stay satisfied as long as no block overtakes the one to its right.
-    """
+    # Where each lane block sits when the arrangement is pushed fully left, or None when
+    # the arrangement does not fit between these two edges. Each block may then slide right
+    # by anything from zero to sliding_room_m, and the clearances stay satisfied as long as
+    # no block overtakes the one to its right.
     carriageway_width_m = carriageway_right_m - carriageway_left_m
     if not fits_in_carriageway(lane_pattern, carriageway_width_m):
         return None
 
     widths_m = block_widths(lane_pattern)
-    gaps_m = _gaps_between(lane_pattern, class_a_gap(carriageway_width_m))
-    kerb_clearance_m = _kerb_clearance_at_each_end(lane_pattern)
+    gaps_m = gaps_between(lane_pattern, class_a_gap(carriageway_width_m))
+    kerb_clearance_m = kerb_clearance_at_each_end(lane_pattern)
 
-    # Edges are rounded as they are built so the candidate grids downstream
-    # compare equal no matter what order the additions happened in.
+    # Edges are rounded as they are built so the candidate grids downstream compare equal
+    # no matter what order the additions happened in.
     packed_left_edges_m = []
     edge_m = carriageway_left_m + kerb_clearance_m[0]
-    for block in range(len(lane_pattern)):
+    for width_m, gap_m in zip_longest(widths_m, gaps_m, fillvalue=0.0):
         packed_left_edges_m.append(round(edge_m, ROUND_TO_DECIMALS))
-        edge_m += widths_m[block]
-        if block < len(gaps_m):
-            edge_m += gaps_m[block]
+        edge_m += width_m
+        edge_m += gap_m
 
     room_m = carriageway_right_m - kerb_clearance_m[1] - edge_m
 
@@ -323,23 +320,19 @@ def fit_blocks_between(
     )
 
 
-def _kerb_clearance_at_each_end(lane_pattern: LanePattern) -> tuple[float, float]:
-    """Returns the clearance the leftmost and rightmost blocks keep from the kerb.
-
-    Only Class A needs it here - a 70R zone already contains its clearance.
-    """
+def kerb_clearance_at_each_end(lane_pattern: LanePattern) -> tuple[float, float]:
+    # Only Class A needs a kerb clearance here - a 70R zone already contains its own
+    # clearance inside its width.
     at_left = CLASS_A_KERB_CLEARANCE_M if lane_pattern[0] == CLASS_A_LANE else 0.0
     at_right = CLASS_A_KERB_CLEARANCE_M if lane_pattern[-1] == CLASS_A_LANE else 0.0
     return at_left, at_right
 
 
 def where_vehicle_sits_in_block(block: str, block_width_m: float) -> tuple[float, float]:
-    """Returns how far the vehicle centreline may sit from the block's left edge.
-
-    A Class A vehicle is fixed at the centre of its lane block, so the two
-    numbers are equal. A 70R vehicle floats anywhere inside its zone that keeps
-    its clearance from both boundaries, so they differ.
-    """
+    # How far the vehicle centreline may sit from the block's left edge, nearest bound
+    # first. A Class A vehicle is pinned to the centre of its lane block, so the two
+    # numbers are equal. A 70R vehicle floats anywhere inside its zone that keeps its
+    # clearance from both boundaries, so they differ.
     if block == CLASS_A_LANE:
         half_lane_m = CLASS_A_LANE_WIDTH_M / 2.0
         return half_lane_m, half_lane_m

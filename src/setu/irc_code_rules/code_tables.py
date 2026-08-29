@@ -42,6 +42,13 @@ ZONE_70R_ALONE_M = VEHICLE_70R_WIDTH_M + 2 * VEHICLE_70R_CLEARANCE_M
 CLASS_A_GAP_OPENS_UP_BELOW_M = 6.10
 SMALLEST_CLASS_A_GAP_M = 0.40
 
+# Two 2.30 m Class A lane blocks plus two 0.15 m kerb clearances - what a narrow two-lane
+# carriageway spends before anything is left over for the gap between the vehicles. Written
+# as the literal, not as 2 * CLASS_A_LANE_WIDTH_M + 2 * CLASS_A_KERB_CLEARANCE_M: that
+# expression evaluates to 4.8999999999999995 in binary floating point, and a refactor must
+# not introduce drift the original code never had.
+TWO_CLASS_A_LANES_AND_KERB_CLEARANCES_M = 4.90
+
 
 # ---------------------------------------------------------------------------
 # IRC:5-2015 Clause 104.3 - when a carriageway is too narrow to load at all
