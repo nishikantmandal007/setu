@@ -2,6 +2,7 @@ import numpy as np
 import itertools
 from src.utils.code_rules import *
 from src.utils.helpers import *
+from src.utils.errors import *
 from src.models.results import VehiclePlacement
 from src.models.vehicles import *
 from src.models.vehicles import most_vehicles_that_fit, class_of
