@@ -1,6 +1,3 @@
-# The two searches: along the span for the worst train, across the width for the worst
-# arrangement of lanes.
-
 from .across_carriageway import CarriagewayCase, TransversePlacement, find_worst_placement
 from .along_span import TrainPlacement, find_worst_train, place_train
 from .block_envelopes import BlockEnvelope, envelope_every_block
