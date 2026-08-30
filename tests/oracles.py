@@ -5,7 +5,6 @@ which is the whole reason the dynamic programs exist - but that also makes them
 the only honest way to know the dynamic programs are right.
 """
 
-from __future__ import annotations
 
 import itertools
 
@@ -51,7 +50,6 @@ def worst_chain_by_enumeration(block_curves, adverse: str) -> float:
     return worst
 
 
-# Deliberately not imported from setu.adverse_direction - an oracle that imports
 # the code it is checking is not an oracle.
 def _is_worse(candidate: float, best: float, adverse: str) -> bool:
     return candidate > best if adverse == "maximum" else candidate < best

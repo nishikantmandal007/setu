@@ -1,12 +1,11 @@
 # Every function in adverse_direction has exactly two legal inputs - check both,
 # plus the ValueError a third one must raise.
 
-from __future__ import annotations
 
 import numpy as np
 import pytest
 
-from setu.adverse_direction import (
+from src.utils.helpers import (
     adverse_sign,
     index_of_worst,
     is_worse,

@@ -1,11 +1,11 @@
 """Shared fixtures: influence surfaces with known shapes, and a deck to put them on."""
 
-from __future__ import annotations
 
 import numpy as np
 import pytest
 
-from setu import DeckCrossSection, InfluenceSurface
+from src.models.deck import DeckCrossSection
+from src.services.influence import InfluenceSurface
 
 SPAN_M = 35.0
 WIDTH_M = 13.5

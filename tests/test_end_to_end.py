@@ -1,3 +1,4 @@
+from src.services.critical_position import CriticalPositionService
 """The whole thing, on a real bridge solved in OpenSees.
 
 Three questions, in order of how much they matter:
@@ -7,22 +8,32 @@ Three questions, in order of how much they matter:
     does the search find a position that makes sense?
 """
 
-from __future__ import annotations
 
 import numpy as np
 import pytest
 
-from setu import DeckCrossSection, InfluenceSolver, find_critical_position, rank_all_positions
-from setu.bridge_model import (
+from src.models.deck import DeckCrossSection
+from src.services.influence import InfluenceSolver
+from src.services.critical_position import CriticalPositionService
+find_critical_position = CriticalPositionService.find_critical_position
+rank_all_positions = CriticalPositionService.rank_all_positions
+from src.models.bridge_input import (
     Bracing,
     BridgeInput,
     DeckSlab,
     Girders,
     MeshSettings,
     PlateGirderSection,
-    apply_dead_loads,
-    build_bridge_model,
 )
+from src.models.bridge_input import (
+    Bracing,
+    BridgeInput,
+    DeckSlab,
+    Girders,
+    MeshSettings,
+    PlateGirderSection,
+)
+from src.services.bridge_builder import build_bridge_model as build_model, apply_dead_loads
 
 ops = pytest.importorskip("openseespy.opensees", reason="needs a finite element solver")
 
@@ -88,7 +99,7 @@ def built(bridge):
     In that order, and the order matters: an influence surface has to be solved
     on a model nothing else is loading, so the dead load goes on last.
     """
-    model = build_bridge_model(bridge)
+    model = build_model(bridge)
     deck = model.as_deck_model()
     element = model.midspan_element_of_girder(bridge.girders.count // 2)
 
@@ -207,7 +218,7 @@ def test_the_fixes_can_only_make_it_worse(built, deck_cross_section, adverse):
     """
     *_, surface, _, _ = built
 
-    without = find_critical_position(
+    without = CriticalPositionService.find_critical_position(
         surface,
         deck_cross_section,
         span_m=SPAN_M,
@@ -215,7 +226,7 @@ def test_the_fixes_can_only_make_it_worse(built, deck_cross_section, adverse):
         allow_trains=False,
         allow_reversed_vehicles=False,
     )
-    with_them = find_critical_position(
+    with_them = CriticalPositionService.find_critical_position(
         surface, deck_cross_section, span_m=SPAN_M, adverse=adverse
     )
 
@@ -229,7 +240,7 @@ def test_every_vehicle_lands_on_its_own_carriageway(built, deck_cross_section):
     """A vehicle must never be placed on the median, a kerb or a footpath."""
     *_, surface, _, _ = built
 
-    worst = find_critical_position(surface, deck_cross_section, span_m=SPAN_M)
+    worst = CriticalPositionService.find_critical_position(surface, deck_cross_section, span_m=SPAN_M)
     carriageways = deck_cross_section.carriageways()
 
     for placed in worst.vehicles:
@@ -243,7 +254,7 @@ def test_two_vehicles_in_one_carriageway_keep_their_distance(built, deck_cross_s
     """Table 3 sets a gap between adjacent Class A vehicles, and it must hold."""
     *_, surface, _, _ = built
 
-    worst = find_critical_position(surface, deck_cross_section, span_m=SPAN_M)
+    worst = CriticalPositionService.find_critical_position(surface, deck_cross_section, span_m=SPAN_M)
     positions_m = sorted(placed.z_centre_m for placed in worst.vehicles)
 
     for left_m, right_m in zip(positions_m, positions_m[1:], strict=False):
@@ -253,7 +264,7 @@ def test_two_vehicles_in_one_carriageway_keep_their_distance(built, deck_cross_s
 def test_the_result_says_how_it_was_reached(built, deck_cross_section):
     *_, surface, _, _ = built
 
-    worst = find_critical_position(surface, deck_cross_section, span_m=SPAN_M)
+    worst = CriticalPositionService.find_critical_position(surface, deck_cross_section, span_m=SPAN_M)
 
     assert worst.vehicles, "a governing case with no vehicles in it is not a result"
     assert worst.design_lanes >= 1
@@ -267,7 +278,7 @@ def test_the_result_says_how_it_was_reached(built, deck_cross_section):
 def test_the_worst_case_is_the_one_returned(built, deck_cross_section):
     *_, surface, _, _ = built
 
-    ranked = rank_all_positions(surface, deck_cross_section, span_m=SPAN_M, adverse="minimum")
+    ranked = CriticalPositionService.rank_all_positions(surface, deck_cross_section, span_m=SPAN_M, adverse="minimum")
 
     assert ranked[0].response == min(case.response for case in ranked)
 
@@ -284,7 +295,7 @@ def test_a_two_lane_carriageway_has_a_case_left_empty(built):
         {"kerb_left": 0.45, "carriageway": 9.00, "kerb_right": 0.45}
     )
 
-    ranked = rank_all_positions(surface, wide, span_m=SPAN_M, adverse="minimum")
+    ranked = CriticalPositionService.rank_all_positions(surface, wide, span_m=SPAN_M, adverse="minimum")
     lanes_loaded = {case.design_lanes for case in ranked}
 
     assert lanes_loaded == {1, 2}
@@ -303,8 +314,8 @@ def test_lifting_the_combination_drawings_reaches_the_sweep(built):
         {"kerb_left": 0.45, "carriageway": 13.10, "kerb_right": 0.45}
     )
 
-    as_drawn = rank_all_positions(surface, wide, span_m=SPAN_M, adverse="minimum")
-    every_arrangement = rank_all_positions(
+    as_drawn = CriticalPositionService.rank_all_positions(surface, wide, span_m=SPAN_M, adverse="minimum")
+    every_arrangement = CriticalPositionService.rank_all_positions(
         surface, wide, span_m=SPAN_M, adverse="minimum", follow_combination_drawings=False
     )
 
@@ -318,10 +329,10 @@ def test_impact_falls_as_the_member_gets_longer(built, deck_cross_section):
     """Clause 208.5 - the member's own span, which is not always the bridge's."""
     *_, surface, _, _ = built
 
-    short = find_critical_position(
+    short = CriticalPositionService.find_critical_position(
         surface, deck_cross_section, span_m=SPAN_M, member_span_m=5.0
     )
-    long = find_critical_position(
+    long = CriticalPositionService.find_critical_position(
         surface, deck_cross_section, span_m=SPAN_M, member_span_m=45.0
     )
 
@@ -329,13 +340,13 @@ def test_impact_falls_as_the_member_gets_longer(built, deck_cross_section):
 
 
 def test_a_deck_with_no_room_for_a_vehicle_says_so(built):
-    from setu.errors import NoAdmissibleArrangementError
+    from src.utils.errors import NoAdmissibleArrangementError
 
     *_, surface, _, _ = built
     too_narrow = DeckCrossSection.from_widths({"kerb": 0.5, "carriageway": 3.0})
 
     with pytest.raises(NoAdmissibleArrangementError, match="no IRC:6 lane arrangement"):
-        find_critical_position(surface, too_narrow, span_m=SPAN_M)
+        CriticalPositionService.find_critical_position(surface, too_narrow, span_m=SPAN_M)
 
 
 def test_the_surface_looks_like_a_bridge_influence_surface(built):
@@ -368,20 +379,20 @@ def test_the_resultant_centred_case_can_never_govern(built, deck_cross_section, 
     """
     *_, surface, _, _ = built
 
-    worst = find_critical_position(
+    worst = CriticalPositionService.find_critical_position(
         surface, deck_cross_section, span_m=SPAN_M, adverse=adverse
     )
 
     assert worst.resultant_centred_response is not None
     assert abs(worst.resultant_centred_response) <= abs(worst.response) + 1e-9
-    assert worst.resultant_centred_shortfall >= -1e-9
+    assert worst.resultant_centred_shortfall() >= -1e-9
 
 
 def test_the_report_shows_both_transverse_conditions(built, deck_cross_section):
     """The code asks for both to be analysed and the governing one identified."""
     *_, surface, _, _ = built
 
-    described = find_critical_position(
+    described = CriticalPositionService.find_critical_position(
         surface, deck_cross_section, span_m=SPAN_M, adverse="minimum"
     ).describe()
 

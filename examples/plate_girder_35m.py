@@ -1,3 +1,4 @@
+from src.services.critical_position import CriticalPositionService
 """A 35 m composite plate girder bridge, from input to critical vehicle position.
 
 Run it::
@@ -14,12 +15,11 @@ which is why the dead load goes on last. setu checks this rather than trusting
 it, because a dead load left switched on makes every surface quietly wrong.
 """
 
-from __future__ import annotations
 
 import openseespy.opensees as ops
 
-from setu import DeckCrossSection, InfluenceSolver, enable_reports, find_critical_position
-from setu.bridge_model import (
+from src.services.critical_position import DeckCrossSection, InfluenceSolver, enable_reports, find_critical_position
+from src.services.bridge_builder import (
     Bracing,
     BridgeInput,
     DeckSlab,
@@ -103,7 +103,7 @@ def main() -> None:
     )
 
     for adverse in ("maximum", "minimum"):
-        worst = find_critical_position(
+        worst = CriticalPositionService.find_critical_position(
             surface,
             CROSS_SECTION,
             span_m=BRIDGE.span_m,

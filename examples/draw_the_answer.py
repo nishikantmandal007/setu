@@ -1,3 +1,5 @@
+from src.services.drawing import DrawingService
+from src.services.critical_position import CriticalPositionService
 """Draws the critical position setu found, on the 35 m plate girder bridge.
 
 Run it::
@@ -8,7 +10,6 @@ It writes two files next to itself: a four-panel figure of the answer, and an
 animation of the governing vehicle driving across the deck.
 """
 
-from __future__ import annotations
 
 from pathlib import Path
 
@@ -18,9 +19,9 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 from plate_girder_35m import BRIDGE, CROSS_SECTION  # noqa: E402
 
-from setu import InfluenceSolver, find_critical_position  # noqa: E402
-from setu.bridge_model import build_bridge_model  # noqa: E402
-from setu.drawings import animate_vehicle_along_span, draw_everything  # noqa: E402
+from src.services.critical_position import InfluenceSolver, find_critical_position  # noqa: E402
+from src.services.bridge_builder import build_bridge_model  # noqa: E402
+from src.services.drawing import animate_vehicle_along_span, draw_everything  # noqa: E402
 
 HERE = Path(__file__).parent
 
@@ -33,7 +34,7 @@ def main() -> None:
         model.midspan_element_of_girder(BRIDGE.girders.count // 2),
     )
 
-    worst = find_critical_position(
+    worst = CriticalPositionService.find_critical_position(
         surface,
         CROSS_SECTION,
         span_m=BRIDGE.span_m,
@@ -42,7 +43,7 @@ def main() -> None:
     )
     print(worst.describe())
 
-    figure = draw_everything(
+    figure = DrawingService.draw_everything(
         surface,
         CROSS_SECTION,
         worst,

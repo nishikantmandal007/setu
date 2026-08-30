@@ -1,16 +1,19 @@
+from src.services.critical_position import CriticalPositionService
 # The answers setu gives today, pinned so a rewrite cannot quietly move them.
 # Nothing else in the suite asserts an actual number - the other tests check
 # relations, or race the searches against brute-force oracles - so without this
 # file a behaviour change during a refactor would sail through green.
 
-from __future__ import annotations
 
 from dataclasses import dataclass, field
 
 import numpy as np
 import pytest
 
-from setu import DeckCrossSection, InfluenceSurface, rank_all_positions
+from src.models.deck import DeckCrossSection
+from src.services.influence import InfluenceSurface
+from src.services.critical_position import CriticalPositionService
+rank_all_positions = CriticalPositionService.rank_all_positions
 
 SPAN_M = 35.0
 WIDTH_M = 13.5
@@ -218,7 +221,7 @@ GOLDEN_ANSWERS = [
 @pytest.fixture(scope="module", params=GOLDEN_ANSWERS, ids=lambda golden: golden.name)
 def golden_and_ranked(request):
     golden = request.param
-    ranked = rank_all_positions(
+    ranked = CriticalPositionService.rank_all_positions(
         golden.surface, golden.cross_section, span_m=golden.span_m, **golden.options
     )
     return golden, ranked
@@ -292,7 +295,7 @@ def test_the_report_block_still_reads(golden_and_ranked):
 def test_describe_survives_a_zero_response():
     # The shortfall is None when there is nothing to take a percentage of, and describe()
     # used to format that None straight into the report and raise TypeError.
-    from setu.results import CriticalPosition
+    from src.models.results import CriticalPosition
 
     nothing_happened = CriticalPosition(
         response_name="a response that came out at zero",
@@ -308,6 +311,6 @@ def test_describe_survives_a_zero_response():
 
     report = nothing_happened.describe()
 
-    assert nothing_happened.resultant_centred_shortfall is None
+    assert nothing_happened.resultant_centred_shortfall() is None
     assert "Resultant at mid-width" in report
     assert "% lower" not in report

@@ -17,8 +17,8 @@ plot = [
 ]
 
 [tool.setuptools.packages.find]
-where = ["src"]
-include = ["setu*"]
+where = ["."]
+include = ["src*"]
 
 [tool.setuptools.package-data]
 setu = ["py.typed"]
@@ -33,7 +33,7 @@ select = ["E", "F", "I", "UP", "B", "SIM", "N"]
 ignore = ["SIM108"]
 
 [tool.mypy]
-packages = ["setu"]
+packages = ["src"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]
