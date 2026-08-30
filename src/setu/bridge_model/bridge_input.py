@@ -1,9 +1,3 @@
-# Everything that describes the bridge before anything is built. The shape follows the
-# way the input was always written: geometry, deck, girders, bracing, mesh, materials, and
-# the dead loads that sit on top of the slab, each its own small piece so a change to the
-# girder section cannot accidentally be a change to the mesh. Lengths are metres, forces
-# kilonewtons, unit weights kN/m3, concrete strength N/mm2.
-
 from __future__ import annotations
 
 import math
@@ -11,10 +5,16 @@ from dataclasses import dataclass, field
 
 from ..deck_cross_section import DeckCrossSection
 
+X_BRACING = "X"
+X_BRACING_WITH_TOP_CHORD = "XT"
+X_BRACING_WITH_BOTTOM_CHORD = "XB"
+X_BRACING_WITH_BOTH_CHORDS = "XTB"
+K_BRACING = "K"
+K_BRACING_WITH_TOP_CHORD = "KT"
+
 
 @dataclass(frozen=True)
 class PlateGirderSection:
-    # The plates a welded girder is made of.
     top_flange_width_m: float
     top_flange_thickness_m: float
     bottom_flange_width_m: float
@@ -24,7 +24,6 @@ class PlateGirderSection:
 
     @property
     def depth_m(self) -> float:
-        # Overall depth, bottom of the bottom flange to top of the top flange.
         return self.top_flange_thickness_m + self.web_height_m + self.bottom_flange_thickness_m
 
 
@@ -57,23 +56,18 @@ class Concrete:
 
 @dataclass(frozen=True)
 class SurfacingLayer:
-    # Something laid on the deck that adds weight but no stiffness.
     thickness_m: float
     unit_weight_kn_m3: float
 
     @property
     def pressure_kpa(self) -> float:
-        # The load it puts on the deck, per square metre.
         return self.unit_weight_kn_m3 * self.thickness_m
 
 
 @dataclass(frozen=True)
 class DeckSlab:
     thickness_m: float
-
-    # From the outer girder out to the edge of the deck.
     overhang_m: float
-
     wearing_course_thickness_m: float
 
 
@@ -85,63 +79,51 @@ class Girders:
 
 @dataclass(frozen=True)
 class Bracing:
-    # Cross bracing between the girders, at a number of stations along the span.
     station_count: int
     area_m2: float
 
-    # One of:
-    #   X    X diagonals only
-    #   XT   X diagonals and a top chord
-    #   XB   X diagonals and a bottom chord
-    #   XTB  X diagonals with both chords
-    #   K    K bracing and a bottom chord
-    #   KT   K bracing with both chords
-    arrangement: str = "XT"
+    arrangement: str = X_BRACING_WITH_TOP_CHORD
 
     @property
     def is_k_braced(self) -> bool:
-        return self.arrangement.upper().startswith("K")
+        return self.arrangement.upper().startswith(K_BRACING)
 
     @property
     def is_x_braced(self) -> bool:
-        return self.arrangement.upper().startswith("X")
+        return self.arrangement.upper().startswith(X_BRACING)
 
     @property
     def has_top_chord(self) -> bool:
-        return self.arrangement.upper() in ("XT", "XTB", "KT")
+        return self.arrangement.upper() in (
+            X_BRACING_WITH_TOP_CHORD,
+            X_BRACING_WITH_BOTH_CHORDS,
+            K_BRACING_WITH_TOP_CHORD,
+        )
 
     @property
     def has_bottom_chord(self) -> bool:
-        return self.arrangement.upper() in ("XB", "XTB")
+        return self.arrangement.upper() in (
+            X_BRACING_WITH_BOTTOM_CHORD,
+            X_BRACING_WITH_BOTH_CHORDS,
+        )
 
 
 @dataclass(frozen=True)
 class MeshSettings:
-    # How finely the deck is divided.
-
-    # Elements along the span between one bracing station and the next.
     panels_between_braces: int
-
-    # Elements across the width are made no larger than this.
     target_size_across_width_m: float
 
 
 @dataclass(frozen=True)
 class AddedDeadLoads:
-    # The things sitting on the slab that are not the slab.
     footpath: SurfacingLayer = SurfacingLayer(0.150, 24.0)
     kerb: SurfacingLayer = SurfacingLayer(0.300, 24.0)
     median: SurfacingLayer = SurfacingLayer(0.250, 24.0)
-
-    # A crash barrier is concrete like a kerb, so it starts from the kerb's figures. A
-    # real barrier is heavier than that - state its own thickness here rather than
-    # letting the default stand.
     crash_barrier: SurfacingLayer = SurfacingLayer(0.300, 24.0)
 
 
 @dataclass(frozen=True)
 class BridgeInput:
-    # A complete description of a plate girder bridge.
     span_m: float
     cross_section: DeckCrossSection
     deck: DeckSlab

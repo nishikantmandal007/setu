@@ -1,6 +1,3 @@
-# Building every element the bridge model needs: the deck shells, the girder beams, and
-# the truss members that make up the cross bracing.
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -20,15 +17,12 @@ from .model_tags import (
 )
 
 if TYPE_CHECKING:
-    # Only for the type hints below - importing BridgeModel at runtime would be circular,
-    # since build_model.py imports build_bracing from here.
     from .build_model import BridgeModel
 
 
 def build_deck_shells(
     ops: SolverCommands, bridge: BridgeInput, mesh: DeckMesh, deck_nodes: dict
 ) -> dict[tuple[int, int], int]:
-    # A shell element in every square of the deck grid.
     ops.section(
         "ElasticMembranePlateSection",
         DECK_SECTION,
@@ -63,7 +57,6 @@ def build_girder_beams(
     girder: GirderProperties,
     girder_nodes: dict,
 ) -> dict[tuple[int, int], int]:
-    # A beam element between every pair of stations, on every girder.
     ops.geomTransf("Linear", GIRDER_TRANSFORM, *GIRDER_LOCAL_AXIS)
 
     tag = first_girder_element_tag(mesh)
@@ -93,7 +86,6 @@ def build_girder_beams(
 def build_bracing(
     ops: SolverCommands, bridge: BridgeInput, mesh: DeckMesh, model: BridgeModel
 ) -> dict[tuple[int, int, str], int]:
-    # Truss members between neighbouring girders at each bracing station.
     ops.uniaxialMaterial("Elastic", BRACE_MATERIAL, bridge.steel.elastic_modulus_kpa)
 
     tag = first_brace_element_tag(bridge, mesh)
@@ -124,7 +116,6 @@ def brace_panel_corners(model: BridgeModel, k: int, n: int) -> dict[str, int]:
 def brace_members(
     bridge: BridgeInput, model: BridgeModel, corners: dict[str, int], k: int, n: int
 ) -> list[tuple[str, tuple[int, int]]]:
-    # Returns which members make up one bracing panel, and what to call each.
     members: list[tuple[str, tuple[int, int]]] = []
 
     if bridge.bracing.is_x_braced:

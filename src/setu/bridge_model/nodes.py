@@ -1,6 +1,3 @@
-# Placing every node the bridge model needs: the deck grid, the girders below it, and the
-# brace nodes at each bracing station.
-
 from __future__ import annotations
 
 from .bridge_input import BridgeInput
@@ -17,7 +14,6 @@ from .model_tags import (
 
 
 def place_deck_nodes(ops: SolverCommands, mesh: DeckMesh) -> dict[tuple[int, int], int]:
-    # A node wherever a station along the span crosses a station across the width.
     deck_level_m = 0.0
     nodes = {}
 
@@ -33,7 +29,6 @@ def place_deck_nodes(ops: SolverCommands, mesh: DeckMesh) -> dict[tuple[int, int
 def place_girder_nodes(
     ops: SolverCommands, bridge: BridgeInput, mesh: DeckMesh, girder: GirderProperties
 ) -> dict[tuple[int, int], int]:
-    # A node on every girder at every station along the span.
     base = first_girder_node_tag(mesh)
     level_m = girder_centroid_level_m(bridge, girder)
 
@@ -50,7 +45,6 @@ def place_girder_nodes(
 def place_brace_nodes(
     ops: SolverCommands, bridge: BridgeInput, mesh: DeckMesh, girder: GirderProperties
 ) -> tuple[dict[tuple[int, int], int], dict[tuple[int, int], int]]:
-    # A node at the top and bottom of every girder, at every bracing station.
     stations = bridge.bracing.station_count
 
     bottom_base = first_bottom_brace_node_tag(bridge, mesh)
@@ -77,7 +71,6 @@ def place_brace_nodes(
 def place_k_brace_nodes(
     ops: SolverCommands, bridge: BridgeInput, mesh: DeckMesh, girder: GirderProperties
 ) -> dict[tuple[int, int], int]:
-    # K bracing meets at a point midway between two girders, so that point needs a node.
     if not bridge.bracing.is_k_braced:
         return {}
 
@@ -97,6 +90,5 @@ def place_k_brace_nodes(
 
 
 def girder_centroid_level_m(bridge: BridgeInput, girder: GirderProperties) -> float:
-    # How far the girder's centroid sits below the middle of the slab.
     top_of_girder_to_centroid_m = girder.depth_m - girder.neutral_axis_from_bottom_m
     return -(top_of_girder_to_centroid_m + bridge.deck.thickness_m / 2)

@@ -1,5 +1,3 @@
-# Building the bridge: its cross-section, its mesh, its members and its own weight.
-
 from .bridge_input import (
     AddedDeadLoads,
     Bracing,
