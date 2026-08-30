@@ -1,5 +1,6 @@
 import numpy as np
 from src.models.deck import DeckModel
+from src.utils.helpers import report, log
 KERB_PREFIX = "kerb"
 MEDIAN_PREFIX = "median"
 CRASH_BARRIER_PREFIX = "crash_barrier"
