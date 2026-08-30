@@ -29,6 +29,8 @@ target-version = "py311"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM", "N"]
+# SIM108 wants ternaries where a plain if/else reads more clearly.
+ignore = ["SIM108"]
 
 [tool.mypy]
 packages = ["setu"]
