@@ -1,46 +1,49 @@
-# The beam element stiffness and rotation matrices influence_solver builds each adjoint
-# load from. Pure linear algebra, with no solver dependency, so it can be tested and used
-# on a machine with no finite element backend installed at all.
-
 from __future__ import annotations
 
 import numpy as np
 
 from ..deck_model import GirderSection
 
-# Degree of freedom that carries the span bending moment, once the response is read off a
-# column of the stiffness matrix built below. 5 is the local rotation of the element's
-# first node in the strong-axis group (1, 5, 7, 11) that beam_stiffness_matrix builds; 4 is
-# the same node's rotation in the weak-axis group (2, 4, 8, 10).
-BENDING_MOMENT_ABOUT_STRONG_AXIS = 5
-BENDING_MOMENT_ABOUT_WEAK_AXIS = 4
+DEGREES_OF_FREEDOM = 12
+
+AXIAL_DOFS = (0, 6)
+TORSION_DOFS = (3, 9)
+
+STRONG_AXIS_SHEAR_DOFS = (1, 7)
+STRONG_AXIS_ROTATION_DOFS = (5, 11)
+WEAK_AXIS_SHEAR_DOFS = (2, 8)
+WEAK_AXIS_ROTATION_DOFS = (4, 10)
+
+BENDING_MOMENT_ABOUT_STRONG_AXIS = STRONG_AXIS_ROTATION_DOFS[0]
+BENDING_MOMENT_ABOUT_WEAK_AXIS = WEAK_AXIS_ROTATION_DOFS[0]
+
+GIRDER_LOCAL_AXIS_ALONG_Z = (0.0, 0.0, 1.0)
 
 
 def beam_stiffness_matrix(length_m: float, section: GirderSection) -> np.ndarray:
-    # Returns the 12x12 stiffness matrix of a beam element, in its own axes.
-    #
-    # Degrees of freedom run node i then node j, each as three displacements then three
-    # rotations. Bending about the strong axis pairs degrees of freedom (1, 5, 7, 11);
-    # about the weak axis, (2, 4, 8, 10).
+    # Degrees of freedom run node i then node j, each three displacements then three
+    # rotations.
     length = float(length_m)
     modulus = section.elastic_modulus_kpa
-    stiffness = np.zeros((12, 12))
+    stiffness = np.zeros((DEGREES_OF_FREEDOM, DEGREES_OF_FREEDOM))
 
+    axial_i, axial_j = AXIAL_DOFS
     axial = modulus * section.area_m2 / length
-    stiffness[0, 0] = stiffness[6, 6] = axial
-    stiffness[0, 6] = stiffness[6, 0] = -axial
+    stiffness[axial_i, axial_i] = stiffness[axial_j, axial_j] = axial
+    stiffness[axial_i, axial_j] = stiffness[axial_j, axial_i] = -axial
 
+    torsion_i, torsion_j = TORSION_DOFS
     torsion = section.shear_modulus_kpa * section.torsion_constant_m4 / length
-    stiffness[3, 3] = stiffness[9, 9] = torsion
-    stiffness[3, 9] = stiffness[9, 3] = -torsion
+    stiffness[torsion_i, torsion_i] = stiffness[torsion_j, torsion_j] = torsion
+    stiffness[torsion_i, torsion_j] = stiffness[torsion_j, torsion_i] = -torsion
 
     add_bending_terms(
         stiffness,
         modulus,
         section.strong_axis_inertia_m4,
         length,
-        shear_dofs=(1, 7),
-        rotation_dofs=(5, 11),
+        shear_dofs=STRONG_AXIS_SHEAR_DOFS,
+        rotation_dofs=STRONG_AXIS_ROTATION_DOFS,
         coupling_sign=+1,
     )
     add_bending_terms(
@@ -48,8 +51,8 @@ def beam_stiffness_matrix(length_m: float, section: GirderSection) -> np.ndarray
         modulus,
         section.weak_axis_inertia_m4,
         length,
-        shear_dofs=(2, 8),
-        rotation_dofs=(4, 10),
+        shear_dofs=WEAK_AXIS_SHEAR_DOFS,
+        rotation_dofs=WEAK_AXIS_ROTATION_DOFS,
         coupling_sign=-1,
     )
     return stiffness
@@ -65,11 +68,8 @@ def add_bending_terms(
     rotation_dofs: tuple[int, int],
     coupling_sign: int,
 ) -> None:
-    # Fills in one bending plane of the beam stiffness matrix.
-    #
-    # The two planes have the same four terms and differ only in which degrees of freedom
-    # they act on and in the sign of the shear-rotation coupling, which flips because the
-    # two local axes point opposite ways round the member.
+    # The two bending planes share these four terms and differ only in the coupling sign,
+    # because their local axes point opposite ways round the member.
     shear = 12 * modulus * inertia_m4 / length**3
     coupling = coupling_sign * 6 * modulus * inertia_m4 / length**2
     near_rotation = 4 * modulus * inertia_m4 / length
@@ -81,12 +81,13 @@ def add_bending_terms(
     stiffness[shear_i, shear_i] = stiffness[shear_j, shear_j] = shear
     stiffness[shear_i, shear_j] = stiffness[shear_j, shear_i] = -shear
 
-    for shear_dof, rotation_dof, sign in (
+    coupled_pairs = (
         (shear_i, rotation_i, +1),
         (shear_i, rotation_j, +1),
         (shear_j, rotation_i, -1),
         (shear_j, rotation_j, -1),
-    ):
+    )
+    for shear_dof, rotation_dof, sign in coupled_pairs:
         stiffness[shear_dof, rotation_dof] = sign * coupling
         stiffness[rotation_dof, shear_dof] = sign * coupling
 
@@ -95,12 +96,9 @@ def add_bending_terms(
 
 
 def element_rotation_matrix(
-    local_axis: tuple[float, float, float], along: tuple[float, float, float] = (1.0, 0.0, 0.0)
+    local_axis: tuple[float, float, float],
+    along: tuple[float, float, float] = (1.0, 0.0, 0.0),
 ) -> np.ndarray:
-    # Returns the 12x12 matrix turning local element axes into global axes.
-    #
-    # For a girder running along the span with the usual local axis this is the identity,
-    # but a skewed or transverse member needs the real rotation.
     x_axis = np.array(along, float)
     x_axis = x_axis / np.linalg.norm(x_axis)
 
@@ -110,17 +108,14 @@ def element_rotation_matrix(
 
     axes = np.vstack([x_axis, y_axis, z_axis])
 
-    rotation = np.zeros((12, 12))
+    rotation = np.zeros((DEGREES_OF_FREEDOM, DEGREES_OF_FREEDOM))
     for corner in range(4):
-        rotation[3 * corner : 3 * corner + 3, 3 * corner : 3 * corner + 3] = axes
+        starts_at = 3 * corner
+        rotation[starts_at : starts_at + 3, starts_at : starts_at + 3] = axes
     return rotation
 
 
 def moment_dof_for(local_axis: tuple[float, float, float]) -> int:
-    # Returns which degree of freedom carries the span bending moment.
-    #
-    # Which of the two bending planes carries the span moment depends on how the girder's
-    # local axes were set up in the solver.
-    if tuple(local_axis) == (0.0, 0.0, 1.0):
+    if tuple(local_axis) == GIRDER_LOCAL_AXIS_ALONG_Z:
         return BENDING_MOMENT_ABOUT_STRONG_AXIS
     return BENDING_MOMENT_ABOUT_WEAK_AXIS
