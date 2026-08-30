@@ -1,9 +1,3 @@
-# How finely setu samples candidate positions. These defaults are numbers we
-# chose, not IRC:6 values - every code number lives in irc_code_rules/code_tables.py.
-# The searches enrich these grids with the exact breakpoints of the response
-# curves, so raising the defaults costs time and buys nothing; they exist so an
-# unusual deck can be sampled more finely if it ever needs to be.
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -11,31 +5,14 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class SamplingSettings:
-    # Grid densities for the transverse and longitudinal searches.
-
-    sliding_steps: int = 41
-    # How many sliding offsets to try for a lane arrangement.
-
-    float_steps: int = 41
-    # How many positions to try for a 70R vehicle floating inside its zone.
-
-    transverse_steps: int = 241
-    # Uniform fill across the deck width, on top of the exact breakpoints.
-
-    positions_per_chunk: int = 192
-    # Longitudinal positions evaluated at once. Bounds peak memory.
-
-    patch_steps_along_span: int = 4
-    # Point loads along a tracked vehicle's contact patch.
-
-    patch_steps_across_width: int = 2
-    # Point loads across a tracked vehicle's contact patch.
-
-    udl_cells_along_span: int = 2
-    # Integration cells per mesh interval, along the span, for the residual UDL.
-
-    udl_cells_across_width: int = 4
-    # Integration cells per mesh interval, across the width, for the residual UDL.
+    sliding_offsets_to_try: int = 41
+    positions_inside_a_70r_zone_to_try: int = 41
+    positions_across_the_deck_to_try: int = 241
+    span_positions_evaluated_at_once: int = 192
+    point_loads_along_a_track: int = 4
+    point_loads_across_a_track: int = 2
+    udl_cells_per_mesh_interval_along_span: int = 2
+    udl_cells_per_mesh_interval_across_width: int = 4
 
 
 DEFAULT_SAMPLING = SamplingSettings()

@@ -1,9 +1,3 @@
-# The neutral, solver-agnostic description of a meshed deck that influence_surfaces
-# consumes - bridge_model builds one, and neither knows about the other. Meshed as a grid:
-# length_mesh_m holds stations along the span, width_mesh_m across the width, and
-# deck_nodes[(i, j)] is the solver's node tag where station i crosses station j. x runs
-# along the span, y is vertical positive upwards, z runs across the deck from its left edge.
-
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -12,54 +6,44 @@ import numpy as np
 
 from .errors import InfluenceSurfaceError
 
+STATIONS_NEEDED_IN_EACH_DIRECTION = 2
+NO_SKEW = 0.0
+GIRDER_LOCAL_AXIS_ALONG_Z = (0.0, 0.0, 1.0)
+
 
 @dataclass(frozen=True)
 class GirderSection:
-    # The properties of one girder, as the element stiffness needs them.
     area_m2: float
     torsion_constant_m4: float
-
-    # Iyy - bending about the girder's weak axis.
     weak_axis_inertia_m4: float
-
-    # Izz - bending about the girder's strong axis, the one that carries the span.
     strong_axis_inertia_m4: float
-
     elastic_modulus_kpa: float
     shear_modulus_kpa: float
 
 
 @dataclass(frozen=True, eq=False)
 class DeckModel:
-    # A meshed deck that has been built in a solver and is ready to be loaded.
-
-    # Mesh stations along the span, increasing.
     length_mesh_m: np.ndarray
-
-    # Mesh stations across the deck width, increasing.
     width_mesh_m: np.ndarray
-
-    # Solver node tag at each (station along span, station across width).
     deck_nodes: dict[tuple[int, int], int]
-
     girder_section: GirderSection
+    girder_local_axis: tuple[float, float, float] = GIRDER_LOCAL_AXIS_ALONG_Z
 
-    # The vector fixing the girder element's local axes in the solver.
-    girder_local_axis: tuple[float, float, float] = (0.0, 0.0, 1.0)
+    # A support line runs along x = skew * z, so a skewed deck is a parallelogram.
+    skew: float = NO_SKEW
 
-    # Deck skew as a shear: a support line runs along x = skew * z. Zero for a square deck;
-    # a skewed deck is a parallelogram, and this is what lets the influence surface map
-    # global coordinates back onto its own grid.
-    skew: float = 0.0
-
-    # Solver element tag at each (girder, station along span), when there are girders.
-    # frozen=True protects the fields themselves, not what they point to - this dict is
-    # still mutated in place by bridge_model/build_model.py after the model is built, via
-    # .update(). Frozen in name only; do not rely on it being immutable.
+    # Frozen in name only: build_model.py still fills this in place after the model is built.
     girder_elements: dict[tuple[int, int], int] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        if len(self.length_mesh_m) < 2 or len(self.width_mesh_m) < 2:
+        too_few_along_the_span = (
+            len(self.length_mesh_m) < STATIONS_NEEDED_IN_EACH_DIRECTION
+        )
+        too_few_across_the_width = (
+            len(self.width_mesh_m) < STATIONS_NEEDED_IN_EACH_DIRECTION
+        )
+
+        if too_few_along_the_span or too_few_across_the_width:
             raise InfluenceSurfaceError(
                 "a deck mesh needs at least two stations in each direction, got "
                 f"{len(self.length_mesh_m)} along the span and "

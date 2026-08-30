@@ -1,20 +1,3 @@
-# The worst legal position of the IRC:6 vehicles on a deck.
-#
-# This is what setu is for. Give it an influence surface for the response you care about
-# and a description of the deck width, and it returns where the vehicles have to stand to
-# do the most damage the code allows them to do.
-#
-# The search reads as one sentence:
-#
-#     split the deck into carriageways,
-#     build a response curve for every kind of vehicle that may be placed,
-#     find the worst placement across the width,
-#     and describe it.
-#
-# What each of those steps hides is a search of its own - along the span for the worst
-# train in a lane, across the width for the worst arrangement of lanes - and both are
-# exact. See `vehicle_placement.along_span` and `vehicle_placement.across_carriageway`.
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -22,7 +5,12 @@ from typing import Any
 
 import numpy as np
 
-from .deck_cross_section import Carriageway, DeckCrossSection
+from .adverse_direction import BIGGER_IS_WORSE
+from .deck_cross_section import (
+    READ_EACH_CARRIAGEWAY_ON_ITS_OWN,
+    Carriageway,
+    DeckCrossSection,
+)
 from .influence_surfaces.surface import InfluenceSurface
 from .irc_code_rules.area_loads import footway_response, needs_residual_udl
 from .irc_code_rules.vehicles import Vehicle, vehicles_allowed_in_each_block
@@ -33,6 +21,55 @@ from .vehicle_placement.block_envelopes import BlockEnvelope, envelope_every_blo
 from .vehicle_placement.response_curve import VehicleResponses, positions_across_width
 from .vehicle_placement.resultant_at_mid_width import centre_the_resultant
 
+NO_FOOTWAY_LOAD = 0.0
+
+
+@dataclass(frozen=True)
+class SearchOptions:
+    adverse: str
+    vehicles: dict[str, Vehicle] | None
+    carriageways_read_as: str
+    material: str
+    member_span_m: float | None
+    wearing_course_thickness_m: float
+    apply_impact: bool
+    apply_lane_reduction: bool
+    apply_residual_udl: bool
+    apply_footway_load: bool
+    allow_trains: bool
+    allow_reversed_vehicles: bool
+    follow_combination_drawings: bool
+    sampling: SamplingSettings
+
+
+@dataclass(frozen=True)
+class EnvelopedCurves:
+    responses: VehicleResponses
+    permitted: dict[str, list[Vehicle]]
+    per_carriageway: list[dict[str, BlockEnvelope]]
+    z_positions_m: np.ndarray
+
+
+@dataclass(frozen=True)
+class WorstAcrossTheWidth:
+    placements: list[TransversePlacement]
+    footway: float
+    udl_applied: bool
+    centred_response: float | None
+
+
+@dataclass(frozen=True)
+class PlacementContext:
+    curves_per_carriageway: list[dict[str, BlockEnvelope]]
+    responses: VehicleResponses
+    permitted: dict[str, list[Vehicle]]
+    surface: InfluenceSurface
+    adverse: str
+    carriageways_read_as: str
+    footway: float
+    udl_applied: bool
+    centred_response: float | None
+
 
 def find_critical_position(
     surface: InfluenceSurface,
@@ -40,8 +77,6 @@ def find_critical_position(
     span_m: float,
     **options: Any,
 ) -> CriticalPosition:
-    # Takes the same options as rank_all_positions, which is where they are written out -
-    # this is that search, answered with its first result.
     return rank_all_positions(surface, cross_section, span_m, **options)[0]
 
 
@@ -50,38 +85,21 @@ def rank_all_positions(
     cross_section: DeckCrossSection,
     span_m: float,
     *,
-    # Which direction hurts: "maximum" for a response that is worse the more positive it
-    # gets, "minimum" for one that is worse the more negative.
-    adverse: str = "maximum",
+    adverse: str = BIGGER_IS_WORSE,
     vehicles: dict[str, Vehicle] | None = None,
-    # "separate" reads each carriageway on its own, "combined" reads them as one. On a deck
-    # with a median this changes the design load by 15 to 30 per cent, so it is stated
-    # rather than guessed at.
-    carriageways_read_as: str = "separate",
+    carriageways_read_as: str = READ_EACH_CARRIAGEWAY_ON_ITS_OWN,
     material: str = "steel",
-    # The effective span of the member being checked, when it is not the span of the
-    # bridge. Clause 208.5.
     member_span_m: float | None = None,
     wearing_course_thickness_m: float = 0.0,
     apply_impact: bool = True,
     apply_lane_reduction: bool = True,
     apply_residual_udl: bool = True,
     apply_footway_load: bool = False,
-    # Whether one lane may carry several vehicles nose to tail.
     allow_trains: bool = True,
-    # Whether a vehicle may head either way along the span. Clause 204.1.4.
     allow_reversed_vehicles: bool = True,
-    # Keep to the arrangements the standard combination drawings show: a 70R always
-    # reaching a kerb, and never more than two on one carriageway. On by default, so
-    # results match those drawings. Turning it off searches every arrangement the geometry
-    # allows, which can only be more adverse.
     follow_combination_drawings: bool = True,
     sampling: SamplingSettings = DEFAULT_SAMPLING,
 ) -> list[CriticalPosition]:
-    # Returns every legal way of loading the deck, worst first. find_critical_position is
-    # the first of these - this one is for seeing why it won, what else was considered, and
-    # by how much it lost.
-
     options = SearchOptions(
         adverse=adverse,
         vehicles=vehicles,
@@ -99,18 +117,12 @@ def rank_all_positions(
         sampling=sampling,
     )
 
-    # split the deck into carriageways
     carriageways = cross_section.carriageways(split=carriageways_read_as)
-
-    # build a response curve for every kind of vehicle that may be placed
     curves = response_curve_for_every_vehicle(surface, carriageways, span_m, options)
-
-    # find the worst placement across the width
     worst = worst_placement_across_the_width(
         surface, cross_section, carriageways, curves, options
     )
 
-    # and describe it
     context = PlacementContext(
         curves_per_carriageway=curves.per_carriageway,
         responses=curves.responses,
@@ -125,54 +137,12 @@ def rank_all_positions(
     return [describe(placement, context) for placement in worst.placements]
 
 
-# ---------------------------------------------------------------------------
-# How The Search Is Being Run
-# ---------------------------------------------------------------------------
-
-
-@dataclass(frozen=True)
-class SearchOptions:
-    # Every option rank_all_positions was given, carried as one thing so the steps below
-    # take what they are for rather than fourteen flags each.
-    adverse: str
-    vehicles: dict[str, Vehicle] | None
-    carriageways_read_as: str
-    material: str
-    member_span_m: float | None
-    wearing_course_thickness_m: float
-    apply_impact: bool
-    apply_lane_reduction: bool
-    apply_residual_udl: bool
-    apply_footway_load: bool
-    allow_trains: bool
-    allow_reversed_vehicles: bool
-    follow_combination_drawings: bool
-    sampling: SamplingSettings
-
-
-# ---------------------------------------------------------------------------
-# Response Curve For Every Vehicle
-# ---------------------------------------------------------------------------
-
-
-@dataclass(frozen=True)
-class EnvelopedCurves:
-    # Everything that came out of building the response curves, kept together because
-    # describing a placement later needs to look a vehicle up again by name.
-    responses: VehicleResponses
-    permitted: dict[str, list[Vehicle]]
-    per_carriageway: list[dict[str, BlockEnvelope]]
-    z_positions_m: np.ndarray
-
-
 def response_curve_for_every_vehicle(
     surface: InfluenceSurface,
     carriageways: list[Carriageway],
     span_m: float,
     options: SearchOptions,
 ) -> EnvelopedCurves:
-    # Builds a response curve for every kind of vehicle that may be placed, enveloped to
-    # its worst at each position, one set of curves per carriageway.
     permitted = vehicles_allowed_in_each_block(
         options.vehicles, options.allow_reversed_vehicles
     )
@@ -188,12 +158,13 @@ def response_curve_for_every_vehicle(
         sampling=options.sampling,
     )
 
+    every_vehicle = [vehicle for choices in permitted.values() for vehicle in choices]
     z_positions_m = positions_across_width(
         responses,
-        [vehicle for choices in permitted.values() for vehicle in choices],
+        every_vehicle,
         z_from_m=min(carriageway.left_m for carriageway in carriageways),
         z_to_m=max(carriageway.right_m for carriageway in carriageways),
-        steps=options.sampling.transverse_steps,
+        steps=options.sampling.positions_across_the_deck_to_try,
     )
 
     per_carriageway = [
@@ -218,21 +189,6 @@ def response_curve_for_every_vehicle(
     )
 
 
-# ---------------------------------------------------------------------------
-# Worst Placement Across The Width
-# ---------------------------------------------------------------------------
-
-
-@dataclass(frozen=True)
-class WorstAcrossTheWidth:
-    # The ranked list of placements, and the numbers the code asks be reported alongside
-    # every one of them.
-    placements: list[TransversePlacement]
-    footway: float
-    udl_applied: bool
-    centred_response: float | None
-
-
 def worst_placement_across_the_width(
     surface: InfluenceSurface,
     cross_section: DeckCrossSection,
@@ -240,8 +196,6 @@ def worst_placement_across_the_width(
     curves: EnvelopedCurves,
     options: SearchOptions,
 ) -> WorstAcrossTheWidth:
-    # Runs the transverse sweep, then the two things the code asks be checked alongside it:
-    # the footway load and the resultant-centred condition.
     placements = find_worst_placement(
         carriageways,
         curves.per_carriageway,
@@ -252,16 +206,13 @@ def worst_placement_across_the_width(
         follow_combination_drawings=options.follow_combination_drawings,
     )
 
-    footway = (
-        footway_response(
+    if options.apply_footway_load:
+        footway = footway_response(
             surface, cross_section, options.adverse, sampling=options.sampling
         )
-        if options.apply_footway_load
-        else 0.0
-    )
+    else:
+        footway = NO_FOOTWAY_LOAD
 
-    # The second transverse condition the code asks for. Reported, never raced against the
-    # sweep - it is one position the sweep has already been over.
     centred = centre_the_resultant(
         carriageways,
         curves.per_carriageway,
@@ -269,9 +220,7 @@ def worst_placement_across_the_width(
         apply_lane_reduction=options.apply_lane_reduction,
         follow_combination_drawings=options.follow_combination_drawings,
     )
-    centred_response = (
-        sum(placed.response for placed in centred) + footway if centred else None
-    )
+    centred_response = total_with_the_resultant_centred(centred, footway)
 
     udl_applied = options.apply_residual_udl and any(
         needs_residual_udl(carriageway.width_m) for carriageway in carriageways
@@ -285,36 +234,23 @@ def worst_placement_across_the_width(
     )
 
 
-# ---------------------------------------------------------------------------
-# Describing A Placement
-# ---------------------------------------------------------------------------
-
-
-@dataclass(frozen=True)
-class PlacementContext:
-    # Everything needed to turn a swept placement into a CriticalPosition that stays the
-    # same across every placement in the ranked list - only the placement itself varies,
-    # so this is what keeps describe() from taking ten positional arguments.
-    curves_per_carriageway: list[dict[str, BlockEnvelope]]
-    responses: VehicleResponses
-    permitted: dict[str, list[Vehicle]]
-    surface: InfluenceSurface
-    adverse: str
-    carriageways_read_as: str
-    footway: float
-    udl_applied: bool
-    centred_response: float | None
+def total_with_the_resultant_centred(
+    centred: list, footway: float
+) -> float | None:
+    if not centred:
+        return None
+    return sum(placed.response for placed in centred) + footway
 
 
 def describe(placement: TransversePlacement, context: PlacementContext) -> CriticalPosition:
-    # Turns one swept placement into a result anyone can check or redraw.
     placed_vehicles = []
     pattern = []
 
     for carriageway, case in enumerate(placement.per_carriageway):
         pattern.append(" + ".join(case.lane_pattern))
 
-        for block, z_centre_m in zip(case.lane_pattern, case.vehicle_centres_m, strict=True):
+        lanes = zip(case.lane_pattern, case.vehicle_centres_m, strict=True)
+        for block, z_centre_m in lanes:
             winner = context.curves_per_carriageway[carriageway][block].winner_at(z_centre_m)
             placed_vehicles.append(
                 place_exactly(
@@ -349,9 +285,8 @@ def place_exactly(
     z_centre_m: float,
     adverse: str,
 ) -> VehiclePlacement:
-    # The curves were sampled across the width, but the search is free to settle between
-    # two samples. Rather than interpolate a position no vehicle actually occupied, the
-    # winning vehicle's curve is worked out once more at the exact position it ended up.
+    # The search can settle between two samples, so the winner's curve is worked out once
+    # more at the exact position it ended up rather than interpolated.
     vehicle = next(choice for choice in choices if choice.name == winner)
     exactly_here = responses.for_vehicle(vehicle, np.array([z_centre_m]), adverse)
 

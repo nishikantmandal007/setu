@@ -1,8 +1,3 @@
-# The deck read across its width as named, ordered strips, left to right from the deck's
-# left edge - the way an engineer would draw it. z is measured across the deck from that
-# same left edge. This is the file an OsdagBridge maintainer will recognise fastest: it
-# plays the part CrossSectionLayout plays there, walking named components left to right.
-
 from __future__ import annotations
 
 from collections.abc import Mapping
@@ -11,22 +6,20 @@ from dataclasses import dataclass
 from .errors import CrossSectionError
 from .irc_code_rules.code_tables import ROUND_TO_DECIMALS
 
-# A strip is classified by its name prefix: carriageway* carries traffic, footway*/
-# footpath* carries the Clause 206 crowd, and everything else - kerbs, medians, crash
-# barriers - takes up width and carries no live load.
 CARRIAGEWAY_PREFIX = "carriageway"
 FOOTWAY_PREFIXES = ("footway", "footpath")
-
-# The remaining two prefixes dead_loads.surfacing_pressure_at dispatches on, to decide what
-# added surfacing sits on a kerb or a median.
 KERB_PREFIX = "kerb"
 MEDIAN_PREFIX = "median"
 CRASH_BARRIER_PREFIX = "crash_barrier"
 
+READ_EACH_CARRIAGEWAY_ON_ITS_OWN = "separate"
+READ_ALL_CARRIAGEWAYS_AS_ONE = "combined"
+
+DECK_LEFT_EDGE_M = 0.0
+
 
 @dataclass(frozen=True)
 class DeckStrip:
-    # One named strip of the deck, and where it sits across the width.
     name: str
     width_m: float
     z_from_m: float
@@ -43,7 +36,6 @@ class DeckStrip:
 
 @dataclass(frozen=True)
 class Carriageway:
-    # A stretch of deck that traffic runs on, and where it starts and ends.
     left_m: float
     right_m: float
 
@@ -54,14 +46,12 @@ class Carriageway:
 
 @dataclass(frozen=True)
 class DeckCrossSection:
-    # The whole deck width, as ordered strips.
     strips: tuple[DeckStrip, ...]
 
     @classmethod
     def from_widths(cls, widths: Mapping[str, float]) -> DeckCrossSection:
-        # Walks the named widths from the left deck edge, building a strip for each.
         strips = []
-        edge_m = 0.0
+        edge_m = DECK_LEFT_EDGE_M
 
         for name, width_m in widths.items():
             if width_m < 0:
@@ -94,7 +84,6 @@ class DeckCrossSection:
         return any(strip.carries_traffic for strip in self.strips)
 
     def strip_named(self, name: str) -> DeckStrip | None:
-        # No caller in setu itself - public API for a caller that addresses a strip by name.
         for strip in self.strips:
             if strip.name.startswith(name):
                 return strip
@@ -103,27 +92,20 @@ class DeckCrossSection:
     def footways(self) -> list[DeckStrip]:
         return [strip for strip in self.strips if strip.carries_pedestrians]
 
-    def carriageways(self, *, split: str = "separate") -> list[Carriageway]:
-        # split is stringly-typed - two magic values, checked by the trailing raise below -
-        # because it propagates up to rank_all_positions(carriageways_read_as=...), which is
-        # public API. Left exactly as it is.
-        #
-        # "separate" reads each carriageway on its own, which is right for a deck with a
-        # median: a carriageway under 5.30 m attracts its own residual UDL beside the
-        # vehicle, so two narrow carriageways read separately can be more onerous than the
-        # same width read as one. Whether a median separates the traffic changes the design
-        # load by 15 to 30 per cent, so setu never guesses - it is stated here.
-        #
-        # "combined" reads all the traffic strips as one continuous stretch instead.
+    def carriageways(
+        self, *, split: str = READ_EACH_CARRIAGEWAY_ON_ITS_OWN
+    ) -> list[Carriageway]:
+        # A carriageway under 5.30 m attracts its own residual UDL, so two narrow
+        # carriageways read separately can be more onerous than the same width read as one.
         stretches = [
             Carriageway(left_m=strip.z_from_m, right_m=strip.z_to_m)
             for strip in self.strips
             if strip.carries_traffic
         ]
 
-        if split == "separate":
+        if split == READ_EACH_CARRIAGEWAY_ON_ITS_OWN:
             return stretches
-        if split == "combined":
+        if split == READ_ALL_CARRIAGEWAYS_AS_ONE:
             return [Carriageway(left_m=stretches[0].left_m, right_m=stretches[-1].right_m)]
 
         raise CrossSectionError(f"split must be 'separate' or 'combined', got {split!r}")
