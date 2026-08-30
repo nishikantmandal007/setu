@@ -1,12 +1,6 @@
-# Colours and the lazy matplotlib import shared by every picture in this package.
-
 from __future__ import annotations
 
 from typing import Any
-
-# ---------------------------------------------------------------------------
-# Colours
-# ---------------------------------------------------------------------------
 
 STRIP_COLOURS = {
     "carriageway": "#3d4451",
@@ -21,8 +15,6 @@ ADVERSE_COLOUR = "#c0392b"
 HELPFUL_COLOUR = "#2471a3"
 VEHICLE_COLOUR = "#f0b323"
 
-# How many points draw a smooth curve down the span - a drawing proportion, not a value
-# from the code, so it lives here rather than in sampling.py.
 INFLUENCE_LINE_SAMPLES = 600
 
 
@@ -34,7 +26,6 @@ def strip_colour(name: str) -> str:
 
 
 def adverse_colourmap() -> Any:
-    # Blue where a load helps, red where it hurts, pale in between.
     from matplotlib.colors import LinearSegmentedColormap
 
     return LinearSegmentedColormap.from_list(
@@ -42,13 +33,6 @@ def adverse_colourmap() -> Any:
     )
 
 
-# ---------------------------------------------------------------------------
-# Matplotlib Access
-# ---------------------------------------------------------------------------
-
-# matplotlib ships no usable type stubs, so its objects are aliased to Any here rather
-# than described with a Protocol that mypy could not check - the same honest approach
-# model_tags.SolverCommands takes for openseespy.
 Axes = Any
 Figure = Any
 

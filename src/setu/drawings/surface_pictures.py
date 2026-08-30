@@ -1,6 +1,3 @@
-# The two pictures that read the influence surface directly: its shape across the whole
-# deck, and the influence line down the span through the governing lane.
-
 from __future__ import annotations
 
 import numpy as np
@@ -24,9 +21,6 @@ from .palette import (
 def draw_influence_surface(
     surface: InfluenceSurface, critical: CriticalPosition | None = None, ax: Axes = None
 ) -> Axes:
-    # Height is the response to a unit load at that point. Red is where a load hurts, blue
-    # where it helps - which is why the vehicles end up standing on the red and nowhere
-    # near the blue.
     plt = import_matplotlib()
     if ax is None:
         ax = plt.figure(figsize=(9, 7)).add_subplot(projection="3d")
@@ -43,9 +37,6 @@ def draw_influence_surface(
         linewidth=0, antialiased=True, alpha=0.95, rstride=1, cstride=1,
     )
 
-    # The same surface flattened onto the floor. A deck response is usually a narrow
-    # trough on a broad flat plain, and the plan view reads that far better than the
-    # perspective one does.
     floor = float(surface.values.min()) - 0.35 * peak
     ax.contourf(
         along_m, across_m, surface.values,
@@ -70,7 +61,6 @@ def draw_influence_surface(
 def mark_wheels_on_surface(
     ax: Axes, surface: InfluenceSurface, critical: CriticalPosition, peak: float
 ) -> None:
-    # Puts every wheel of every vehicle on the surface, at the height it reads.
     for placed in critical.vehicles:
         vehicle = find_vehicle_or_its_reverse(placed.vehicle_name)
         offsets = wheel_load_offsets(vehicle)
@@ -94,9 +84,6 @@ def mark_wheels_on_surface(
 def draw_influence_along_span(
     surface: InfluenceSurface, critical: CriticalPosition, ax: Axes = None
 ) -> Axes:
-    # Every axle is marked where it stopped. The vehicles sit over the adverse part of the
-    # line and stay off the rest, which is the whole of what the search along the span is
-    # doing.
     plt = import_matplotlib()
     if ax is None:
         _, ax = plt.subplots(figsize=(9, 4))

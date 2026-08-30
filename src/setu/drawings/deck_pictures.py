@@ -1,7 +1,3 @@
-# The two pictures that read the deck cross-section: the strips to scale with the vehicles
-# standing where they ended up, and what every vehicle could have done from every other
-# position across the width.
-
 from __future__ import annotations
 
 import numpy as np
@@ -24,22 +20,17 @@ from ..sampling import DEFAULT_SAMPLING
 from ..vehicle_placement.response_curve import VehicleResponses
 from .palette import VEHICLE_COLOUR, Axes, import_matplotlib, strip_colour
 
-# Drawing proportions for the cross-section picture, not values from the code.
 DECK_TOP_M = 0.0
 DECK_BOTTOM_M = -0.55
 WHEEL_HEIGHT_M = 0.42
 BODY_HEIGHT_M = 1.15
 
-# A strip narrower than this gets its label turned on its side and pushed to the right,
-# so it does not overlap the strip beside it.
 NARROW_STRIP_LABEL_WIDTH_M = 1.2
 
 
 def draw_cross_section(
     cross_section: DeckCrossSection, critical: CriticalPosition | None = None, ax: Axes = None
 ) -> Axes:
-    # Every strip is drawn to scale and named, so it is plain to see that no vehicle has
-    # strayed onto a kerb, a median or a footpath.
     plt = import_matplotlib()
     if ax is None:
         _, ax = plt.subplots(figsize=(11, 3.5))
@@ -79,7 +70,6 @@ def draw_cross_section(
 
 
 def draw_vehicle_from_the_front(ax: Axes, placed: VehiclePlacement) -> None:
-    # Draws one vehicle as a box on two wheels, at its centreline.
     plt = import_matplotlib()
     vehicle = find_vehicle_or_its_reverse(placed.vehicle_name)
 
@@ -131,10 +121,6 @@ def draw_response_across_width(
     material: str = "steel",
     member_span_m: float | None = None,
 ) -> Axes:
-    # The curve is the worst that vehicle can manage from that position, having already
-    # been slid along the span to its own worst spot. Where the vehicles actually ended up
-    # is marked - and it is where the curve peaks, subject to them keeping out of each
-    # other's way.
     plt = import_matplotlib()
     if ax is None:
         _, ax = plt.subplots(figsize=(9, 4))
@@ -143,7 +129,7 @@ def draw_response_across_width(
     z_positions_m = np.linspace(
         min(carriageway.left_m for carriageway in carriageways),
         max(carriageway.right_m for carriageway in carriageways),
-        DEFAULT_SAMPLING.transverse_steps,
+        DEFAULT_SAMPLING.positions_across_the_deck_to_try,
     )
     responses = VehicleResponses(
         surface,
@@ -159,9 +145,6 @@ def draw_response_across_width(
         name = vehicle.name.replace("Class_", "").replace("_", " ")
         needed_m = narrowest_carriageway_for(vehicle)
 
-        # A vehicle that cannot be placed is still worth drawing - it is often the more
-        # damaging one, and seeing that it was ruled out on width rather than overlooked
-        # is half of understanding the answer.
         if needed_m <= widest_m + 1e-9:
             ax.plot(z_positions_m, curve.response, linewidth=1.8, label=name)
         else:
@@ -189,13 +172,7 @@ def draw_response_across_width(
     return ax
 
 
-# ---------------------------------------------------------------------------
-# Which Vehicles To Draw
-# ---------------------------------------------------------------------------
-
-
 def vehicles_worth_drawing(critical: CriticalPosition) -> list[Vehicle]:
-    # The vehicles that actually took part, plus the ones they beat.
     drawn: dict[str, Vehicle] = dict(IRC_VEHICLES)
     for placed in critical.vehicles:
         drawn.setdefault(placed.vehicle_name, find_vehicle_or_its_reverse(placed.vehicle_name))
@@ -203,6 +180,5 @@ def vehicles_worth_drawing(critical: CriticalPosition) -> list[Vehicle]:
 
 
 def narrowest_carriageway_for(vehicle: Vehicle) -> float:
-    # The narrowest carriageway this vehicle could be placed on at all.
     block = ZONE_70R if "70R" in vehicle.name else CLASS_A_LANE  # a name-substring test
     return narrowest_carriageway_that_fits([block])

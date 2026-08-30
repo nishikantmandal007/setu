@@ -1,7 +1,3 @@
-# The vehicle-sweep animation - the only picture that needs matplotlib.animation, and the
-# only one built from closures, because FuncAnimation redraws each frame by mutating
-# artists in place rather than by being handed a fresh figure every time.
-
 from __future__ import annotations
 
 from typing import Any
@@ -35,10 +31,6 @@ def animate_vehicle_along_span(
     frames: int = 120,
     interval_ms: int = 45,
 ) -> Any:
-    # Drives the governing vehicle across the deck and traces what it causes. Save the
-    # result with `.save("sweep.gif", writer="pillow")`, or show it - the marker on the
-    # trace stops where the search said it should. Any here for the same reason as Axes
-    # and Figure: FuncAnimation has no usable type stubs either.
     plt = import_matplotlib()
     from matplotlib.animation import FuncAnimation
 
@@ -61,20 +53,9 @@ def animate_vehicle_along_span(
 
     def draw_frame(frame: int) -> tuple[Any, Any, Any]:
         x_front_m = where_m[frame]
-        axle_x_m = x_front_m + axle_dx_m
-        on_the_deck = (axle_x_m >= along_m[0]) & (axle_x_m <= along_m[-1])
+
         axles.set_offsets(
-            np.column_stack(
-                [
-                    axle_x_m[on_the_deck],
-                    surface.influence_at(
-                        axle_x_m[on_the_deck],
-                        np.full(on_the_deck.sum(), governing.z_centre_m),
-                    ),
-                ]
-            )
-            if on_the_deck.any()
-            else np.empty((0, 2))
+            axle_markers(surface, governing, x_front_m + axle_dx_m, along_m)
         )
         so_far.set_data(where_m[: frame + 1], trace[: frame + 1])
         now.set_offsets([[x_front_m, trace[frame]]])
@@ -83,14 +64,27 @@ def animate_vehicle_along_span(
     return FuncAnimation(figure, draw_frame, frames=frames, interval=interval_ms, blit=False)
 
 
+def axle_markers(
+    surface: InfluenceSurface,
+    governing: VehiclePlacement,
+    axle_x_m: np.ndarray,
+    along_m: np.ndarray,
+) -> np.ndarray:
+    on_the_deck = (axle_x_m >= along_m[0]) & (axle_x_m <= along_m[-1])
+    if not on_the_deck.any():
+        return np.empty((0, 2))
+
+    x_m = axle_x_m[on_the_deck]
+    z_m = np.full(on_the_deck.sum(), governing.z_centre_m)
+    return np.column_stack([x_m, surface.influence_at(x_m, z_m)])
+
+
 def response_trace_along_span(
     surface: InfluenceSurface,
     governing: VehiclePlacement,
     offsets: np.ndarray,
     where_m: np.ndarray,
 ) -> np.ndarray:
-    # What the governing vehicle alone causes, as its front sweeps from before the deck to
-    # the far end.
     def response_with_front_at(x_front_m: float) -> float:
         wheel_x_m = x_front_m + offsets[:, OFFSET_DX_M]
         wheel_z_m = governing.z_centre_m + offsets[:, OFFSET_DZ_M]
@@ -103,7 +97,6 @@ def response_trace_along_span(
 
 
 def two_panel_figure(plt: Any) -> tuple[Figure, Axes, Axes]:
-    # The influence line up top, the trace of what it causes below.
     figure, (top, bottom) = plt.subplots(
         2, 1, figsize=(10, 7), height_ratios=[1.2, 1.0], gridspec_kw={"hspace": 0.32}
     )
@@ -118,8 +111,6 @@ def style_the_influence_line_panel(
     vehicle: Vehicle,
     along_m: np.ndarray,
 ) -> Axes:
-    # Styles the top panel and returns the (empty, for now) scatter of axle markers that
-    # draw_frame moves every frame.
     line = surface.influence_at(along_m, np.full_like(along_m, governing.z_centre_m))
     hurts = where_a_load_hurts(line, critical.adverse)
     top.fill_between(along_m, 0, line, where=hurts, color=ADVERSE_COLOUR, alpha=0.28)
@@ -143,14 +134,9 @@ def style_the_trace_panel(
     where_m: np.ndarray,
     trace: np.ndarray,
 ) -> tuple[Axes, Axes]:
-    # Styles the bottom panel and returns the (empty, for now) trace-so-far line and
-    # current-position marker that draw_frame moves every frame.
     bottom.plot(where_m, trace, color="#999999", linewidth=1.2)
     bottom.axhline(0, color="black", linewidth=0.7)
 
-    # Where the search put this vehicle. Deliberately not the response for the whole deck
-    # - that is every lane added together with the residual UDL on top, and drawing it
-    # against one vehicle's trace would only mislead.
     chosen_m = governing.train_x_front_m[0]
     bottom.axvline(
         chosen_m, color=ADVERSE_COLOUR, linestyle="--", linewidth=1.4,

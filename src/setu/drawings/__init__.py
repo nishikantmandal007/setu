@@ -1,15 +1,3 @@
-# Drawing what setu worked out, so it can be looked at rather than read.
-#
-# Four pictures, which together tell the whole story of one answer:
-#
-#     the influence surface, as the deck shape it really is,
-#     the deck cross-section with the vehicles standing where they ended up,
-#     the response curve across the width, showing why that lane and not another,
-#     and the influence line along the span, showing why that spot and not another.
-#
-# matplotlib is imported inside the functions, so `import setu` stays free of it. Install
-# it with `uv sync --extra plot`.
-
 from __future__ import annotations
 
 from ..deck_cross_section import DeckCrossSection
@@ -73,8 +61,6 @@ def draw_everything(
     material: str = "steel",
     member_span_m: float | None = None,
 ) -> Figure:
-    # Reads left to right, top to bottom: what the deck does, where the vehicles went, why
-    # that position across the width, and why that position along it.
     plt = import_matplotlib()
 
     figure = plt.figure(figsize=figure_size)
