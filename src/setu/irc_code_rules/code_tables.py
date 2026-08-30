@@ -1,69 +1,27 @@
-# Every number setu takes from IRC:6-2017, transcribed once. This module is
-# the single source of truth for tabulated code values - nothing here depends
-# on anything else in setu, and no other module may hard-code a number that
-# belongs in the code. Sampling knobs we chose ourselves live in
-# setu/sampling.py instead, kept apart because one kind of number is
-# negotiable and the other is not. All lengths are in metres, loads in
-# kilonewtons.
-
 from __future__ import annotations
 
-# ---------------------------------------------------------------------------
 # Clause 204.3, Table 3 - transverse placement geometry
-# ---------------------------------------------------------------------------
-
-# Width of the lane block one Class A vehicle occupies.
 CLASS_A_LANE_WIDTH_M = 2.30
-
-# Clearance Table 3 requires between a Class A vehicle and the kerb or deck edge.
 CLASS_A_KERB_CLEARANCE_M = 0.15
-
-# Clearance Table 3 requires between two adjacent Class A vehicles.
 CLASS_A_VEHICLE_GAP_M = 1.20
-
-# Width a 70R vehicle occupies - track gauge plus the wheels themselves.
 VEHICLE_70R_WIDTH_M = 2.90
-
-# Clearance a 70R vehicle keeps from both boundaries of its exclusive zone.
 VEHICLE_70R_CLEARANCE_M = 1.20
-
-# Width of the exclusive 70R zone when it sits at the edge of the carriageway.
 ZONE_70R_AT_EDGE_M = 7.25
-
-# Width of the exclusive 70R zone when it sits between other lanes.
 ZONE_70R_INSIDE_M = 7.00
-
-# Width of a 70R zone with nothing beside it: the vehicle plus its two clearances.
 ZONE_70R_ALONE_M = VEHICLE_70R_WIDTH_M + 2 * VEHICLE_70R_CLEARANCE_M
 
-# The narrow band where Table 3 reduces the gap between two Class A vehicles.
-# Below 5.30 m the carriageway is single lane; above 6.10 m the gap is the full
-# 1.20 m. In between it opens up linearly, which is what `class_a_gap` computes.
 CLASS_A_GAP_OPENS_UP_BELOW_M = 6.10
 SMALLEST_CLASS_A_GAP_M = 0.40
 
-# Two 2.30 m Class A lane blocks plus two 0.15 m kerb clearances - what a narrow two-lane
-# carriageway spends before anything is left over for the gap between the vehicles. Written
-# as the literal, not as 2 * CLASS_A_LANE_WIDTH_M + 2 * CLASS_A_KERB_CLEARANCE_M: that
-# expression evaluates to 4.8999999999999995 in binary floating point, and a refactor must
-# not introduce drift the original code never had.
+# Literal, not 2 * CLASS_A_LANE_WIDTH_M + 2 * CLASS_A_KERB_CLEARANCE_M: that expression
+# comes out as 4.8999999999999995 and would drift the answers.
 TWO_CLASS_A_LANES_AND_KERB_CLEARANCES_M = 4.90
 
-
-# ---------------------------------------------------------------------------
-# IRC:5-2015 Clause 104.3 - when a carriageway is too narrow to load at all
-# ---------------------------------------------------------------------------
-
-# A carriageway narrower than this carries no vehicle loading.
+# IRC:5-2015 Clause 104.3 - narrower than this carries no vehicle loading
 NARROWEST_LOADED_CARRIAGEWAY_M = 4.25
 
-
-# ---------------------------------------------------------------------------
-# Table 6 - how many design lanes a carriageway of a given width has
-# ---------------------------------------------------------------------------
-
+# Table 6 - design lanes by carriageway width, as (from, up to but excluding, design lanes)
 DESIGN_LANES_BY_WIDTH = (
-    # (width from, width up to but excluding, design lanes)
     (0.00, 5.30, 1),
     (5.30, 9.60, 2),
     (9.60, 13.10, 3),
@@ -71,97 +29,35 @@ DESIGN_LANES_BY_WIDTH = (
     (16.60, 20.10, 5),
     (20.10, 23.60, 6),
 )
-
-# Table 6 stops here. Anything wider is read as six design lanes.
 WIDEST_TABULATED_CARRIAGEWAY_M = 23.60
-
 MOST_DESIGN_LANES = 6
-
-# The combination drawings never put a third 70R on a carriageway. Six design
-# lanes would hold three of them, and 21.50 m of carriageway is enough - but
-# the drawings stop at two, and there is no band boundary at 21.50 m where a
-# third would first become possible. Every other case has one.
 MOST_70R_VEHICLES_DRAWN = 2
 
-
-# ---------------------------------------------------------------------------
 # Clause 205, Table 8 - reduction for several lanes loaded together
-# ---------------------------------------------------------------------------
-
 LANE_REDUCTION_BY_LANE_COUNT = {1: 1.00, 2: 1.00, 3: 0.90}
 LANE_REDUCTION_FOR_FOUR_OR_MORE_LANES = 0.80
 
-
-# ---------------------------------------------------------------------------
-# Table 6 S.No.1 - the residual load on carriageway a vehicle does not cover
-# ---------------------------------------------------------------------------
-
-# 500 kg/m2, expressed in kN/m2.
+# Table 6 S.No.1 - 500 kg/m2 residual load beside a vehicle on a narrow carriageway
 RESIDUAL_UDL_KPA = 500.0 * 9.81 / 1000.0
-
-# Carriageways narrower than this carry the residual UDL beside the vehicle.
 RESIDUAL_UDL_APPLIES_BELOW_M = 5.30
 
-
-# ---------------------------------------------------------------------------
 # Clause 206 - footway and cycle track loading
-# ---------------------------------------------------------------------------
-
 FOOTWAY_UDL_KPA = 5.0
 CYCLE_TRACK_UDL_KPA = 2.5
 
-
-# ---------------------------------------------------------------------------
 # Clause 208, Figure 9 - dynamic impact allowance
-# ---------------------------------------------------------------------------
-
-# Figure 9 is drawn between these two spans; outside that range the curve is held at its
-# end value rather than extrapolated, because extrapolating a fitted curve past its data
-# is not something the code authorises.
 SHORTEST_TABULATED_SPAN_M = 3.0
 LONGEST_TABULATED_SPAN_M = 45.0
-
-# Clause 208.2's curve itself - 9.0/(13.5 + span) for steel, 4.5/(6.0 + span) for RC -
-# is written out in impact_factor.py rather than named here. It is a formula, not a
-# tabulated value, and four constants standing in for its coefficients read worse than
-# the formula the standard prints.
-
-# Clause 208.3(a) - flat 25% impact below 9 m. Clause 208.3(b) reuses the same figure as
-# the plateau a wheeled 70R holds until the Figure 9 curve drops below it.
 SHORT_SPAN_IMPACT_FRACTION = 0.25
-
-# The floor a tracked vehicle's fraction falls to at 9 m, and holds above that until the
-# Figure 9 curve drops below it in turn (steel: never; RC: until 40 m).
 TRACKED_IMPACT_FRACTION_FLOOR = 0.10
-
-# Clause 208.3(a) ends and 208.3(b) begins at this span; it is also where a tracked
-# vehicle's transition (below) finishes falling to TRACKED_IMPACT_FRACTION_FLOOR.
 SHORT_SPAN_UPPER_LIMIT_M = 9.0
-
-# Clause 208.3(a) - between these two spans a tracked vehicle's impact fraction falls
-# linearly from SHORT_SPAN_IMPACT_FRACTION to TRACKED_IMPACT_FRACTION_FLOOR.
 TRACKED_TRANSITION_START_SPAN_M = 5.0
-TRACKED_TRANSITION_SPAN_WIDTH_M = 4.0  # SHORT_SPAN_UPPER_LIMIT_M minus the start above
-
-# Clause 208.3(b) - a tracked vehicle on RC holds its flat 10% only up to this span;
-# beyond it the Figure 9 curve takes over.
+TRACKED_TRANSITION_SPAN_WIDTH_M = 4.0
 TRACKED_RC_IMPACT_PLATEAU_LIMIT_M = 40.0
-
-# Clause 208.3(b) - a wheeled 70R holds SHORT_SPAN_IMPACT_FRACTION up to this span, the
-# point where the Figure 9 curve has fallen to the same value and takes over.
 WHEELED_70R_IMPACT_CURVE_TAKES_OVER_STEEL_M = 23.0
 WHEELED_70R_IMPACT_CURVE_TAKES_OVER_RC_M = 12.0
 
-
-# ---------------------------------------------------------------------------
 # Units and numerical conventions
-# ---------------------------------------------------------------------------
-
-# Vehicle axle loads are tabulated in tonnes; responses are in kilonewtons.
 GRAVITY_KN_PER_TONNE = 9.81
-
-# Two lengths closer than this are the same length.
 TOLERANCE_M = 1e-9
-
-# Decimal places kept when rounding a coordinate, so grids compare equal.
 ROUND_TO_DECIMALS = 9

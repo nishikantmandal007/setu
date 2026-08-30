@@ -1,6 +1,3 @@
-# The IRC:6-2017 rules: which vehicles exist, how they may be arranged, and what the code
-# adds on top. Nothing in here knows anything about finite elements.
-
 from .area_loads import footway_response, needs_residual_udl, response_to_area_load
 from .code_tables import GRAVITY_KN_PER_TONNE, TOLERANCE_M
 from .impact_factor import impact_factor, impact_fraction
