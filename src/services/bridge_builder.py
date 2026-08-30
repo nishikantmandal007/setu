@@ -1,5 +1,6 @@
 import numpy as np
 from src.models.deck import DeckModel
+from src.models.bridge_input import girder_properties
 from src.utils.helpers import report, log
 KERB_PREFIX = "kerb"
 MEDIAN_PREFIX = "median"
