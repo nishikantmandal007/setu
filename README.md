@@ -1,16 +1,16 @@
-# setu
+# Setu
 
-Setu finds the worst IRC:6 traffic position for a bridge.
+Setu finds the worst IRC:6 traffic position for a Plate Girder bridge.
 
 Instead of running an FEA for every vehicle position, it calculates an
 influence surface once and then searches the vehicle positions efficiently.
 
 ## Install
 
-Python 3.12+.
+Requires Python 3.12+ and [uv](https://docs.astral.sh/uv/).
 
 ```bash
-pip install -r requirements.txt
+uv sync
 ````
 
 ## Run
@@ -18,7 +18,7 @@ pip install -r requirements.txt
 There's a 35 m plate-girder example:
 
 ```bash
-PYTHONPATH=. python examples/plate_girder_35m.py
+uv run python examples/plate_girder_35m.py
 ```
 
 Or use it from Python:
@@ -48,7 +48,7 @@ print(worst.describe())
 To draw the result:
 
 ```bash
-PYTHONPATH=. python examples/draw_the_answer.py
+uv run python examples/draw_the_answer.py
 ```
 
 ## Structure
@@ -60,7 +60,4 @@ src/
 └── rules/        IRC:6 rules
 
 examples/         example bridges and scripts
-```
-
-```
 ```
