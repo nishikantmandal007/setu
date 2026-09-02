@@ -13,11 +13,11 @@ import numpy as np
 import pytest
 
 from src.models.deck import DeckCrossSection
-from src.services.influence import InfluenceSolver
+from src.services.influence_surface import InfluenceSolver
 from src.services.critical_position import CriticalPositionService
 find_critical_position = CriticalPositionService.find_critical_position
 rank_all_positions = CriticalPositionService.rank_all_positions
-from src.models.bridge_input import (
+from src.models.bridge import (
     Bracing,
     BridgeInput,
     DeckSlab,
@@ -25,7 +25,7 @@ from src.models.bridge_input import (
     MeshSettings,
     PlateGirderSection,
 )
-from src.models.bridge_input import (
+from src.models.bridge import (
     Bracing,
     BridgeInput,
     DeckSlab,
@@ -33,7 +33,7 @@ from src.models.bridge_input import (
     MeshSettings,
     PlateGirderSection,
 )
-from src.services.bridge_builder import build_bridge_model as build_model, apply_dead_loads
+from src.services.bridge_geometry import build_bridge_model as build_model, apply_dead_loads
 
 ops = pytest.importorskip("openseespy.opensees", reason="needs a finite element solver")
 

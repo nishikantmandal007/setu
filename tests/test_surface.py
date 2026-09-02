@@ -4,7 +4,7 @@
 import numpy as np
 import pytest
 
-from src.services.influence import InfluenceSurface
+from src.services.influence_surface import InfluenceSurface
 from src.utils.errors import InfluenceSurfaceError
 
 

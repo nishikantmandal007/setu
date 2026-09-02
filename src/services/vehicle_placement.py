@@ -1,6 +1,6 @@
 import numpy as np
 import itertools
-from src.utils.code_rules import *
+from src.rules.irc6 import *
 from src.utils.helpers import *
 from src.utils.errors import *
 from src.models.results import VehiclePlacement

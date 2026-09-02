@@ -6,9 +6,9 @@ from matplotlib.animation import FuncAnimation
 from typing import Any
 
 from src.utils.helpers import is_worst_first, where_a_load_hurts, DEFAULT_SAMPLING
-from src.utils.code_rules import CLASS_A_LANE, ZONE_70R, OFFSET_DX_M, OFFSET_DZ_M, OFFSET_LOAD_KN, narrowest_carriageway_that_fits, wheel_load_offsets
+from src.rules.irc6 import CLASS_A_LANE, ZONE_70R, OFFSET_DX_M, OFFSET_DZ_M, OFFSET_LOAD_KN, narrowest_carriageway_that_fits, wheel_load_offsets
 from src.models.vehicles import class_of, IRC_VEHICLES
-from src.services.placement import VehicleResponses
+from src.services.vehicle_placement import VehicleResponses
 from src.models.vehicles import pitch_between_vehicles_m, AxleVehicle, TrackedVehicle, find_vehicle_or_its_reverse
 
 class DrawingService:
@@ -277,3 +277,18 @@ class DrawingService:
         return figure
 
 DrawingService.DrawingService = DrawingService
+
+
+def draw_cross_section(*args, **kwargs):
+    """Draw the deck cross-section and any selected vehicle placement."""
+    return DrawingService.draw_cross_section(*args, **kwargs)
+
+
+def draw_everything(*args, **kwargs):
+    """Draw the four-panel explanation of an influence result."""
+    return DrawingService.draw_everything(*args, **kwargs)
+
+
+def animate_vehicle_along_span(*args, **kwargs):
+    """Animate a governing vehicle travelling along the influence line."""
+    return DrawingService.animate_vehicle_along_span(*args, **kwargs)

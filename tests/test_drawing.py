@@ -1,6 +1,6 @@
 
 from src.models.deck import DeckCrossSection
-from src.services.influence import InfluenceSurface
+from src.services.influence_surface import InfluenceSurface
 from src.services.critical_position import CriticalPositionService
 find_critical_position = CriticalPositionService.find_critical_position
 rank_all_positions = CriticalPositionService.rank_all_positions

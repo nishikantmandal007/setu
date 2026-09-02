@@ -4,7 +4,7 @@
 import numpy as np
 import pytest
 
-from src.services.placement import find_worst_train, place_train
+from src.services.vehicle_placement import find_worst_train, place_train
 import oracles
 from oracles import worst_train_by_enumeration
 

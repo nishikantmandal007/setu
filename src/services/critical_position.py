@@ -1,9 +1,9 @@
 import numpy as np
 from src.utils.helpers import *
-from src.utils.code_rules import *
+from src.rules.irc6 import *
 from src.models.results import *
 from src.models.vehicles import vehicles_allowed_in_each_block
-from src.services.placement import *
+from src.services.vehicle_placement import *
 
 NO_FOOTWAY_LOAD = 0.0
 READ_EACH_CARRIAGEWAY_ON_ITS_OWN = "separate"
@@ -124,3 +124,12 @@ class CriticalPositionService:
         vehicle = next((choice for choice in choices if choice.name == winner))
         exactly_here = responses.for_vehicle(vehicle, np.array([z_centre_m]), adverse)
         return VehiclePlacement(vehicle_name=vehicle.name, z_centre_m=float(z_centre_m), x_front_m=float(exactly_here.x_positions_m[0]), impact_factor=exactly_here.impact_factor, train_x_front_m=exactly_here.train_x_front_m[0])
+
+def find_critical_position(surface, cross_section, span_m, **options):
+    """Return the governing legal IRC:6 traffic placement for one response."""
+    return rank_all_positions(surface, cross_section, span_m, **options)[0]
+
+
+def rank_all_positions(surface, cross_section, span_m, **options):
+    """Return every legal placement, ordered from most to least adverse."""
+    return CriticalPositionService.rank_all_positions(surface, cross_section, span_m, **options)

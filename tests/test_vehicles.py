@@ -17,7 +17,7 @@ from src.models.vehicles import (
     most_vehicles_that_fit,
     pitch_between_vehicles_m,
 )
-from src.utils.code_rules import (
+from src.rules.irc6 import (
     contact_patches_at,
     wheel_load_offsets,
     wheel_loads_at,

@@ -1,8 +1,4 @@
-from src.services.critical_position import CriticalPositionService
+"""Convenient imports for the two critical-position entry points."""
+from src.services.critical_position import find_critical_position, rank_all_positions
 
-def find_critical_position(*args, **kwargs):
-    return CriticalPositionService.find_critical_position(*args, **kwargs)
-
-def rank_all_positions(*args, **kwargs):
-    return CriticalPositionService.rank_all_positions(*args, **kwargs)
-
+__all__ = ["find_critical_position", "rank_all_positions"]

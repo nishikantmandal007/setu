@@ -6,7 +6,7 @@ import numpy as np
 
 from src.utils.helpers import adverse_sign, where_a_load_hurts, DEFAULT_SAMPLING
 
-from src.models.vehicles import pitch_between_vehicles_m, TrackedVehicle, AxleVehicle
+from src.models.vehicles import pitch_between_vehicles_m, TrackedVehicle, AxleVehicle, CLASS_A, CLASS_70R_WHEELED, IRC_VEHICLES
 
 def is_steel(material):
     return material == 'steel'

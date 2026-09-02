@@ -1,9 +1,9 @@
 import json
 import numpy as np
 from src.utils.errors import InfluenceSurfaceError, ModelAlreadyLoadedError
-from src.utils.fe_backend import FEBackend, OpenSeesBackend
+from src.services.opensees import FEBackend, OpenSeesBackend
 from src.models.deck import DeckModel
-from src.services.bridge_builder import beam_stiffness_matrix, element_rotation_matrix, moment_dof_for
+from src.services.bridge_geometry import beam_stiffness_matrix, element_rotation_matrix, moment_dof_for
 
 VERTICAL_DOF = 1
 import json

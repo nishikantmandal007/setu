@@ -7,7 +7,7 @@ import numpy as np
 import pytest
 
 from src.models.deck import DeckCrossSection
-from src.models.bridge_input import (
+from src.models.bridge import (
     Bracing,
     BridgeInput,
     DeckSlab,
@@ -15,7 +15,7 @@ from src.models.bridge_input import (
     MeshSettings,
     PlateGirderSection,
 )
-from src.services.bridge_builder import build_mesh
+from src.services.bridge_geometry import build_mesh
 
 CROSS_SECTION = DeckCrossSection.from_widths(
     {
@@ -108,7 +108,7 @@ def test_the_girders_are_evenly_spaced_between_the_overhangs():
 def test_a_crash_barrier_strip_carries_its_own_dead_load():
     # It used to match none of the named prefixes and fall through to zero, so a deck with
     # crash barriers silently lost their weight. OsdagBridge names strips this way.
-    from src.services.bridge_builder import surfacing_pressure_at
+    from src.services.bridge_geometry import surfacing_pressure_at
 
     with_barriers = BridgeInput(**{**BRIDGE.__dict__, "cross_section": DeckCrossSection.from_widths({"crash_barrier_left": 0.45, "carriageway": 7.5, "crash_barrier_right": 0.45})})
     model = SimpleNamespace(bridge=with_barriers)

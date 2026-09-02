@@ -1,4 +1,4 @@
-from src.services.critical_position import CriticalPositionService
+from src.services.critical_position import find_critical_position
 """A 35 m composite plate girder bridge, from input to critical vehicle position.
 
 Run it::
@@ -18,14 +18,11 @@ it, because a dead load left switched on makes every surface quietly wrong.
 
 import openseespy.opensees as ops
 
-from src.services.critical_position import DeckCrossSection, InfluenceSolver, enable_reports, find_critical_position
-from src.services.bridge_builder import (
-    Bracing,
-    BridgeInput,
-    DeckSlab,
-    Girders,
-    MeshSettings,
-    PlateGirderSection,
+from src.models.deck import DeckCrossSection
+from src.services.influence_surface import InfluenceSolver
+from src.utils.helpers import enable_reports
+from src.models.bridge import Bracing, BridgeInput, DeckSlab, Girders, MeshSettings, PlateGirderSection
+from src.services.bridge_geometry import (
     apply_dead_loads,
     build_bridge_model,
 )
@@ -103,7 +100,7 @@ def main() -> None:
     )
 
     for adverse in ("maximum", "minimum"):
-        worst = CriticalPositionService.find_critical_position(
+        worst = find_critical_position(
             surface,
             CROSS_SECTION,
             span_m=BRIDGE.span_m,

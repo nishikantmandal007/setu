@@ -4,19 +4,19 @@
 import numpy as np
 import pytest
 
-from src.utils.code_rules import (
+from src.rules.irc6 import (
     needs_residual_udl,
     response_to_area_load,
     strips_beside_class_a,
     uncovered_strips,
 )
 from src.config.constants import RESIDUAL_UDL_KPA
-from src.utils.code_rules import (
+from src.rules.irc6 import (
     class_a_impact_fraction,
     impact_factor,
     impact_fraction,
 )
-from src.utils.code_rules import lane_reduction_factor
+from src.rules.irc6 import lane_reduction_factor
 
 
 @pytest.mark.parametrize(

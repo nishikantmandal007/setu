@@ -3,7 +3,7 @@
 
 import pytest
 
-from src.utils.code_rules import (
+from src.rules.irc6 import (
     CLASS_A_LANE,
     ZONE_70R,
     class_a_gap,
