@@ -4,10 +4,10 @@
 import numpy as np
 import pytest
 
-from src.models.deck import Carriageway
-from src.rules.irc6 import CLASS_A_LANE, ZONE_70R
-from src.services.vehicle_placement import find_worst_placement
-from src.services.vehicle_placement import place_vehicles
+from setu.models.deck import Carriageway
+from setu.rules.irc6 import CLASS_A_LANE, ZONE_70R
+from setu.services.vehicle_placement import find_worst_placement
+from setu.services.vehicle_placement import place_vehicles
 import oracles
 from oracles import worst_chain_by_enumeration
 

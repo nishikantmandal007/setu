@@ -3,7 +3,7 @@
 
 import pytest
 
-from src.models.bridge import PlateGirderSection, girder_properties
+from setu.models.bridge import PlateGirderSection, girder_properties
 
 # The section from the worked example.
 SECTION = PlateGirderSection(

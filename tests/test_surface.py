@@ -4,8 +4,8 @@
 import numpy as np
 import pytest
 
-from src.services.influence_surface import InfluenceSurface
-from src.utils.errors import InfluenceSurfaceError
+from setu.services.influence_surface import InfluenceSurface
+from setu.utils.errors import InfluenceSurfaceError
 
 
 def flat_surface(gradient_along: float = 2.0, gradient_across: float = 3.0):

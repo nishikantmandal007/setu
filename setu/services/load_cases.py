@@ -1,5 +1,5 @@
 import numpy as np
-from src.services.girder_response import girder_forces
+from setu.services.girder_response import girder_forces
 
 
 LOAD_CASE_PATTERN_BASE = 100

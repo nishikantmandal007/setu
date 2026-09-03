@@ -1,9 +1,9 @@
 import numpy as np
-from src.utils.helpers import *
-from src.rules.irc6 import *
-from src.models.results import *
-from src.models.vehicles import vehicles_allowed_in_each_block
-from src.services.vehicle_placement import *
+from setu.utils.helpers import *
+from setu.rules.irc6 import *
+from setu.models.results import *
+from setu.models.vehicles import vehicles_allowed_in_each_block
+from setu.services.vehicle_placement import *
 
 NO_FOOTWAY_LOAD = 0.0
 READ_EACH_CARRIAGEWAY_ON_ITS_OWN = "separate"

@@ -1,4 +1,4 @@
-from src.models.deck import GirderSection
+from setu.models.deck import GirderSection
 import math
 
 X_BRACING = 'X'

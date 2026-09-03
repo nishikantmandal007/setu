@@ -1,6 +1,6 @@
 import numpy as np
-from src.config.constants import ROUND_TO_DECIMALS
-from src.utils.errors import CrossSectionError, InfluenceSurfaceError
+from setu.config.constants import ROUND_TO_DECIMALS
+from setu.utils.errors import CrossSectionError, InfluenceSurfaceError
 
 class DeckStrip:
     def __init__(self, name, width_m, z_from_m, z_to_m):

@@ -1,6 +1,6 @@
 import numpy as np
 import xarray as xr
-from src.services.girder_response import girder_forces, girder_deflections
+from setu.services.girder_response import girder_forces, girder_deflections
 
 
 FORCE_COMPONENTS = [

@@ -1,7 +1,7 @@
 import numpy as np
-from src.models.deck import DeckModel
-from src.models.bridge import girder_properties
-from src.utils.helpers import report, log
+from setu.models.deck import DeckModel
+from setu.models.bridge import girder_properties
+from setu.utils.helpers import report, log
 KERB_PREFIX = "kerb"
 MEDIAN_PREFIX = "median"
 CRASH_BARRIER_PREFIX = "crash_barrier"
@@ -443,7 +443,7 @@ def report_dead_loads(model, totals):
     report('DEAD LOADS APPLIED', {'Deck slab': f'{slab_kpa:8.3f} kN/m2', 'Wearing course': f'{bridge.wearing_course.pressure_kpa:8.3f} kN/m2', 'Footpath': f'{added.footpath.pressure_kpa:8.3f} kN/m2', 'Kerb': f'{added.kerb.pressure_kpa:8.3f} kN/m2', 'Median': f'{added.median.pressure_kpa:8.3f} kN/m2', 'Girder self weight': f'{girder_kn_per_m:8.3f} kN/m', 'Deck and surfacing': f'{totals.deck_and_surfacing_kn:8.1f} kN', 'Girders': f'{totals.girders_kn:8.1f} kN', 'Bracing': f'{totals.bracing_kn:8.1f} kN', 'Total dead load': f'{totals.total_kn:8.1f} kN'})
 
 def load_opensees():
-    from src.services.opensees import import_opensees as load
+    from setu.services.opensees import import_opensees as load
     return load()
 
 import numpy as np
@@ -499,5 +499,5 @@ def report_what_was_built(model):
     log.info('')
 
 def load_opensees():
-    from src.services.opensees import import_opensees as load
+    from setu.services.opensees import import_opensees as load
     return load()

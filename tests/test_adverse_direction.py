@@ -5,7 +5,7 @@
 import numpy as np
 import pytest
 
-from src.utils.helpers import (
+from setu.utils.helpers import (
     adverse_sign,
     index_of_worst,
     is_worse,

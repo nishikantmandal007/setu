@@ -1,4 +1,4 @@
-from src.utils.errors import BackendError
+from setu.utils.errors import BackendError
 
 
 class FEBackend:

@@ -4,8 +4,8 @@
 import numpy as np
 import pytest
 
-from src.models.deck import GirderSection
-from src.services.bridge_geometry import (
+from setu.models.deck import GirderSection
+from setu.services.bridge_geometry import (
     beam_stiffness_matrix,
     element_rotation_matrix,
 )

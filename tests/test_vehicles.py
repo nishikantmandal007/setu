@@ -4,8 +4,8 @@
 import numpy as np
 import pytest
 
-from src.utils.errors import VehicleDefinitionError, VehicleNotFoundError
-from src.models.vehicles import (
+from setu.utils.errors import VehicleDefinitionError, VehicleNotFoundError
+from setu.models.vehicles import (
     CLASS_70R_TRACKED,
     CLASS_70R_WHEELED,
     CLASS_A,
@@ -17,7 +17,7 @@ from src.models.vehicles import (
     most_vehicles_that_fit,
     pitch_between_vehicles_m,
 )
-from src.rules.irc6 import (
+from setu.rules.irc6 import (
     contact_patches_at,
     wheel_load_offsets,
     wheel_loads_at,
@@ -154,7 +154,7 @@ def test_the_fatigue_and_special_vehicles_are_defined_but_not_placed():
     carriageway, crawling, no impact) and the fatigue vehicle answers a different
     question, so neither may leak into the ordinary transverse search.
     """
-    from src.models.vehicles import (
+    from setu.models.vehicles import (
         FATIGUE_VEHICLE,
         SPECIAL_VEHICLE,
         VEHICLES_ALLOWED_IN_BLOCK,
@@ -170,7 +170,7 @@ def test_the_fatigue_and_special_vehicles_are_defined_but_not_placed():
 
 
 def test_the_special_vehicle_carries_what_clause_204_5_says():
-    from src.models.vehicles import SPECIAL_VEHICLE
+    from setu.models.vehicles import SPECIAL_VEHICLE
 
     # One steering axle, two bogie axles, twenty trailer axles.
     assert len(SPECIAL_VEHICLE.axle_loads_t) == 23
@@ -178,7 +178,7 @@ def test_the_special_vehicle_carries_what_clause_204_5_says():
 
 
 def test_the_fatigue_vehicle_carries_what_clause_204_6_says():
-    from src.models.vehicles import FATIGUE_VEHICLE
+    from setu.models.vehicles import FATIGUE_VEHICLE
 
     assert FATIGUE_VEHICLE.axle_loads_t == (12.0, 14.0, 14.0)
     assert FATIGUE_VEHICLE.total_load_t() == pytest.approx(40.0)

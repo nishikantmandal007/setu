@@ -4,8 +4,8 @@
 import numpy as np
 import pytest
 
-from src.models.deck import DeckCrossSection
-from src.services.influence_surface import InfluenceSurface
+from setu.models.deck import DeckCrossSection
+from setu.services.influence_surface import InfluenceSurface
 
 SPAN_M = 35.0
 WIDTH_M = 13.5

@@ -1,4 +1,4 @@
-from src.services.critical_position import CriticalPositionService
+from setu.services.critical_position import CriticalPositionService
 # The answers setu gives today, pinned so a rewrite cannot quietly move them.
 # Nothing else in the suite asserts an actual number - the other tests check
 # relations, or race the searches against brute-force oracles - so without this
@@ -10,9 +10,9 @@ from dataclasses import dataclass, field
 import numpy as np
 import pytest
 
-from src.models.deck import DeckCrossSection
-from src.services.influence_surface import InfluenceSurface
-from src.services.critical_position import CriticalPositionService
+from setu.models.deck import DeckCrossSection
+from setu.services.influence_surface import InfluenceSurface
+from setu.services.critical_position import CriticalPositionService
 rank_all_positions = CriticalPositionService.rank_all_positions
 
 SPAN_M = 35.0
@@ -295,7 +295,7 @@ def test_the_report_block_still_reads(golden_and_ranked):
 def test_describe_survives_a_zero_response():
     # The shortfall is None when there is nothing to take a percentage of, and describe()
     # used to format that None straight into the report and raise TypeError.
-    from src.models.results import CriticalPosition
+    from setu.models.results import CriticalPosition
 
     nothing_happened = CriticalPosition(
         response_name="a response that came out at zero",

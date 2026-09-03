@@ -1,11 +1,11 @@
 import numpy as np
 import itertools
-from src.rules.irc6 import *
-from src.utils.helpers import *
-from src.utils.errors import *
-from src.models.results import VehiclePlacement
-from src.models.vehicles import *
-from src.models.vehicles import most_vehicles_that_fit, class_of
+from setu.rules.irc6 import *
+from setu.utils.helpers import *
+from setu.utils.errors import *
+from setu.models.results import VehiclePlacement
+from setu.models.vehicles import *
+from setu.models.vehicles import most_vehicles_that_fit, class_of
 
 def best_so_far(values):
     values = np.asarray(values, float)
