@@ -1,5 +1,3 @@
-"""IRC:6 code rules — impact, lanes, loads, wheels. All in one file."""
-
 from src.config.constants import *
 
 import numpy as np
@@ -394,3 +392,30 @@ def loads_for_lanes(lanes):
         all_wheel_loads.extend(wheel_loads)
         all_patches.extend(patches)
     return (all_wheel_loads, all_patches)
+
+
+def braking_force_kn(vehicle_name, total_live_load_kn, span_m):
+    if is_class_a(vehicle_name):
+        return 0.2 * total_live_load_kn
+    return min(0.2 * total_live_load_kn, 0.1 * total_live_load_kn + 500 * span_m / 1000)
+
+
+def seismic_coefficient(zone_factor, importance_factor, response_reduction):
+    return zone_factor * importance_factor / (2.0 * response_reduction)
+
+
+def wind_pressure_kpa(basic_speed_mps, height_m, drag_coefficient=1.2):
+    k1 = 1.0
+    if height_m <= 10:
+        k2 = 1.0
+    elif height_m <= 15:
+        k2 = 1.05
+    elif height_m <= 20:
+        k2 = 1.10
+    elif height_m <= 30:
+        k2 = 1.15
+    else:
+        k2 = 1.20
+    k3 = 1.0
+    design_speed = basic_speed_mps * k1 * k2 * k3
+    return 0.6 * design_speed ** 2 / 1000 * drag_coefficient
