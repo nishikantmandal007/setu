@@ -394,26 +394,26 @@ def loads_for_lanes(lanes):
     return (all_wheel_loads, all_patches)
 
 
-def braking_force_kn(vehicle_name, total_live_load_kn, span_m):
-    if is_class_a(vehicle_name):
-        return 0.2 * total_live_load_kn
-    return min(0.2 * total_live_load_kn, 0.1 * total_live_load_kn + 500 * span_m / 1000)
+def braking_force_kn(total_live_load_kn):
+    return 0.2 * total_live_load_kn
 
 
-def seismic_coefficient(zone_factor, importance_factor, response_reduction):
-    return zone_factor * importance_factor / (2.0 * response_reduction)
+def seismic_coefficient(zone_factor, importance_factor, response_reduction, sa_over_g=2.5):
+    return (zone_factor / 2.0) * (importance_factor / response_reduction) * sa_over_g
 
 
-def wind_pressure_kpa(basic_speed_mps, height_m, drag_coefficient=1.2):
+K2_TERRAIN_CATEGORY_2 = {10: 1.00, 15: 1.05, 20: 1.10, 30: 1.15, 50: 1.20}
+
+
+def wind_pressure_kpa(basic_speed_mps, deck_height_m, drag_coefficient=1.2, terrain_category=2):
+    if terrain_category != 2:
+        raise ValueError(f"only terrain category 2 is implemented, got {terrain_category}")
     k1 = 1.0
-    if height_m <= 10:
-        k2 = 1.0
-    elif height_m <= 15:
-        k2 = 1.05
-    elif height_m <= 20:
-        k2 = 1.10
-    elif height_m <= 30:
-        k2 = 1.15
+    k2 = 1.0
+    for threshold, factor in K2_TERRAIN_CATEGORY_2.items():
+        if deck_height_m <= threshold:
+            k2 = factor
+            break
     else:
         k2 = 1.20
     k3 = 1.0
