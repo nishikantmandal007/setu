@@ -46,13 +46,14 @@ def first_brace_element_tag(bridge, mesh):
     beams_per_girder = mesh.stations_along_span - 1
     return first_girder_element_tag(mesh) + bridge.girders.count * beams_per_girder
 
-def place_deck_nodes(ops, mesh):
+def place_deck_nodes(ops, bridge, mesh):
     deck_level_m = 0.0
     nodes = {}
     for i, x_m in enumerate(mesh.length_mesh_m):
         for j, z_m in enumerate(mesh.width_mesh_m):
             tag = DECK_NODE_BASE + i * mesh.stations_across_width + j
-            ops.node(tag, float(x_m), deck_level_m, float(z_m))
+            x_skewed = float(x_m) + float(z_m) * bridge.skew
+            ops.node(tag, x_skewed, deck_level_m, float(z_m))
             nodes[i, j] = tag
     return nodes
 
@@ -63,7 +64,8 @@ def place_girder_nodes(ops, bridge, mesh, girder):
     for k, z_m in enumerate(mesh.girder_lines_m):
         for i, x_m in enumerate(mesh.length_mesh_m):
             tag = base + k * mesh.stations_along_span + i
-            ops.node(tag, float(x_m), level_m, float(z_m))
+            x_skewed = float(x_m) + float(z_m) * bridge.skew
+            ops.node(tag, x_skewed, level_m, float(z_m))
             nodes[k, i] = tag
     return nodes
 
@@ -78,10 +80,11 @@ def place_brace_nodes(ops, bridge, mesh, girder):
     for k, z_m in enumerate(mesh.girder_lines_m):
         for n, x_m in enumerate(mesh.brace_lines_m):
             bottom_tag = bottom_base + k * stations + n
-            ops.node(bottom_tag, float(x_m), bottom_m, float(z_m))
+            x_skewed = float(x_m) + float(z_m) * bridge.skew
+            ops.node(bottom_tag, x_skewed, bottom_m, float(z_m))
             bottom_nodes[k, n] = bottom_tag
             top_tag = top_base + k * stations + n
-            ops.node(top_tag, float(x_m), top_m, float(z_m))
+            ops.node(top_tag, x_skewed, top_m, float(z_m))
             top_nodes[k, n] = top_tag
     return (bottom_nodes, top_nodes)
 
@@ -96,7 +99,8 @@ def place_k_brace_nodes(ops, bridge, mesh, girder):
         for k in range(girders - 1):
             between_girders_m = 0.5 * (mesh.girder_lines_m[k] + mesh.girder_lines_m[k + 1])
             tag = base + n * (girders - 1) + k
-            ops.node(tag, float(x_m), level_m, float(between_girders_m))
+            x_skewed = float(x_m) + float(between_girders_m) * bridge.skew
+            ops.node(tag, x_skewed, level_m, float(between_girders_m))
             nodes[k, n] = tag
     return nodes
 
@@ -472,7 +476,7 @@ def build_bridge_model(bridge, ops=None):
     report_layout(bridge, mesh)
     ops.wipe()
     ops.model('basic', '-ndm', DIMENSIONS, '-ndf', DEGREES_OF_FREEDOM_PER_NODE)
-    deck_nodes = place_deck_nodes(ops, mesh)
+    deck_nodes = place_deck_nodes(ops, bridge, mesh)
     girder_nodes = place_girder_nodes(ops, bridge, mesh, girder)
     bottom_brace_nodes, top_brace_nodes = place_brace_nodes(ops, bridge, mesh, girder)
     k_brace_nodes = place_k_brace_nodes(ops, bridge, mesh, girder)

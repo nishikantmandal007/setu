@@ -49,6 +49,12 @@ class OpenSeesBackend(FEBackend):
     def node_coordinates(self, node):
         return self.ops.nodeCoord(node)
 
+    def element_forces(self, element):
+        return self.ops.eleResponse(element, "localForce")
+
+    def node_reaction(self, node):
+        return self.ops.nodeReaction(node)
+
     def clear_loads(self):
         self.ops.remove("loadPattern", self.pattern_tag)
         self.ops.setLoadConst()
