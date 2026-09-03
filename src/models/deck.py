@@ -105,15 +105,19 @@ class DeckModel:
                 f"need at least 2 stations each way, got {len(length_mesh_m)} x {len(width_mesh_m)}"
             )
 
+    @property
     def stations_along_span(self):
         return len(self.length_mesh_m)
 
+    @property
     def stations_across_width(self):
         return len(self.width_mesh_m)
 
+    @property
     def span_m(self):
         return float(self.length_mesh_m[-1] - self.length_mesh_m[0])
 
+    @property
     def width_m(self):
         return float(self.width_mesh_m[-1] - self.width_mesh_m[0])
 

@@ -20,22 +20,33 @@ class FEBackend:
 
 class OpenSeesBackend(FEBackend):
 
+    ADJOINT_PATTERN = 7
+    ADJOINT_TIME_SERIES = 7
+
     def __init__(self):
         self.ops = import_opensees()
-        self.pattern_tag = 1
+        self._analysis_configured = False
 
     def solve_with_loads(self, loads, pattern=None):
-        tag = pattern if pattern is not None else self.pattern_tag
-        self.ops.timeSeries("Constant", tag)
-        self.ops.pattern("Plain", tag, tag)
+        tag = pattern if pattern is not None else self.ADJOINT_PATTERN
+        ts = self.ADJOINT_TIME_SERIES
+        self.ops.remove("loadPattern", tag)
+        self.ops.remove("timeSeries", ts)
+        self.ops.timeSeries("Linear", ts)
+        self.ops.pattern("Plain", tag, ts)
         for node, forces in loads:
             self.ops.load(node, *forces)
-        self.ops.system("BandSPD")
-        self.ops.numberer("RCM")
-        self.ops.constraints("Transformation")
-        self.ops.integrator("LoadControl", 1.0)
-        self.ops.algorithm("Linear")
-        self.ops.analysis("Static")
+        self.ops.reset()
+        if not self._analysis_configured:
+            self.ops.wipeAnalysis()
+            self.ops.system("UmfPack")
+            self.ops.numberer("RCM")
+            self.ops.constraints("Transformation")
+            self.ops.integrator("LoadControl", 1.0)
+            self.ops.algorithm("Linear")
+            self.ops.analysis("Static")
+            self._analysis_configured = True
+        self.ops.setTime(0.0)
         self.ops.analyze(1)
 
     def node_displacement(self, node, dof):
@@ -54,9 +65,7 @@ class OpenSeesBackend(FEBackend):
         return self.ops.nodeReaction(node)
 
     def clear_loads(self):
-        self.ops.remove("loadPattern", self.pattern_tag)
-        self.ops.setLoadConst()
-        self.ops.wipeAnalysis()
+        self.ops.remove("loadPattern", self.ADJOINT_PATTERN)
 
 def import_opensees():
     try:

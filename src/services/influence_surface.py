@@ -5,7 +5,7 @@ from src.services.opensees import FEBackend, OpenSeesBackend
 from src.models.deck import DeckModel
 from src.services.bridge_geometry import beam_stiffness_matrix, element_rotation_matrix, moment_dof_for
 
-VERTICAL_DOF = 1
+VERTICAL_DOF = 2
 import json
 import numpy as np
 OFF_THE_DECK = 0.0
