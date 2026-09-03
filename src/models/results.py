@@ -1,5 +1,3 @@
-"""Result types — what the search returns."""
-
 RULE = "-" * 72
 REVERSED_SUFFIX = "_reversed"
 
@@ -62,7 +60,6 @@ class CriticalPosition:
         return f"{line}   {shortfall:.1f}% lower"
 
     def describe(self):
-        """Human-readable summary of the critical position."""
         lines = [
             f"{self.response_name}  [{self.adverse}]",
             RULE,

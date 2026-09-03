@@ -1,4 +1,3 @@
-"""Deck geometry — cross-section strips and FE mesh grid."""
 import numpy as np
 from src.config.constants import ROUND_TO_DECIMALS
 from src.utils.errors import CrossSectionError, InfluenceSurfaceError
@@ -33,7 +32,6 @@ class DeckCrossSection:
 
     @staticmethod
     def from_widths(widths):
-        """Build a cross-section from a dict of strip_name -> width_m."""
         strips = []
         edge_m = 0.0
         for name, width_m in widths.items():

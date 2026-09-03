@@ -1,8 +1,7 @@
-"""FE solver backends."""
 from src.utils.errors import BackendError
 
+
 class FEBackend:
-    """Base class — implement these methods for your solver."""
 
     def solve_with_loads(self, loads, pattern=None):
         raise NotImplementedError
@@ -20,7 +19,6 @@ class FEBackend:
         raise NotImplementedError
 
 class OpenSeesBackend(FEBackend):
-    """OpenSeesPy linear static solver."""
 
     def __init__(self):
         self.ops = import_opensees()

@@ -1,4 +1,3 @@
-"""Direction helpers, sampling config, logging."""
 import logging
 import numpy as np
 
