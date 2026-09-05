@@ -1,5 +1,7 @@
 import numpy as np
 
+from setu.utils.errors import InfluenceSurfaceError
+
 COORDINATE_DECIMALS = 5
 GIRDER_LANDS_ON_A_STATION_M = 0.0001
 
@@ -78,3 +80,39 @@ def tributary_length_m(stations_m, station):
     if station == last_station:
         return float(stations_m[-1] - stations_m[-2]) / 2
     return float(stations_m[station + 1] - stations_m[station - 1]) / 2
+
+
+class DeckModel:
+    def __init__(self, length_mesh_m, width_mesh_m, deck_nodes, girder_section,
+                 girder_local_axis=(0.0, 0.0, 1.0), skew=0.0, **kwargs):
+        self.length_mesh_m = length_mesh_m
+        self.width_mesh_m = width_mesh_m
+        self.deck_nodes = deck_nodes
+        self.girder_section = girder_section
+        self.girder_local_axis = girder_local_axis
+        self.skew = skew
+        self.girder_elements = kwargs.get("girder_elements", {})
+
+        if len(length_mesh_m) < 2 or len(width_mesh_m) < 2:
+            raise InfluenceSurfaceError(
+                f"need at least 2 stations each way, got {len(length_mesh_m)} x {len(width_mesh_m)}"
+            )
+
+    @property
+    def stations_along_span(self):
+        return len(self.length_mesh_m)
+
+    @property
+    def stations_across_width(self):
+        return len(self.width_mesh_m)
+
+    @property
+    def span_m(self):
+        return float(self.length_mesh_m[-1] - self.length_mesh_m[0])
+
+    @property
+    def width_m(self):
+        return float(self.width_mesh_m[-1] - self.width_mesh_m[0])
+
+    def to_dict(self):
+        return self.__dict__

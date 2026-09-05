@@ -2,7 +2,7 @@ import json
 import numpy as np
 from setu.utils.errors import InfluenceSurfaceError, ModelAlreadyLoadedError
 from setu.services.opensees import FEBackend, OpenSeesBackend
-from setu.models.deck import DeckModel
+from setu.builder.mesh import DeckModel
 from setu.solver.stiffness import beam_stiffness_matrix, element_rotation_matrix, moment_dof_for
 
 VERTICAL_DOF = 2

@@ -1,6 +1,6 @@
 import numpy as np
-from setu.models.deck import DeckModel
-from setu.models.bridge import girder_properties
+from setu.builder.mesh import DeckModel
+from setu.models.sections import girder_properties
 from setu.utils.helpers import report, log
 from setu.builder.mesh import build_mesh, station_at
 
