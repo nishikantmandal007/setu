@@ -1,5 +1,6 @@
+from setu.models.vehicles import REVERSED_SUFFIX
+
 RULE = "-" * 72
-REVERSED_SUFFIX = "_reversed"
 
 class VehiclePlacement:
     def __init__(self, vehicle_name, z_centre_m, x_front_m, impact_factor, train_x_front_m=()):

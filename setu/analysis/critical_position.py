@@ -8,8 +8,6 @@ from setu.analysis.vehicle_placement import *
 NO_FOOTWAY_LOAD = 0.0
 READ_EACH_CARRIAGEWAY_ON_ITS_OWN = "separate"
 
-NO_FOOTWAY_LOAD = 0.0
-
 class SearchOptions:
     def __init__(self, adverse, vehicles, carriageways_read_as, material, member_span_m, wearing_course_thickness_m, apply_impact, apply_lane_reduction, apply_residual_udl, apply_footway_load, allow_trains, allow_reversed_vehicles, follow_combination_drawings, sampling):
         self.adverse = adverse

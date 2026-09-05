@@ -6,8 +6,6 @@ from setu.builder.mesh import DeckModel
 from setu.solver.stiffness import beam_stiffness_matrix, element_rotation_matrix, moment_dof_for
 
 VERTICAL_DOF = 2
-import json
-import numpy as np
 OFF_THE_DECK = 0.0
 
 class InfluenceSurface:
@@ -25,13 +23,6 @@ class InfluenceSurface:
 
     def to_dict(self):
         return self.__dict__
-
-        self.values = np.asarray(self.values, float)
-        self.length_mesh_m = np.asarray(self.length_mesh_m, float)
-        self.width_mesh_m = np.asarray(self.width_mesh_m, float)
-        expected_shape = (len(self.length_mesh_m), len(self.width_mesh_m))
-        if self.values.shape != expected_shape:
-            raise InfluenceSurfaceError(f'influence values have shape {self.values.shape}, but the deck mesh is {expected_shape}')
 
     def influence_at(self, x_m, z_m):
         x_m = np.asarray(x_m, float)
