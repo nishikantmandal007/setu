@@ -1,6 +1,6 @@
 import numpy as np
 from setu.services.load_cases import LoadCase
-from setu.services.bridge_geometry import tributary_length_m
+from setu.builder.mesh import tributary_length_m
 
 
 def pressure_load(model, z_from_m, z_to_m, pressure_kpa, name):

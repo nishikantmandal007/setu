@@ -5,7 +5,7 @@ import numpy as np
 import pytest
 
 from setu.models.deck import GirderSection
-from setu.services.bridge_geometry import (
+from setu.solver.stiffness import (
     beam_stiffness_matrix,
     element_rotation_matrix,
 )
