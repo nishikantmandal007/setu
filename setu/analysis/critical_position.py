@@ -1,9 +1,9 @@
 import numpy as np
-from setu.utils.helpers import *
+from setu.helpers import *
 from setu.irc6 import *
 from setu.models.results import *
 from setu.models.vehicles import vehicles_allowed_in_each_block
-from setu.services.vehicle_placement import *
+from setu.analysis.vehicle_placement import *
 
 NO_FOOTWAY_LOAD = 0.0
 READ_EACH_CARRIAGEWAY_ON_ITS_OWN = "separate"

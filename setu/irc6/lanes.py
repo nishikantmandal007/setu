@@ -2,7 +2,7 @@ from itertools import product, zip_longest
 
 import numpy as np
 
-from setu.config.constants import (
+from setu.irc6.constants import (
     CLASS_A_GAP_OPENS_UP_BELOW_M,
     CLASS_A_KERB_CLEARANCE_M,
     CLASS_A_LANE_WIDTH_M,
@@ -27,7 +27,7 @@ from setu.config.constants import (
     ZONE_70R_AT_EDGE_M,
     ZONE_70R_INSIDE_M,
 )
-from setu.utils.helpers import adverse_sign, where_a_load_hurts, DEFAULT_SAMPLING
+from setu.helpers import adverse_sign, where_a_load_hurts, DEFAULT_SAMPLING
 
 CLASS_A_LANE = 'class_a'
 ZONE_70R = 'zone_70r'

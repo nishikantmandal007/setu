@@ -1,5 +1,5 @@
 import numpy as np
-from setu.utils.helpers import report
+from setu.helpers import report
 from setu.builder.mesh import tributary_length_m
 
 KERB_PREFIX = "kerb"
@@ -114,5 +114,5 @@ def report_dead_loads(model, totals):
     report('DEAD LOADS APPLIED', {'Deck slab': f'{slab_kpa:8.3f} kN/m2', 'Wearing course': f'{bridge.wearing_course.pressure_kpa:8.3f} kN/m2', 'Footpath': f'{added.footpath.pressure_kpa:8.3f} kN/m2', 'Kerb': f'{added.kerb.pressure_kpa:8.3f} kN/m2', 'Median': f'{added.median.pressure_kpa:8.3f} kN/m2', 'Girder self weight': f'{girder_kn_per_m:8.3f} kN/m', 'Deck and surfacing': f'{totals.deck_and_surfacing_kn:8.1f} kN', 'Girders': f'{totals.girders_kn:8.1f} kN', 'Bracing': f'{totals.bracing_kn:8.1f} kN', 'Total dead load': f'{totals.total_kn:8.1f} kN'})
 
 def load_opensees():
-    from setu.services.opensees import import_opensees as load
+    from setu.solver.backend import import_opensees as load
     return load()

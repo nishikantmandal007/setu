@@ -1,6 +1,6 @@
 import numpy as np
 
-from setu.utils.errors import InfluenceSurfaceError
+from setu.errors import InfluenceSurfaceError
 
 COORDINATE_DECIMALS = 5
 GIRDER_LANDS_ON_A_STATION_M = 0.0001

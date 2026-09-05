@@ -10,7 +10,7 @@ from setu.irc6 import (
     strips_beside_class_a,
     uncovered_strips,
 )
-from setu.config.constants import RESIDUAL_UDL_KPA
+from setu.irc6.constants import RESIDUAL_UDL_KPA
 from setu.irc6 import (
     class_a_impact_fraction,
     impact_factor,

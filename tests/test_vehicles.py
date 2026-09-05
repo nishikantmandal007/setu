@@ -4,7 +4,7 @@
 import numpy as np
 import pytest
 
-from setu.utils.errors import VehicleDefinitionError, VehicleNotFoundError
+from setu.errors import VehicleDefinitionError, VehicleNotFoundError
 from setu.models.vehicles import (
     CLASS_70R_TRACKED,
     CLASS_70R_WHEELED,

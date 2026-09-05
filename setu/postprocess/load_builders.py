@@ -1,5 +1,5 @@
 import numpy as np
-from setu.services.load_cases import LoadCase
+from setu.postprocess.load_cases import LoadCase
 from setu.builder.mesh import tributary_length_m
 
 
@@ -97,7 +97,7 @@ def wind_load(model, pressure_kpa, name):
 
 
 def fatigue_moving_load(model, vehicle, path_z_m, span_m, n_positions=50, name="fatigue"):
-    from setu.config.constants import GRAVITY_KN_PER_TONNE
+    from setu.irc6.constants import GRAVITY_KN_PER_TONNE
     mesh = model.mesh
     j = _nearest_width_station(mesh.width_mesh_m, path_z_m)
     positions = np.linspace(0, span_m, n_positions)

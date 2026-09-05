@@ -4,7 +4,7 @@
 import numpy as np
 import pytest
 
-from setu.services.vehicle_placement import find_worst_train, place_train
+from setu.analysis.vehicle_placement import find_worst_train, place_train
 import oracles
 from oracles import worst_train_by_enumeration
 

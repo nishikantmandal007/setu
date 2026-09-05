@@ -1,4 +1,4 @@
-from setu.services.critical_position import CriticalPositionService
+from setu.analysis.critical_position import CriticalPositionService
 # The answers setu gives today, pinned so a rewrite cannot quietly move them.
 # Nothing else in the suite asserts an actual number - the other tests check
 # relations, or race the searches against brute-force oracles - so without this
@@ -11,8 +11,8 @@ import numpy as np
 import pytest
 
 from setu.models.deck import DeckCrossSection
-from setu.services.influence_surface import InfluenceSurface
-from setu.services.critical_position import CriticalPositionService
+from setu.analysis.influence_surface import InfluenceSurface
+from setu.analysis.critical_position import CriticalPositionService
 rank_all_positions = CriticalPositionService.rank_all_positions
 
 SPAN_M = 35.0

@@ -1,4 +1,4 @@
-from setu.config.constants import (
+from setu.irc6.constants import (
     SHORTEST_TABULATED_SPAN_M,
     LONGEST_TABULATED_SPAN_M,
     SHORT_SPAN_UPPER_LIMIT_M,

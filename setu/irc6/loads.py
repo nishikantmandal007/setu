@@ -1,7 +1,7 @@
 import numpy as np
 
-from setu.config.constants import GRAVITY_KN_PER_TONNE
-from setu.utils.helpers import DEFAULT_SAMPLING
+from setu.irc6.constants import GRAVITY_KN_PER_TONNE
+from setu.helpers import DEFAULT_SAMPLING
 from setu.models.vehicles import TrackedVehicle
 
 LEFT_OF_THE_CENTRELINE = -1

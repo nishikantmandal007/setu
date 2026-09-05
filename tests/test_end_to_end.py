@@ -1,4 +1,4 @@
-from setu.services.critical_position import CriticalPositionService
+from setu.analysis.critical_position import CriticalPositionService
 """The whole thing, on a real bridge solved in OpenSees.
 
 Three questions, in order of how much they matter:
@@ -13,8 +13,8 @@ import numpy as np
 import pytest
 
 from setu.models.deck import DeckCrossSection
-from setu.services.influence_surface import InfluenceSolver
-from setu.services.critical_position import CriticalPositionService
+from setu.analysis.influence_surface import InfluenceSolver
+from setu.analysis.critical_position import CriticalPositionService
 find_critical_position = CriticalPositionService.find_critical_position
 rank_all_positions = CriticalPositionService.rank_all_positions
 from setu.models.bridge import (
@@ -341,7 +341,7 @@ def test_impact_falls_as_the_member_gets_longer(built, deck_cross_section):
 
 
 def test_a_deck_with_no_room_for_a_vehicle_says_so(built):
-    from setu.utils.errors import NoAdmissibleArrangementError
+    from setu.errors import NoAdmissibleArrangementError
 
     *_, surface, _, _ = built
     too_narrow = DeckCrossSection.from_widths({"kerb": 0.5, "carriageway": 3.0})

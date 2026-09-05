@@ -1,5 +1,5 @@
-from setu.utils.errors import VehicleDefinitionError, VehicleNotFoundError
-from setu.config.constants import GRAVITY_KN_PER_TONNE
+from setu.errors import VehicleDefinitionError, VehicleNotFoundError
+from setu.irc6.constants import GRAVITY_KN_PER_TONNE
 
 def check_axle_and_spacing_counts_match(vehicle):
     axles = len(vehicle.axle_loads_t)

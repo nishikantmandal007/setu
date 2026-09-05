@@ -4,7 +4,7 @@
 import pytest
 
 from setu.models.deck import DeckCrossSection
-from setu.utils.errors import CrossSectionError
+from setu.errors import CrossSectionError
 
 
 def test_strips_are_laid_out_from_the_left_edge(cross_section):

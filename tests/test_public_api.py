@@ -1,14 +1,14 @@
 from setu.models.bridge import BridgeInput
 from setu.irc6 import impact_factor
 from setu.builder.mesh import build_mesh
-from setu.services.critical_position import find_critical_position, rank_all_positions
-from setu.services.influence_surface import InfluenceSurface
-from setu.services.opensees import OpenSeesBackend
-from setu.services.vehicle_placement import find_worst_train
-from setu.services.girder_response import GirderForces, GirderDeflections
-from setu.services.load_cases import LoadCase
-from setu.services.envelope import Envelope
-from setu.services.load_builders import pressure_load, line_load, point_load
+from setu.analysis.critical_position import find_critical_position, rank_all_positions
+from setu.analysis.influence_surface import InfluenceSurface
+from setu.solver.backend import OpenSeesBackend
+from setu.analysis.vehicle_placement import find_worst_train
+from setu.postprocess.girder_response import GirderForces, GirderDeflections
+from setu.postprocess.load_cases import LoadCase
+from setu.postprocess.envelope import Envelope
+from setu.postprocess.load_builders import pressure_load, line_load, point_load
 
 
 def test_documented_public_api_imports():
