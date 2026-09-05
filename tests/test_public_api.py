@@ -1,5 +1,5 @@
 from setu.models.bridge import BridgeInput
-from setu.rules.irc6 import impact_factor
+from setu.irc6 import impact_factor
 from setu.builder.mesh import build_mesh
 from setu.services.critical_position import find_critical_position, rank_all_positions
 from setu.services.influence_surface import InfluenceSurface

@@ -3,7 +3,7 @@
 
 import pytest
 
-from setu.rules.irc6 import (
+from setu.irc6 import (
     CLASS_A_LANE,
     ZONE_70R,
     class_a_gap,

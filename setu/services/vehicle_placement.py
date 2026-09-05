@@ -1,6 +1,6 @@
 import numpy as np
 import itertools
-from setu.rules.irc6 import *
+from setu.irc6 import *
 from setu.utils.helpers import *
 from setu.utils.errors import *
 from setu.models.results import VehiclePlacement

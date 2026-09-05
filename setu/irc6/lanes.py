@@ -1,69 +1,33 @@
-from setu.config.constants import *
+from itertools import product, zip_longest
 
 import numpy as np
 
+from setu.config.constants import (
+    CLASS_A_GAP_OPENS_UP_BELOW_M,
+    CLASS_A_KERB_CLEARANCE_M,
+    CLASS_A_LANE_WIDTH_M,
+    CLASS_A_VEHICLE_GAP_M,
+    DESIGN_LANES_BY_WIDTH,
+    FOOTWAY_UDL_KPA,
+    LANE_REDUCTION_BY_LANE_COUNT,
+    LANE_REDUCTION_FOR_FOUR_OR_MORE_LANES,
+    MOST_70R_VEHICLES_DRAWN,
+    MOST_DESIGN_LANES,
+    NARROWEST_LOADED_CARRIAGEWAY_M,
+    RESIDUAL_UDL_APPLIES_BELOW_M,
+    RESIDUAL_UDL_KPA,
+    ROUND_TO_DECIMALS,
+    SMALLEST_CLASS_A_GAP_M,
+    TOLERANCE_M,
+    TWO_CLASS_A_LANES_AND_KERB_CLEARANCES_M,
+    VEHICLE_70R_CLEARANCE_M,
+    VEHICLE_70R_WIDTH_M,
+    WIDEST_TABULATED_CARRIAGEWAY_M,
+    ZONE_70R_ALONE_M,
+    ZONE_70R_AT_EDGE_M,
+    ZONE_70R_INSIDE_M,
+)
 from setu.utils.helpers import adverse_sign, where_a_load_hurts, DEFAULT_SAMPLING
-
-from setu.models.vehicles import pitch_between_vehicles_m, TrackedVehicle, AxleVehicle, CLASS_A, CLASS_70R_WHEELED, IRC_VEHICLES
-
-def is_steel(material):
-    return material == 'steel'
-
-def is_tracked(vehicle_name):
-    return 'Tracked' in vehicle_name
-
-def is_class_a(vehicle_name):
-    return vehicle_name == 'Class_A'
-
-def class_a_impact_fraction(span_m, material='steel'):
-    span_m = min(max(float(span_m), SHORTEST_TABULATED_SPAN_M), LONGEST_TABULATED_SPAN_M)
-    if is_steel(material):
-        return 9.0 / (13.5 + span_m)
-    return 4.5 / (6.0 + span_m)
-
-def impact_fraction(vehicle_name, span_m, material='steel'):
-    span_m = float(span_m)
-    if is_class_a(vehicle_name):
-        return class_a_impact_fraction(span_m, material)
-    if span_m < SHORT_SPAN_UPPER_LIMIT_M:
-        return short_span_impact_fraction(span_m, is_tracked(vehicle_name))
-    return long_span_impact_fraction(span_m, is_tracked(vehicle_name), material)
-
-def short_span_impact_fraction(span_m, vehicle_is_tracked):
-    if not vehicle_is_tracked:
-        return SHORT_SPAN_IMPACT_FRACTION
-    if span_m <= TRACKED_TRANSITION_START_SPAN_M:
-        return SHORT_SPAN_IMPACT_FRACTION
-    fall = TRACKED_IMPACT_FRACTION_FLOOR - SHORT_SPAN_IMPACT_FRACTION
-    into_the_band_m = span_m - TRACKED_TRANSITION_START_SPAN_M
-    fallen_so_far = fall * into_the_band_m / TRACKED_TRANSITION_SPAN_WIDTH_M
-    return SHORT_SPAN_IMPACT_FRACTION + fallen_so_far
-
-def long_span_impact_fraction(span_m, vehicle_is_tracked, material):
-    if vehicle_is_tracked:
-        return tracked_long_span_impact_fraction(span_m, material)
-    return wheeled_70r_long_span_impact_fraction(span_m, material)
-
-def tracked_long_span_impact_fraction(span_m, material):
-    if is_steel(material):
-        return TRACKED_IMPACT_FRACTION_FLOOR
-    if span_m <= TRACKED_RC_IMPACT_PLATEAU_LIMIT_M:
-        return TRACKED_IMPACT_FRACTION_FLOOR
-    return class_a_impact_fraction(span_m, 'rc')
-
-def wheeled_70r_long_span_impact_fraction(span_m, material):
-    if is_steel(material):
-        curve_takes_over_above_m = WHEELED_70R_IMPACT_CURVE_TAKES_OVER_STEEL_M
-    else:
-        curve_takes_over_above_m = WHEELED_70R_IMPACT_CURVE_TAKES_OVER_RC_M
-    if span_m <= curve_takes_over_above_m:
-        return SHORT_SPAN_IMPACT_FRACTION
-    return class_a_impact_fraction(span_m, material)
-
-def impact_factor(vehicle_name, span_m, material='steel'):
-    return 1.0 + impact_fraction(vehicle_name, span_m, material)
-
-from itertools import product, zip_longest
 
 CLASS_A_LANE = 'class_a'
 ZONE_70R = 'zone_70r'
@@ -73,6 +37,7 @@ DESIGN_LANES_PER_CLASS_A_LANE = 1
 NO_GAP_NEEDED_M = 0.0
 NOT_LOADED_AT_ALL = 0
 LEFT_OVER_WIDTH_DECIMALS = 6
+
 
 class LaneArrangement:
     def __init__(self, lane_pattern, design_lanes, narrowest_carriageway_m, sliding_room_m, is_fully_loaded):
@@ -85,6 +50,7 @@ class LaneArrangement:
     def to_dict(self):
         return self.__dict__
 
+
 class BlockLayout:
     def __init__(self, packed_left_edges_m, block_widths_m, gaps_between_blocks_m, sliding_room_m):
         self.packed_left_edges_m = packed_left_edges_m
@@ -94,6 +60,7 @@ class BlockLayout:
 
     def to_dict(self):
         return self.__dict__
+
 
 def design_lanes_used_by(lane_pattern):
     return sum((DESIGN_LANES_PER_70R_ZONE if block == ZONE_70R else DESIGN_LANES_PER_CLASS_A_LANE for block in lane_pattern))
@@ -222,7 +189,6 @@ def where_vehicle_sits_in_block(block, block_width_m):
 def lane_reduction_factor(loaded_lanes):
     return LANE_REDUCTION_BY_LANE_COUNT.get(int(loaded_lanes), LANE_REDUCTION_FOR_FOUR_OR_MORE_LANES)
 
-
 NOTHING_THERE_M = 1e-12
 
 def needs_residual_udl(carriageway_width_m):
@@ -280,142 +246,3 @@ def cell_centres(edges_m, cells_per_interval):
     widths_m = (interval_ends_m - interval_starts_m) / cells_per_interval
     centres_m = interval_starts_m + (which_cell + 0.5) * widths_m
     return (centres_m, widths_m)
-
-LEFT_OF_THE_CENTRELINE = -1
-RIGHT_OF_THE_CENTRELINE = +1
-BOTH_SIDES = (LEFT_OF_THE_CENTRELINE, RIGHT_OF_THE_CENTRELINE)
-WHEELS_PER_AXLE = 2
-OFFSET_DX_M = 0
-OFFSET_DZ_M = 1
-OFFSET_LOAD_KN = 2
-
-class WheelLoad:
-    def __init__(self, x_m, z_m, load_kn):
-        self.x_m = x_m
-        self.z_m = z_m
-        self.load_kn = load_kn
-
-    def to_dict(self):
-        return self.__dict__
-
-class ContactPatch:
-    def __init__(self, x_from_m, x_to_m, z_from_m, z_to_m, pressure_kpa):
-        self.x_from_m = x_from_m
-        self.x_to_m = x_to_m
-        self.z_from_m = z_from_m
-        self.z_to_m = z_to_m
-        self.pressure_kpa = pressure_kpa
-
-    def to_dict(self):
-        return self.__dict__
-
-    def total_load_kn(self):
-        length_m = self.x_to_m - self.x_from_m
-        width_m = self.z_to_m - self.z_from_m
-        return self.pressure_kpa * length_m * width_m
-
-class LaneAssignment:
-    def __init__(self, vehicle, x_front_m, z_centre_m, how_many=1, gap_m=None):
-        self.vehicle = vehicle
-        self.x_front_m = x_front_m
-        self.z_centre_m = z_centre_m
-        self.how_many = how_many
-        self.gap_m = gap_m
-
-    def to_dict(self):
-        return self.__dict__
-
-def split_offsets(offsets):
-    return (offsets[:, OFFSET_DX_M], offsets[:, OFFSET_DZ_M], offsets[:, OFFSET_LOAD_KN])
-
-def wheel_load_offsets(vehicle, wearing_course_thickness_m=0.0, sampling=DEFAULT_SAMPLING):
-    if isinstance(vehicle, TrackedVehicle):
-        return offsets_for_tracks(vehicle, wearing_course_thickness_m, sampling)
-    return offsets_for_axles(vehicle)
-
-def offsets_for_axles(vehicle):
-    half_gauge_m = vehicle.transverse_gauge_m / 2.0
-    offsets = []
-    axles = zip(vehicle.axle_loads_t, vehicle.axle_positions_m(), strict=True)
-    for axle_load_t, dx_m in axles:
-        wheel_load_kn = axle_load_t * GRAVITY_KN_PER_TONNE / WHEELS_PER_AXLE
-        for side in BOTH_SIDES:
-            offsets.append((dx_m, side * half_gauge_m, wheel_load_kn))
-    return np.array(offsets, float)
-
-def offsets_for_tracks(vehicle, wearing_course_thickness_m, sampling):
-    length_m = vehicle.track_length_m + 2.0 * wearing_course_thickness_m
-    width_m = vehicle.track_width_m + 2.0 * wearing_course_thickness_m
-    steps_along = sampling.point_loads_along_a_track
-    steps_across = sampling.point_loads_across_a_track
-    points_per_track = steps_along * steps_across
-    load_per_point_kn = vehicle.load_per_track_t * GRAVITY_KN_PER_TONNE / points_per_track
-    dx_m = (np.arange(steps_along) + 0.5) * length_m / steps_along
-    dz_m = (np.arange(steps_across) + 0.5) * width_m / steps_across - width_m / 2.0
-    half_gauge_m = vehicle.transverse_gauge_m / 2.0
-    offsets = [(along_m, side * half_gauge_m + across_m, load_per_point_kn) for side in BOTH_SIDES for along_m in dx_m for across_m in dz_m]
-    return np.array(offsets, float)
-
-def wheel_loads_at(vehicle, x_front_m, z_centre_m, wearing_course_thickness_m=0.0):
-    offsets = wheel_load_offsets(vehicle, wearing_course_thickness_m)
-    return [WheelLoad(x_m=x_front_m + dx_m, z_m=z_centre_m + dz_m, load_kn=load_kn) for dx_m, dz_m, load_kn in offsets]
-
-def contact_patches_at(vehicle, x_front_m, z_centre_m):
-    half_gauge_m = vehicle.transverse_gauge_m / 2.0
-    half_track_m = vehicle.track_width_m / 2.0
-    pressure_kpa = vehicle.contact_pressure_kpa()
-    patches = []
-    for side in BOTH_SIDES:
-        track_centre_m = z_centre_m + side * half_gauge_m
-        patches.append(ContactPatch(x_from_m=x_front_m, x_to_m=x_front_m + vehicle.track_length_m, z_from_m=track_centre_m - half_track_m, z_to_m=track_centre_m + half_track_m, pressure_kpa=pressure_kpa))
-    return patches
-
-def train_at(vehicle, x_front_of_leader_m, z_centre_m, how_many=1, gap_m=None):
-    if gap_m is None:
-        gap_m = vehicle.min_nose_to_tail_m
-    pitch_m = vehicle.length_m() + gap_m
-    wheel_loads = []
-    patches = []
-    for position_in_train in range(how_many):
-        x_front_m = x_front_of_leader_m + position_in_train * pitch_m
-        if isinstance(vehicle, TrackedVehicle):
-            patches.extend(contact_patches_at(vehicle, x_front_m, z_centre_m))
-        else:
-            wheel_loads.extend(wheel_loads_at(vehicle, x_front_m, z_centre_m))
-    return (wheel_loads, patches)
-
-def loads_for_lanes(lanes):
-    all_wheel_loads = []
-    all_patches = []
-    for lane in lanes:
-        wheel_loads, patches = train_at(lane.vehicle, lane.x_front_m, lane.z_centre_m, lane.how_many, lane.gap_m)
-        all_wheel_loads.extend(wheel_loads)
-        all_patches.extend(patches)
-    return (all_wheel_loads, all_patches)
-
-
-def braking_force_kn(total_live_load_kn):
-    return 0.2 * total_live_load_kn
-
-
-def seismic_coefficient(zone_factor, importance_factor, response_reduction, sa_over_g=2.5):
-    return (zone_factor / 2.0) * (importance_factor / response_reduction) * sa_over_g
-
-
-K2_TERRAIN_CATEGORY_2 = {10: 1.00, 15: 1.05, 20: 1.10, 30: 1.15, 50: 1.20}
-
-
-def wind_pressure_kpa(basic_speed_mps, deck_height_m, drag_coefficient=1.2, terrain_category=2):
-    if terrain_category != 2:
-        raise ValueError(f"only terrain category 2 is implemented, got {terrain_category}")
-    k1 = 1.0
-    k2 = 1.0
-    for threshold, factor in K2_TERRAIN_CATEGORY_2.items():
-        if deck_height_m <= threshold:
-            k2 = factor
-            break
-    else:
-        k2 = 1.20
-    k3 = 1.0
-    design_speed = basic_speed_mps * k1 * k2 * k3
-    return 0.6 * design_speed ** 2 / 1000 * drag_coefficient

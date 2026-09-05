@@ -17,7 +17,7 @@ from setu.models.vehicles import (
     most_vehicles_that_fit,
     pitch_between_vehicles_m,
 )
-from setu.rules.irc6 import (
+from setu.irc6 import (
     contact_patches_at,
     wheel_load_offsets,
     wheel_loads_at,

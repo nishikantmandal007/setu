@@ -4,19 +4,19 @@
 import numpy as np
 import pytest
 
-from setu.rules.irc6 import (
+from setu.irc6 import (
     needs_residual_udl,
     response_to_area_load,
     strips_beside_class_a,
     uncovered_strips,
 )
 from setu.config.constants import RESIDUAL_UDL_KPA
-from setu.rules.irc6 import (
+from setu.irc6 import (
     class_a_impact_fraction,
     impact_factor,
     impact_fraction,
 )
-from setu.rules.irc6 import lane_reduction_factor
+from setu.irc6 import lane_reduction_factor
 
 
 @pytest.mark.parametrize(

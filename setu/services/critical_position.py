@@ -1,6 +1,6 @@
 import numpy as np
 from setu.utils.helpers import *
-from setu.rules.irc6 import *
+from setu.irc6 import *
 from setu.models.results import *
 from setu.models.vehicles import vehicles_allowed_in_each_block
 from setu.services.vehicle_placement import *
