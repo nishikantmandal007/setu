@@ -4,7 +4,7 @@ Bridge analysis library for IRC:6 plate girder design. Uses influence surfaces
 and the adjoint method to find the worst legal vehicle position without brute-force
 FEA — one solve gives the response everywhere on the deck.
 
-Built as the analysis backend for [Osdag](https://osdag.fossee.in/) Bridge.
+Built as the analysis backend for [OsdagBridge](https://github.com/osdag-admin/OsdagBridge)
 
 ## Install
 
