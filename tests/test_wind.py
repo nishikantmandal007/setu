@@ -218,3 +218,17 @@ def test_the_wind_site_works_out_the_areas(wind_cases):
 
     assert cases.forces_kn["transverse"] == pytest.approx(pressure_pa / PA_PER_KPA * SPAN_M * depth_m * 2.0 * drag)
     assert cases.forces_kn["vertical"] == pytest.approx(pressure_pa / PA_PER_KPA * SPAN_M * BRIDGE.width_m() * 2.0 * 0.75)
+
+
+@pytest.mark.parametrize("name", ["transverse from the left", "longitudinal", "vertical upward", "on live load from the right"])
+def test_a_load_case_read_through_its_influence_surface_matches_a_real_solve(wind_cases, name):
+    """Reciprocity: response = (adjoint displacements) . (nodal loads), the same as solving the load case."""
+    from setu.analysis.influence_surface import InfluenceSolver, response_to_load_case
+
+    model, cases = wind_cases
+    midspan = model.mesh.stations_along_span // 2
+    surface = InfluenceSolver(model.as_deck_model()).for_girder_composite_moment("m", model.midspan_element_of_girder(1))
+
+    solved = analyze_load_case(model, cases[name], ops)[1].composite_moment_kn_m[midspan]
+
+    assert response_to_load_case(surface, cases[name]) == pytest.approx(solved, rel=1e-9, abs=1e-9)

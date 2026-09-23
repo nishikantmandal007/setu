@@ -2,13 +2,14 @@ import itertools
 
 from setu.analysis.critical_position import find_critical_position
 from setu.helpers import adverse_sign
-from setu.analysis.influence_surface import InfluenceSolver
+from setu.analysis.influence_surface import InfluenceSolver, response_to_load_case
 from setu.builder.assembly import build_bridge_model
 from setu.irc6.combinations import design_value, irc6_combinations
 from setu.irc6.seismic import combine_directions
 from setu.irc6.temperature import effective_temperature_range, temperature_difference_profile
 from setu.loads.braking_loads import braking_load_cases
 from setu.loads.custom_loads import custom_load_cases
+from setu.loads.load_cases import LoadCase
 from setu.loads.seismic_loads import seismic_load_cases
 from setu.loads.wind_loads import wind_load_cases
 from setu.postprocess.girder_response import analyze_load_case, dead_load_forces
@@ -71,16 +72,16 @@ def girder_design_values(bridge, wind=None, seismic=None, temperature=None, cust
     live = {(girder, response, adverse): find_critical_position(surfaces[girder, response], bridge.cross_section, span_m=bridge.span_m, adverse=adverse,
                                                                   wearing_course_thickness_m=bridge.wearing_course_thickness_m)
             for girder in girders for response in RESPONSES for adverse in (BIGGER_IS_WORSE, SMALLER_IS_WORSE)}
-    read = reader(model)
+    read = reader(model, surfaces)
     wind_cases = wind_load_cases(model, wind) if wind is not None else None
-    wind_forces = {name: analyze_load_case(model, case, ops) for name, case in (wind_cases or {}).items()}
+    wind_forces = dict(wind_cases or {})
     seismic_forces = {}
     if seismic is not None:
         for girder in girders:
             for response in RESPONSES:
                 with_its_traffic = seismic_load_cases(model, seismic, live[girder, response, BIGGER_IS_WORSE], ops)
-                seismic_forces[girder, response] = {name: analyze_load_case(model, case, ops) for name, case in with_its_traffic.items()}
-    custom_forces = {group: analyze_load_case(model, case, ops) for group, case in custom_load_cases(model, custom_loads).items()}
+                seismic_forces[girder, response] = dict(with_its_traffic)
+    custom_forces = custom_load_cases(model, custom_loads)
     combinations = irc6_combinations(wind_cases.speed_at_deck_mps if wind_cases is not None else None) + list(custom_combinations)
     results = {}
     for girder in girders:
@@ -103,10 +104,12 @@ def girder_design_values(bridge, wind=None, seismic=None, temperature=None, cust
     return DesignValues(results, thermal_results(bridge, temperature), surfaces, live)
 
 
-def reader(model):
+def reader(model, surfaces):
     midspan = model.mesh.stations_along_span // 2
 
     def read(forces, girder, response):
+        if isinstance(forces, LoadCase):
+            return response_to_load_case(surfaces[girder, response], forces)
         if response == MIDSPAN_MOMENT:
             return float(forces[girder].composite_moment_kn_m[midspan])
         return float(forces[girder].shear_kn[SUPPORT])
@@ -114,7 +117,7 @@ def reader(model):
 
 
 def live_with_braking(model, critical, read, girder, response, ops):
-    braking = [read(analyze_load_case(model, case, ops), girder, response) for case in braking_load_cases(model, critical).values()]
+    braking = [read(case, girder, response) for case in braking_load_cases(model, critical).values()]
     adding = max(braking) if critical.adverse == BIGGER_IS_WORSE else min(braking)
     return critical.response + adding
 

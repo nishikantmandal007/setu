@@ -18,6 +18,9 @@ class FEBackend:
     def clear_loads(self):
         raise NotImplementedError
 
+    def every_node_displacement(self):
+        raise NotImplementedError
+
 class OpenSeesBackend(FEBackend):
 
     ADJOINT_PATTERN = 7
@@ -51,6 +54,9 @@ class OpenSeesBackend(FEBackend):
 
     def node_coordinates(self, node):
         return self.ops.nodeCoord(node)
+
+    def every_node_displacement(self):
+        return {node: self.ops.nodeDisp(node) for node in self.ops.getNodeTags()}
 
     def element_forces(self, element):
         return self.ops.eleResponse(element, "localForce")

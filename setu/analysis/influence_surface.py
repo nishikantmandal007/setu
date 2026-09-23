@@ -57,6 +57,15 @@ class InfluenceSurface:
             describes = {}
         return cls(values=stored['values'], length_mesh_m=stored['length_mesh_m'], width_mesh_m=stored['width_mesh_m'], name=str(stored['name']), skew=float(stored['skew']), describes=describes)
 
+def response_to_load_case(surface, load_case):
+    if load_case.element_loads:
+        raise ValueError(f"{load_case.name!r} has element loads; reciprocity here covers nodal loads only - solve it with analyze_load_case")
+    displacements = surface.every_node_displacement
+    response = 0.0
+    for node, *forces in load_case.nodal_loads:
+        response += sum(force * displacement for force, displacement in zip(forces, displacements[node], strict=True))
+    return response
+
 def cell_containing(stations_m, positions_m):
     last_cell = len(stations_m) - 2
     return np.clip(np.searchsorted(stations_m, positions_m) - 1, 0, last_cell)
@@ -141,6 +150,7 @@ class InfluenceSolver:
 
     def surface_from_solved_deck(self, name, describes):
         surface = InfluenceSurface(values=self.deck_deflections(), length_mesh_m=self.deck.length_mesh_m, width_mesh_m=self.deck.width_mesh_m, name=name, skew=self.deck.skew, describes=describes)
+        surface.every_node_displacement = self.backend.every_node_displacement()
         self.surfaces[name] = surface
         self.backend.clear_loads()
         return surface
