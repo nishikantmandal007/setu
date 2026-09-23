@@ -67,6 +67,13 @@ class AddedDeadLoads:
         self.crash_barrier = SurfacingLayer(0.3, 24.0)
 
 
+def one_wearing_course_m(given_on_the_bridge_m, deck):
+    given_on_the_deck_m = deck.wearing_course_thickness_m if deck is not None else 0.0
+    if given_on_the_bridge_m and given_on_the_deck_m and given_on_the_bridge_m != given_on_the_deck_m:
+        raise ValueError(f"the wearing course is {given_on_the_bridge_m} m on the bridge but {given_on_the_deck_m} m on the deck slab; give it once")
+    return given_on_the_bridge_m or given_on_the_deck_m
+
+
 class BridgeInput:
     def __init__(self, span_m=0.0, skew=0.0, cross_section=None, deck=None, girders=None, bracing=None, cross_girders=None, section=None, wearing_course_thickness_m=0.0, mesh=None, steel=None, concrete=None, wearing_course_unit_weight_kn_m3=22.0, added_dead_loads=None, construction=UNPROPPED, shuttering_kpa=0.0, **kwargs):
         self.span_m = span_m
@@ -78,7 +85,7 @@ class BridgeInput:
         self.bracings = bracing
         self.cross_girders = cross_girders
         self.section = section
-        self.wearing_course_thickness_m = wearing_course_thickness_m
+        self.wearing_course_thickness_m = one_wearing_course_m(wearing_course_thickness_m, deck)
         self.mesh = mesh
         self.steel = steel or Steel()
         self.concrete = concrete or Concrete()

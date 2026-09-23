@@ -135,3 +135,25 @@ def test_a_symmetric_deck_loads_its_girders_symmetrically():
 
     for girder in range(len(result.total) // 2):
         assert result.total[girder].composite_moment_kn_m[midspan] == pytest.approx(result.total[last - girder].composite_moment_kn_m[midspan], rel=1e-6)
+
+
+def test_a_wearing_course_given_on_the_deck_is_loaded():
+    """DeckSlab(wearing_course_thickness_m=...) is where the example sets it; it must reach the dead load."""
+    from setu.models.bridge import DeckSlab
+
+    bridge = BridgeInput(span_m=SPAN_M, cross_section=CROSS_SECTION, deck=DeckSlab(thickness_m=0.23, overhang_m=1.25, wearing_course_thickness_m=0.075),
+                         girders=BRIDGE.girders, bracing=BRIDGE.bracing, mesh=BRIDGE.mesh)
+    model = build_bridge_model(bridge)
+    from setu.loads.dead_loads import surfacing_load
+    carriageway_m = sum(strip.width_m for strip in CROSS_SECTION.strips if strip.carries_traffic())
+
+    applied_kn = -sum(fy for _, _, fy, *_ in surfacing_load(model).nodal_loads)
+
+    assert applied_kn == pytest.approx(0.075 * 22.0 * carriageway_m * SPAN_M, rel=1e-9)
+
+
+def test_two_different_wearing_courses_are_refused():
+    from setu.models.bridge import DeckSlab
+
+    with pytest.raises(ValueError, match="wearing course"):
+        BridgeInput(span_m=SPAN_M, deck=DeckSlab(thickness_m=0.23, wearing_course_thickness_m=0.075), wearing_course_thickness_m=0.05)
