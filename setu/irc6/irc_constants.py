@@ -5,6 +5,8 @@ from setu.utils.constants import (
     FREQUENT,
     KPA_PER_KG_M2,
     LIVE,
+    OBSTRUCTED_TERRAIN,
+    PLAIN_TERRAIN,
     QUASI_PERMANENT,
     RARE,
     SEISMIC,
@@ -81,15 +83,48 @@ TRACKED_RC_IMPACT_PLATEAU_LIMIT_M = 40.0
 WHEELED_70R_IMPACT_CURVE_TAKES_OVER_STEEL_M = 23.0
 WHEELED_70R_IMPACT_CURVE_TAKES_OVER_RC_M = 12.0
 
-# Braking, seismic and wind helpers, as implemented in irc6/wheel_loads.py.
-# These three were not part of the IRC:6 audit; check them before relying on them.
+# Braking and seismic helpers, as implemented in irc6/wheel_loads.py.
+# Not part of the IRC:6 audit; replaced clause by clause in irc6/braking.py and irc6/seismic.py.
 BRAKING_FRACTION_OF_LIVE_LOAD = 0.2
 SEISMIC_ZONE_FACTOR_DIVISOR = 2.0
 SEISMIC_SA_OVER_G = 2.5
-WIND_K2_TERRAIN_CATEGORY_2 = {10: 1.00, 15: 1.05, 20: 1.10, 30: 1.15, 50: 1.20}
-WIND_K2_ABOVE_THE_TABLE = 1.20
-WIND_DRAG_COEFFICIENT = 1.2
-WIND_PRESSURE_KPA_PER_M2_S2 = 0.6 / 1000
+
+# Clause 209.1 - where these wind rules apply
+WIND_RULES_APPLY_UP_TO_SPAN_M = 150.0
+WIND_RULES_APPLY_UP_TO_HEIGHT_M = 100.0
+
+# Clause 209.2, Table 12 - hourly mean wind speed (m/s) and pressure (N/m2) at a basic wind speed of 33 m/s
+TABLE_12_HEIGHTS_M = (10.0, 15.0, 20.0, 30.0, 50.0, 60.0, 70.0, 80.0, 90.0, 100.0)
+TABLE_12_WIND_SPEED_MPS = {
+    PLAIN_TERRAIN: (27.80, 29.20, 30.30, 31.40, 33.10, 33.60, 34.00, 34.40, 34.90, 35.30),
+    OBSTRUCTED_TERRAIN: (17.80, 19.60, 21.00, 22.80, 24.90, 25.60, 26.20, 26.90, 27.50, 28.20),
+}
+TABLE_12_WIND_PRESSURE_PA = {
+    PLAIN_TERRAIN: (463.70, 512.50, 550.60, 590.20, 659.20, 676.30, 693.60, 711.20, 729.00, 747.00),
+    OBSTRUCTED_TERRAIN: (190.50, 230.50, 265.30, 312.20, 373.40, 392.90, 412.80, 433.30, 454.20, 475.60),
+}
+TABLE_12_BASIC_WIND_SPEED_MPS = 33.0
+FUNNELLING_TOPOGRAPHY_INCREASE = 1.2
+CONSTRUCTION_STAGE_WIND_FRACTION = 0.7
+
+# Clause 209.3.3 - transverse wind on the superstructure
+GUST_FACTOR = 2.0
+SINGLE_PLATE_GIRDER_DRAG_COEFFICIENT = 2.2
+PLATE_GIRDERS_DRAG_BASE = 2.0
+PLATE_GIRDERS_DRAG_SPACING_DIVISOR = 20.0
+PLATE_GIRDERS_DRAG_COEFFICIENT_MOST = 4.0
+
+# Clause 209.3.4 - longitudinal wind on a beam, box or plate girder superstructure
+PLATE_GIRDER_LONGITUDINAL_WIND_FRACTION = 0.25
+
+# Clause 209.3.5 - vertical wind
+LIFT_COEFFICIENT = 0.75
+
+# Clause 209.3.6 - wind on the live load
+LIVE_LOAD_DRAG_COEFFICIENT = 1.2
+LIVE_LOAD_EXPOSED_HEIGHT_M = 3.0
+WIND_ON_LIVE_LOAD_ACTS_ABOVE_ROAD_M = 1.5
+LIVE_LOAD_LONGITUDINAL_WIND_FRACTION = 0.25
 
 # Annex B, Tables B.2 and B.3 - partial safety factors.
 # Permanent loads: (adding, relieving). Variable loads: (leading, accompanying);

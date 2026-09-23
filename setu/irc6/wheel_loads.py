@@ -5,10 +5,6 @@ from setu.irc6.irc_constants import (
     BRAKING_FRACTION_OF_LIVE_LOAD,
     SEISMIC_SA_OVER_G,
     SEISMIC_ZONE_FACTOR_DIVISOR,
-    WIND_DRAG_COEFFICIENT,
-    WIND_K2_ABOVE_THE_TABLE,
-    WIND_K2_TERRAIN_CATEGORY_2,
-    WIND_PRESSURE_KPA_PER_M2_S2,
 )
 from setu.irc6.vehicles import TrackedVehicle
 from setu.utils.constants import GRAVITY_KN_PER_TONNE, OFFSET_DX_M, OFFSET_DZ_M, OFFSET_LOAD_KN
@@ -133,19 +129,3 @@ def braking_force_kn(total_live_load_kn):
 
 def seismic_coefficient(zone_factor, importance_factor, response_reduction, sa_over_g=SEISMIC_SA_OVER_G):
     return (zone_factor / SEISMIC_ZONE_FACTOR_DIVISOR) * (importance_factor / response_reduction) * sa_over_g
-
-
-def wind_pressure_kpa(basic_speed_mps, deck_height_m, drag_coefficient=WIND_DRAG_COEFFICIENT, terrain_category=2):
-    if terrain_category != 2:
-        raise ValueError(f"only terrain category 2 is implemented, got {terrain_category}")
-    k1 = 1.0
-    k2 = 1.0
-    for threshold, factor in WIND_K2_TERRAIN_CATEGORY_2.items():
-        if deck_height_m <= threshold:
-            k2 = factor
-            break
-    else:
-        k2 = WIND_K2_ABOVE_THE_TABLE
-    k3 = 1.0
-    design_speed = basic_speed_mps * k1 * k2 * k3
-    return WIND_PRESSURE_KPA_PER_M2_S2 * design_speed ** 2 * drag_coefficient

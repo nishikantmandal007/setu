@@ -61,3 +61,7 @@ SEISMIC_COMBINATION = "ultimate, seismic"
 RARE = "serviceability, rare"
 FREQUENT = "serviceability, frequent"
 QUASI_PERMANENT = "serviceability, quasi-permanent"
+
+# Terrain around the bridge for wind (IRC:6 Table 12)
+PLAIN_TERRAIN = "plain"
+OBSTRUCTED_TERRAIN = "obstructed"

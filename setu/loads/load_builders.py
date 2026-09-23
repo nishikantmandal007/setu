@@ -89,19 +89,6 @@ def seismic_load(model, ah, name):
     return LoadCase(name=name, nodal_loads=nodal_loads)
 
 
-def wind_load(model, pressure_kpa, name):
-    mesh = model.mesh
-    exposed_depth_m = model.girder.depth_m + model.bridge.deck.thickness_m
-    nodal_loads = []
-    for k in range(model.bridge.girders.count):
-        for i in range(mesh.stations_along_span):
-            along_m = tributary_length_m(mesh.length_mesh_m, i)
-            force_kn = pressure_kpa * exposed_depth_m * along_m
-            node = model.girder_nodes[k, i]
-            nodal_loads.append((node, 0.0, 0.0, force_kn, 0.0, 0.0, 0.0))
-    return LoadCase(name=name, nodal_loads=nodal_loads)
-
-
 def fatigue_moving_load(model, vehicle, path_z_m, span_m, n_positions=50, name="fatigue"):
     from setu.irc6.irc_constants import GRAVITY_KN_PER_TONNE
     mesh = model.mesh

@@ -19,7 +19,7 @@ from setu.irc6.combinations import Combination, custom_combination, design_value
 from setu.postprocess.girder_response import GirderForces, GirderDeflections, girder_forces, girder_deflections
 from setu.postprocess.envelope import Envelope, envelope, envelope_with_deflections
 from setu.loads.load_cases import LoadCase, apply_load_case, combine
-from setu.loads.load_builders import live_load, vehicle_load, pressure_load, line_load, point_load, braking_load, seismic_load, wind_load, temperature_gradient, fatigue_moving_load
+from setu.loads.load_builders import live_load, vehicle_load, pressure_load, line_load, point_load, braking_load, seismic_load, temperature_gradient, fatigue_moving_load
 
 
 def build_result_dataset(*args, **kwargs):
