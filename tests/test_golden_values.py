@@ -151,24 +151,27 @@ GOLDEN_ANSWERS = [
         ],
     ),
     GoldenAnswer(
+        # Moved from -13346.1818 when the search began trying a follower exactly one
+        # pitch (38.8 m) behind each breakpoint: the train shifted 0.1 m and got worse,
+        # which a search on each vehicle's own breakpoints alone could not reach.
         name="a train of two in each lane, hogging over the pier",
         surface=hogging_surface(),
         cross_section=DUAL_CARRIAGEWAY,
         span_m=2 * SPAN_M,
         options={"adverse": "minimum", "apply_footway_load": False},
         cases=1,
-        response=-13346.181789873128,
-        response_before_reduction=-13346.181789873128,
+        response=-13346.29776524414,
+        response_before_reduction=-13346.29776524414,
         lane_reduction=1.0,
         design_lanes=2,
         lane_pattern="class_a | class_a",
         footway_response=0.0,
         residual_udl_applied=True,
-        resultant_centred_response=-13221.640892932408,
-        total_over_all_cases=-13346.181789873128,
+        resultant_centred_response=-13221.753786764868,
+        total_over_all_cases=-13346.29776524414,
         vehicles=[
-            ("Class_A", 5.15, 6.4, (6.4, 45.2)),
-            ("Class_A", 8.35, 6.4, (6.4, 45.2)),
+            ("Class_A", 5.15, 6.5, (6.5, 45.3)),
+            ("Class_A", 8.35, 6.5, (6.5, 45.3)),
         ],
     ),
     GoldenAnswer(

@@ -64,6 +64,8 @@ class VehicleResponses:
     def build_curve(self, vehicle, z_positions_m, adverse):
         wheel_offsets = along_the_mesh(wheel_load_offsets(vehicle, self.wearing_course_thickness_m, self.sampling), self.skew)
         x_positions_m = positions_along_span(self.surface, wheel_offsets)
+        if self.allow_trains:
+            x_positions_m = with_every_train_spacing(x_positions_m, vehicle)
         response_to_one_vehicle = response_to_one_vehicle_everywhere(self.surface, wheel_offsets, x_positions_m, z_positions_m, self.sampling)
         if self.allow_trains:
             worst = self.worst_train_at_each_position(vehicle, response_to_one_vehicle, x_positions_m, adverse)
@@ -130,6 +132,15 @@ def positions_along_span(surface, wheel_offsets):
     part_way_onto_the_bridge_m = -wheel_dx_m.max()
     far_end_of_the_bridge_m = stations_m[-1]
     return keep_between(puts_a_wheel_on_a_station_m, part_way_onto_the_bridge_m, far_end_of_the_bridge_m)
+
+def with_every_train_spacing(x_positions_m, vehicle):
+    pitch_m = pitch_between_vehicles_m(vehicle)
+    most_vehicles = most_vehicles_that_fit(vehicle, float(x_positions_m[0]), float(x_positions_m[-1]))
+    one_pitch_apart = [x_positions_m + k * pitch_m for k in range(-(most_vehicles - 1), most_vehicles) if k]
+    if not one_pitch_apart:
+        return x_positions_m
+    everywhere_m = np.unique(np.round(np.concatenate([x_positions_m, *one_pitch_apart]), ROUND_TO_DECIMALS))
+    return keep_between(everywhere_m, float(x_positions_m[0]), float(x_positions_m[-1]))
 
 def response_to_one_vehicle_everywhere(surface, wheel_offsets, x_positions_m, z_positions_m, sampling):
     responses = np.empty((len(x_positions_m), len(z_positions_m)))
