@@ -68,12 +68,11 @@ setu/
 └── postprocess/  girder response, envelopes, result datasets, plots
 ```
 
-## Two flows
+## Flow
 
-- **Critical position**: build the model → solve an influence surface → search along the span and across the carriageway → worst IRC:6 vehicle position. See [docs/critical_position_flow.puml](docs/critical_position_flow.puml).
-- **Load cases**: build the model → make load cases → combine with IRC:6 factors → solve → girder forces, envelopes, plots. See [docs/load_case_flow.puml](docs/load_case_flow.puml).
+![setu end-to-end flow](docs/flow.svg)
 
-How the layers depend on each other: [docs/layers.puml](docs/layers.puml).
+Each girder gets its own influence surface and critical-position search. The design girder is the worst of them.
 
 ## Tests
 

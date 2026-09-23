@@ -1,0 +1,26 @@
+@startuml flow
+title setu: end-to-end flow
+
+start
+:BridgeInput + DeckCrossSection (models);
+:build_bridge_model: mesh + OpenSees model (builder);
+
+partition "Critical vehicle position" {
+  repeat :next girder;
+    :InfluenceSolver: one influence surface for this girder (analysis + solver);
+    :search along the span: worst train (along_span);
+    :search across the carriageway: worst IRC:6 lane arrangement (across_carriageway + irc6);
+    :rank_all_positions → take the worst = CriticalPosition (critical_position);
+  repeat while (more girders?) is (yes)
+  -> no;
+  :design girder = worst of all girders;
+}
+
+partition "Load cases" {
+  :dead, wind, seismic, braking, temperature loads (loads);
+  :combine with IRC:6 factors (irc6.combinations → loads.combine);
+  :solve → girder forces and deflections (postprocess);
+  :envelope → plots / dataset (postprocess);
+}
+stop
+@enduml
