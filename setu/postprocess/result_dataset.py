@@ -51,7 +51,7 @@ def displacements_dataset(model, ops, load_case_name):
     )
 
 
-def full_dataset(model, ops, load_case_name):
+def build_result_dataset(model, ops, load_case_name):
     forces = forces_dataset(model, ops, load_case_name)
     displacements = displacements_dataset(model, ops, load_case_name)
     return xr.merge([forces, displacements])

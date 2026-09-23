@@ -1,4 +1,4 @@
-from src.services.critical_position import find_critical_position
+from setu import find_critical_position
 from src.services.drawing import animate_vehicle_along_span, draw_everything
 """Draws the critical position setu found, on the 35 m plate girder bridge.
 
@@ -19,8 +19,8 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 from plate_girder_35m import BRIDGE, CROSS_SECTION  # noqa: E402
 
-from src.services.influence_surface import InfluenceSolver  # noqa: E402
-from src.services.bridge_geometry import build_bridge_model  # noqa: E402
+from setu import InfluenceSolver  # noqa: E402
+from setu import build_bridge_model  # noqa: E402
 
 HERE = Path(__file__).parent
 
