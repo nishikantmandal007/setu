@@ -29,11 +29,9 @@ from setu import (
     DeckCrossSection,
     DeckSlab,
     Girders,
-    InfluenceSolver,
     MeshSettings,
     PlateGirderSection,
     build_bridge_model,
-    find_critical_position,
     live_load,
 )
 from setu.helpers import DEFAULT_SAMPLING
@@ -135,19 +133,11 @@ def read_input(path):
 
 # ── the analysis ──────────────────────────────────────────────────────────────
 
-def critical_positions(bridge, model):
-    solver = InfluenceSolver(model.as_deck_model())
-    found = {}
-    for girder in range(bridge.girders.count):
-        for response, element, solve in ((MIDSPAN_MOMENT, model.midspan_element_of_girder(girder), solver.for_girder_composite_moment),
-                                         (SUPPORT_SHEAR, model.element_of_girder_at(girder, SUPPORT), solver.for_girder_shear)):
-            surface = solve(f"girder {girder}, {response}", element)
-            for adverse in DIRECTIONS:
-                critical = find_critical_position(surface, bridge.cross_section, span_m=bridge.span_m, adverse=adverse,
-                                                  wearing_course_thickness_m=bridge.wearing_course_thickness_m)
-                found[girder, response, adverse] = (surface, critical)
+def checked_in_opensees(bridge, results, model):
     midspan = model.mesh.stations_along_span // 2
-    for (girder, response, adverse), (surface, critical) in found.items():
+    found = {}
+    for (girder, response, adverse), critical in results.criticals.items():
+        surface = results.surfaces[girder, response]
         forces = analyze_load_case(model, live_load(model, critical, surface), ops)[girder]
         solved = forces.composite_moment_kn_m[midspan] if response == MIDSPAN_MOMENT else forces.shear_kn[SUPPORT]
         found[girder, response, adverse] = (surface, critical, float(solved))
@@ -155,10 +145,10 @@ def critical_positions(bridge, model):
 
 
 def analyse(bridge, loads):
-    model = build_bridge_model(bridge, ops)
-    found = critical_positions(bridge, model)
-    wind = wind_load_cases(model, loads["wind"]) if loads["wind"] else None
     results = girder_design_values(bridge, ops=ops, **loads)
+    model = build_bridge_model(bridge, ops)
+    found = checked_in_opensees(bridge, results, model)
+    wind = wind_load_cases(model, loads["wind"]) if loads["wind"] else None
     dead = dead_load_forces(bridge, ops)
     return found, wind, results, dead
 

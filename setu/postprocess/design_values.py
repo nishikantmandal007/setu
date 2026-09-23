@@ -45,9 +45,11 @@ class GoverningValue:
 
 
 class DesignValues:
-    def __init__(self, girders, thermal=None):
+    def __init__(self, girders, thermal=None, surfaces=None, criticals=None):
         self.girders = girders
         self.thermal = thermal
+        self.surfaces = surfaces or {}
+        self.criticals = criticals or {}
 
     def governing(self, response, limit_state, adverse=BIGGER_IS_WORSE):
         return max(((girder, by_response[response][limit_state][adverse]) for girder, by_response in self.girders.items()), key=lambda pair: abs(pair[1].value))
@@ -98,7 +100,7 @@ def girder_design_values(bridge, wind=None, seismic=None, temperature=None, cust
             for group, forces in custom_forces.items():
                 effects[group] = add_to(effects.get(group, NO_EFFECT), read(forces, girder, response))
             results[girder][response] = governing_by_limit_state(effects, combinations, wind_forces, read, girder, response)
-    return DesignValues(results, thermal_results(bridge, temperature))
+    return DesignValues(results, thermal_results(bridge, temperature), surfaces, live)
 
 
 def reader(model):
