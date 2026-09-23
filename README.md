@@ -20,9 +20,10 @@ uv sync
 from setu import (
     BridgeInput, DeckCrossSection, DeckSlab, Girders, Bracing,
     MeshSettings, PlateGirderSection,
-    build_bridge_model, apply_dead_loads,
-    InfluenceSolver, find_critical_position,
+    build_bridge_model, InfluenceSolver, find_critical_position,
+    irc6_uls_recipes,
 )
+from setu.postprocess.girder_response import dead_load_forces
 
 bridge = BridgeInput(
     span_m=35.0,
@@ -31,7 +32,7 @@ bridge = BridgeInput(
         "carriageway": 7.5,
         "footpath_right": 1.5,
     }),
-    deck=DeckSlab(thickness_m=0.23, overhang_m=1.25),
+    deck=DeckSlab(thickness_m=0.23, overhang_m=1.25, wearing_course_thickness_m=0.075),
     girders=Girders(count=4, section=PlateGirderSection(
         top_flange_width_m=0.55, top_flange_thickness_m=0.025,
         bottom_flange_width_m=0.65, bottom_flange_thickness_m=0.04,
@@ -39,18 +40,22 @@ bridge = BridgeInput(
     )),
     bracing=Bracing(station_count=7, area_m2=0.01, arrangement="XT"),
     mesh=MeshSettings(panels_between_braces=4, target_size_across_width_m=0.6),
-)
+)  # un-propped construction by default; pass construction="propped" to change it
 
-model = build_bridge_model(bridge)
-apply_dead_loads(model)
+uls = irc6_uls_recipes()["ULS-1"]
+dead = dead_load_forces(bridge).factored(uls)  # staged, surfacing factored on its own
 
-surface = InfluenceSolver(model.as_deck_model()).for_girder_moment(
-    "midspan moment",
-    model.midspan_element_of_girder(bridge.girders.count // 2),
-)
-
-worst = find_critical_position(surface, bridge.cross_section, span_m=bridge.span_m)
-print(worst.describe())
+model = build_bridge_model(bridge)  # short-term composite, for live load
+midspan = model.mesh.stations_along_span // 2
+solver = InfluenceSolver(model.as_deck_model())
+for girder in range(bridge.girders.count):
+    surface = solver.for_girder_composite_moment(
+        f"girder {girder}, midspan", model.midspan_element_of_girder(girder)
+    )
+    live = find_critical_position(surface, bridge.cross_section, span_m=bridge.span_m,
+                                  wearing_course_thickness_m=bridge.deck.wearing_course_thickness_m)
+    design = dead[girder].composite_moment_kn_m[midspan] + uls["live"] * live.response
+    print(f"girder {girder}: ULS-1 midspan moment = {design:.1f} kNm")
 ```
 
 ## Structure
@@ -72,7 +77,10 @@ setu/
 
 ![setu end-to-end flow](docs/flow.svg)
 
-Each girder gets its own influence surfaces (midspan moment, support shear) and critical-position search. The design girder is the worst of them. `vehicle_load(model, critical)` turns that worst position into the `"live"` load case the IRC:6 combinations need. `examples/plate_girder_35m.py` runs the loop over every girder.
+- **Dead load** is solved in the IRC:22 construction stages: bare steel for the wet slab when un-propped, then the long-term composite deck (m ≥ 15) for everything laid on it. Surfacing is kept apart because IRC:6 Table B.2 factors it at 1.75, not 1.35.
+- **Live load** uses the short-term composite deck (m ≥ 7.5). Each girder gets its own influence surfaces: composite moment (steel moment + steel axial force × lever arm to the slab) and shear. Each surface gets its own critical-position search, including the residual UDL and the clause 206.3 footway load.
+- `live_load(model, critical, surface)` turns a critical position into the `"live"` load case. Solved in OpenSees, it gives back the same response the search reported.
+- Every force is an internal force, sagging positive. `examples/plate_girder_35m.py` runs the whole loop and prints the governing girder.
 
 ## Tests
 

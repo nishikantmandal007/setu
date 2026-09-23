@@ -3,24 +3,33 @@ title setu: end-to-end flow
 
 start
 :BridgeInput + DeckCrossSection (models);
-:build_bridge_model: mesh + OpenSees model (builder);
 
-partition "Critical vehicle position" {
-  repeat :next girder;
-    :InfluenceSolver: midspan moment + support shear surfaces for this girder (analysis + solver);
-    :search along the span: worst train (along_span);
-    :search across the carriageway: worst IRC:6 lane arrangement (across_carriageway + irc6);
-    :rank_all_positions → take the worst = CriticalPosition (critical_position);
-  repeat while (more girders?) is (yes)
-  -> no;
-  :design girder = worst of all girders;
+partition "Dead load, in construction stages (IRC:22 §604.1.1)" {
+  if (construction?) then (un-propped, default)
+    :steel-only model: girder + bracing + wet slab + shuttering (loads.construction_stage_load);
+    :long-term composite model (m ≥ 15): kerbs, footpaths, median (loads.superimposed_dead_load);
+  else (propped)
+    :long-term composite model: all dead load (loads.whole_dead_load);
+  endif
+  :long-term composite model: surfacing, kept apart for its own factor (loads.surfacing_load);
+  :dead_load_forces → per-girder forces per stage (postprocess);
 }
 
-partition "Load cases" {
-  :vehicle_load(worst CriticalPosition) → live LoadCase (loads);
-  :dead, wind, seismic, braking, temperature loads (loads);
-  :combine with IRC:6 factors (irc6.combinations → loads.combine);
-  :solve → girder forces and deflections (postprocess);
+partition "Live load, per girder (IRC:6)" {
+  :build_bridge_model: short-term composite model (m ≥ 7.5) (builder);
+  repeat :next girder;
+    :influence surfaces: composite midspan moment, support shear (analysis + solver);
+    :search along the span: worst train, exact at minimum spacing (along_span);
+    :search across the carriageway: worst lane arrangement + residual UDL + footway (across_carriageway + irc6);
+    :take the worst = CriticalPosition (critical_position);
+  repeat while (more girders?) is (yes)
+  -> no;
+  :live_load(CriticalPosition) → "live" LoadCase, checked against the search in FE (loads);
+}
+
+partition "Design values" {
+  :factor per IRC:6 Table B.2 / B.3: dead 1.35, surfacing 1.75, live 1.5 (irc6.combinations);
+  :governing girder = worst of all girders;
   :envelope → plots / dataset (postprocess);
 }
 stop
