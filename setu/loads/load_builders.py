@@ -1,6 +1,7 @@
 import numpy as np
-from setu.helpers import DEFAULT_SAMPLING
-from setu.irc6.constants import TOLERANCE_M
+from setu.helpers import DEFAULT_SAMPLING, where_a_load_hurts
+from setu.irc6.constants import RESIDUAL_UDL_KPA, TOLERANCE_M
+from setu.irc6.lanes import NOTHING_THERE_M, cell_centres
 from setu.irc6.vehicles import find_vehicle_or_its_reverse
 from setu.irc6.wheel_loads import wheel_load_offsets
 from setu.loads.load_cases import LoadCase
@@ -121,9 +122,42 @@ def fatigue_moving_load(model, vehicle, path_z_m, span_m, n_positions=50, name="
     return cases
 
 
-def vehicle_load(model, critical_position, wearing_course_thickness_m=0.0, sampling=DEFAULT_SAMPLING, name="live"):
-    # ponytail: vehicles only - the residual UDL and footway load are not placed yet, so this matches
-    # critical_position.response only when it was searched with apply_residual_udl=False and apply_footway_load=False
+def live_load(model, critical_position, surface, sampling=DEFAULT_SAMPLING, name="live"):
+    forces_kn = vehicle_forces(model, critical_position, critical_position.wearing_course_thickness_m, sampling)
+    area_loads = [(RESIDUAL_UDL_KPA, critical_position.residual_udl_strips)]
+    area_loads += [(pressure_kpa, [(from_m, to_m)]) for from_m, to_m, pressure_kpa in critical_position.footway_strips]
+    on_the_mesh = surface.along_the_mesh()
+    for pressure_kpa, strips in area_loads:
+        for from_m, to_m in strips:
+            where_it_hurts(model, on_the_mesh, from_m, to_m, pressure_kpa * critical_position.lane_reduction, critical_position.adverse, sampling, forces_kn)
+    return as_a_load_case(model, forces_kn, name)
+
+
+def where_it_hurts(model, surface, from_m, to_m, pressure_kpa, adverse, sampling, forces_kn):
+    if to_m - from_m <= NOTHING_THERE_M:
+        return
+    x_centres_m, x_widths_m = cell_centres(surface.length_mesh_m, sampling.udl_cells_per_mesh_interval_along_span)
+    z_centres_m, z_widths_m = cell_centres([from_m, to_m], sampling.udl_cells_per_mesh_interval_across_width)
+    ordinates = surface.influence_at(x_centres_m[:, None], z_centres_m[None, :])
+    hurts = where_a_load_hurts(ordinates, adverse)
+    for i, j in zip(*np.nonzero(hurts), strict=True):
+        along_m = float(x_centres_m[i])
+        z_m = float(z_centres_m[j])
+        share_between_nodes(model, along_m + model.bridge.skew * z_m, z_m, pressure_kpa * x_widths_m[i] * z_widths_m[j], forces_kn)
+
+
+def vehicle_load(model, critical_position, wearing_course_thickness_m=None, sampling=DEFAULT_SAMPLING, name="vehicles"):
+    if wearing_course_thickness_m is None:
+        wearing_course_thickness_m = critical_position.wearing_course_thickness_m
+    return as_a_load_case(model, vehicle_forces(model, critical_position, wearing_course_thickness_m, sampling), name)
+
+
+def as_a_load_case(model, forces_kn, name):
+    nodal_loads = [(model.deck_nodes[i, j], 0.0, -force_kn, 0.0, 0.0, 0.0, 0.0) for (i, j), force_kn in forces_kn.items()]
+    return LoadCase(name=name, nodal_loads=nodal_loads)
+
+
+def vehicle_forces(model, critical_position, wearing_course_thickness_m, sampling):
     forces_kn = {}
     for placed in critical_position.vehicles:
         vehicle = find_vehicle_or_its_reverse(placed.vehicle_name)
@@ -132,8 +166,7 @@ def vehicle_load(model, critical_position, wearing_course_thickness_m=0.0, sampl
         for x_front_m in placed.train_x_front_m:
             for dx_m, dz_m, load_kn in offsets:
                 share_between_nodes(model, x_front_m + dx_m, placed.z_centre_m + dz_m, factor * load_kn, forces_kn)
-    nodal_loads = [(model.deck_nodes[i, j], 0.0, -force_kn, 0.0, 0.0, 0.0, 0.0) for (i, j), force_kn in forces_kn.items()]
-    return LoadCase(name=name, nodal_loads=nodal_loads)
+    return forces_kn
 
 
 def share_between_nodes(model, x_m, z_m, load_kn, forces_kn):

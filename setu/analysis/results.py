@@ -31,7 +31,8 @@ class CriticalPosition:
     def __init__(self, response_name, adverse, response, response_before_reduction,
                  lane_reduction, design_lanes, lane_pattern, carriageways_read_as,
                  vehicles=None, footway_response=0.0, residual_udl_applied=False,
-                 resultant_centred_response=None):
+                 resultant_centred_response=None, residual_udl_strips=None, footway_strips=None,
+                 wearing_course_thickness_m=0.0):
         self.response_name = response_name
         self.adverse = adverse
         self.response = response
@@ -44,6 +45,9 @@ class CriticalPosition:
         self.footway_response = footway_response
         self.residual_udl_applied = residual_udl_applied
         self.resultant_centred_response = resultant_centred_response
+        self.residual_udl_strips = residual_udl_strips or []
+        self.footway_strips = footway_strips or []
+        self.wearing_course_thickness_m = wearing_course_thickness_m
 
     def resultant_centred_shortfall(self):
 

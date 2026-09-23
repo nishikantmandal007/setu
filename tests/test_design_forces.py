@@ -312,3 +312,34 @@ def test_a_k_braced_bridge_builds():
     model = build_bridge_model(k_braced)
 
     assert len(model.k_brace_nodes) == (BRIDGE.girders.count - 1) * 7
+
+
+@pytest.mark.parametrize("name", ["girder 0, midspan moment", "girder 2, midspan moment", "outer girder, support shear"])
+@pytest.mark.parametrize("adverse", ["maximum", "minimum"])
+def test_the_full_live_load_gives_back_the_searched_response(name, adverse):
+    """Vehicles, the residual UDL beside Class A on the 4.5 m carriageways, and the footway crowd."""
+    from setu.loads.load_builders import live_load
+
+    model = build_bridge_model(BRIDGE)
+    element = {"girder 0, midspan moment": model.midspan_element_of_girder(0),
+               "girder 2, midspan moment": model.midspan_element_of_girder(2),
+               "outer girder, support shear": model.element_of_girder_at(0, 0)}[name]
+    solve = InfluenceSolver(model.as_deck_model())
+    surface = solve.for_girder_shear(name, element) if "shear" in name else solve.for_girder_moment(name, element)
+    component = SHEAR_AT_END_I if "shear" in name else MOMENT_AT_END_I
+    critical = find_critical_position(surface, CROSS_SECTION, span_m=SPAN_M, adverse=adverse)
+
+    assert critical.residual_udl_applied and critical.footway_strips, "this bridge must exercise both area loads"
+
+    _configure_a_static_analysis()
+    apply_load_case(live_load(model, critical, surface), ops, pattern_tag=LIVE_LOAD_PATTERN)
+    directly = _read_directly(element, component, LIVE_LOAD_PATTERN)
+
+    assert directly == pytest.approx(critical.response, rel=1e-6)
+
+
+def test_footways_are_loaded_by_default():
+    model = build_bridge_model(BRIDGE)
+    surface = InfluenceSolver(model.as_deck_model()).for_girder_moment("m", model.midspan_element_of_girder(0))
+
+    assert find_critical_position(surface, CROSS_SECTION, span_m=SPAN_M).footway_response != 0.0

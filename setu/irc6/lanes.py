@@ -8,7 +8,11 @@ from setu.irc6.constants import (
     CLASS_A_LANE_WIDTH_M,
     CLASS_A_VEHICLE_GAP_M,
     DESIGN_LANES_BY_WIDTH,
-    FOOTWAY_UDL_KPA,
+    FOOTWAY_CROWD_KG_M2,
+    FOOTWAY_FULL_LOAD_UP_TO_SPAN_M,
+    FOOTWAY_PEDESTRIAN_KG_M2,
+    FOOTWAY_WIDTH_MATTERS_ABOVE_SPAN_M,
+    KPA_PER_KG_M2,
     LANE_REDUCTION_BY_LANE_COUNT,
     LANE_REDUCTION_FOR_FOUR_OR_MORE_LANES,
     MOST_70R_VEHICLES_DRAWN,
@@ -228,13 +232,21 @@ def response_to_area_load(surface, strips, adverse, pressure_kpa=RESIDUAL_UDL_KP
         total += float(cells.sum())
     return pressure_kpa * total
 
-def footway_response(surface, cross_section, adverse, pressure_kpa=None, sampling=DEFAULT_SAMPLING):
-    footways = cross_section.footways()
-    if not footways:
-        return 0.0
-    pressure_kpa = FOOTWAY_UDL_KPA if pressure_kpa is None else pressure_kpa
-    strips = [(strip.z_from_m, strip.z_to_m) for strip in footways]
-    return response_to_area_load(surface, strips, adverse, pressure_kpa=pressure_kpa, sampling=sampling)
+def footway_pressure_kpa(span_m, footway_width_m, crowd=False):
+    if crowd:
+        return FOOTWAY_CROWD_KG_M2 * KPA_PER_KG_M2
+    full_kg_m2 = FOOTWAY_PEDESTRIAN_KG_M2
+    if span_m <= FOOTWAY_FULL_LOAD_UP_TO_SPAN_M:
+        return full_kg_m2 * KPA_PER_KG_M2
+    if span_m <= FOOTWAY_WIDTH_MATTERS_ABOVE_SPAN_M:
+        return (full_kg_m2 - (40.0 * span_m - 300.0) / 9.0) * KPA_PER_KG_M2
+    return (full_kg_m2 - 260.0 + 4800.0 / span_m) * (16.5 - footway_width_m) / 15.0 * KPA_PER_KG_M2
+
+def footway_loaded_strips(cross_section, span_m, crowd=False):
+    return [(strip.z_from_m, strip.z_to_m, footway_pressure_kpa(span_m, strip.width_m, crowd)) for strip in cross_section.footways()]
+
+def footway_response(surface, cross_section, adverse, span_m, crowd=False, sampling=DEFAULT_SAMPLING):
+    return sum(response_to_area_load(surface, [(from_m, to_m)], adverse, pressure_kpa=pressure_kpa, sampling=sampling) for from_m, to_m, pressure_kpa in footway_loaded_strips(cross_section, span_m, crowd))
 
 def cell_centres(edges_m, cells_per_interval):
     edges_m = np.asarray(edges_m, float)
