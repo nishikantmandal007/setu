@@ -83,10 +83,6 @@ TRACKED_RC_IMPACT_PLATEAU_LIMIT_M = 40.0
 WHEELED_70R_IMPACT_CURVE_TAKES_OVER_STEEL_M = 23.0
 WHEELED_70R_IMPACT_CURVE_TAKES_OVER_RC_M = 12.0
 
-# Seismic helper, as implemented in irc6/wheel_loads.py.
-# Not part of the IRC:6 audit; replaced by irc6/seismic.py (IRC:SP:114-2018).
-SEISMIC_ZONE_FACTOR_DIVISOR = 2.0
-SEISMIC_SA_OVER_G = 2.5
 
 # Clause 209.1 - where these wind rules apply
 WIND_RULES_APPLY_UP_TO_SPAN_M = 150.0
@@ -153,3 +149,27 @@ BRAKING_FOLLOWING_TRAINS_FRACTION = 0.10
 BRAKING_LANES_BEYOND_TWO_FRACTION = 0.05
 BRAKING_LANES_COUNTED_AS_ONE = 2
 BRAKING_ACTS_ABOVE_ROAD_M = 1.2
+
+# IRC:SP:114-2018 - seismic design of road bridges (replaces IRC:6-2017 clause 218)
+# Table 4.2 zone factors, Table 4.3 importance factors, Table 5.2 minimum design horizontal coefficient
+ZONE_FACTORS = {"II": 0.10, "III": 0.16, "IV": 0.24, "V": 0.36}
+IMPORTANCE_FACTORS = {"normal": 1.0, "important": 1.2, "large critical": 1.5}
+MINIMUM_HORIZONTAL_SEISMIC_COEFFICIENT = {"II": 0.011, "III": 0.017, "IV": 0.025, "V": 0.038}
+# Clause 5.2.1 - Ah = (Z / 2) (I / R) (Sa / g)
+ZONE_FACTOR_DIVISOR = 2.0
+# Fig. 5.1(a), IS 1893:2016 - seismic coefficient method spectrum at 5 % damping, by soil type:
+# (end of the 2.5 plateau in s, numerator of the 1/T branch, value past 4 s)
+SPECTRUM_PLATEAU = 2.5
+SPECTRUM_BY_SOIL = {"I": (0.40, 1.00, 0.25), "II": (0.55, 1.36, 0.34), "III": (0.67, 1.67, 0.42)}
+SPECTRUM_TAIL_STARTS_S = 4.0
+# Note under Fig. 5.1 - small bridge without a worked out period
+SA_OVER_G_WITHOUT_A_PERIOD = 2.5
+# Clause 4.2.1 and 4.2.3 - vertical motion
+VERTICAL_ZONE_FACTOR_FRACTION = 2.0 / 3.0
+VERTICAL_ALWAYS_IN_ZONES = ("IV", "V")
+# Clause 4.2.2 - combining the three directions
+OTHER_DIRECTIONS_FRACTION = 0.3
+# Clause 4.6 - live load in the seismic mass (impact excluded)
+LIVE_LOAD_SEISMIC_FRACTION = 0.2
+# Table 4.1 has no superstructure row; a simply supported superstructure is taken to stay elastic
+SUPERSTRUCTURE_RESPONSE_REDUCTION = 1.0

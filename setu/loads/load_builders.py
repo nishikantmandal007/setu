@@ -63,20 +63,6 @@ def temperature_gradient(model, delta_t_top, delta_t_bottom, name):
     return LoadCase(name=name, nodal_loads=nodal_loads)
 
 
-def seismic_load(model, ah, name):
-    mesh = model.mesh
-    nodal_loads = []
-    for i in range(mesh.stations_along_span):
-        along_m = tributary_length_m(mesh.length_mesh_m, i)
-        for j in range(mesh.stations_across_width):
-            across_m = tributary_length_m(mesh.width_mesh_m, j)
-            area_m2 = along_m * across_m
-            weight_kn = model.bridge.concrete.unit_weight_kn_m3 * model.bridge.deck.thickness_m * area_m2
-            horizontal_kn = ah * weight_kn
-            nodal_loads.append((model.deck_nodes[i, j], horizontal_kn, 0.0, 0.0, 0.0, 0.0, 0.0))
-    return LoadCase(name=name, nodal_loads=nodal_loads)
-
-
 def fatigue_moving_load(model, vehicle, path_z_m, span_m, n_positions=50, name="fatigue"):
     from setu.irc6.irc_constants import GRAVITY_KN_PER_TONNE
     mesh = model.mesh

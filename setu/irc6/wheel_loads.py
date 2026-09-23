@@ -1,10 +1,6 @@
 import numpy as np
 
 from setu.helpers import DEFAULT_SAMPLING
-from setu.irc6.irc_constants import (
-    SEISMIC_SA_OVER_G,
-    SEISMIC_ZONE_FACTOR_DIVISOR,
-)
 from setu.irc6.vehicles import TrackedVehicle
 from setu.utils.constants import GRAVITY_KN_PER_TONNE, OFFSET_DX_M, OFFSET_DZ_M, OFFSET_LOAD_KN
 
@@ -120,7 +116,3 @@ def loads_for_lanes(lanes):
         all_wheel_loads.extend(wheel_loads)
         all_patches.extend(patches)
     return (all_wheel_loads, all_patches)
-
-
-def seismic_coefficient(zone_factor, importance_factor, response_reduction, sa_over_g=SEISMIC_SA_OVER_G):
-    return (zone_factor / SEISMIC_ZONE_FACTOR_DIVISOR) * (importance_factor / response_reduction) * sa_over_g

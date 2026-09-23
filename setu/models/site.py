@@ -1,3 +1,4 @@
+from setu.irc6.irc_constants import SUPERSTRUCTURE_RESPONSE_REDUCTION, VERTICAL_ALWAYS_IN_ZONES
 from setu.utils.constants import PLAIN_TERRAIN
 
 
@@ -18,6 +19,21 @@ class WindSite:
         self.exposed_area_m2 = exposed_area_m2
         self.plan_area_m2 = plan_area_m2
         self.live_load_exposed_area_m2 = live_load_exposed_area_m2
+
+    def to_dict(self):
+        return self.__dict__
+
+
+class SeismicSite:
+    def __init__(self, zone="III", soil="II", importance="normal", period_s=None, vertical_period_s=None,
+                 response_reduction=SUPERSTRUCTURE_RESPONSE_REDUCTION, include_vertical=None, **kwargs):
+        self.zone = zone
+        self.soil = soil
+        self.importance = importance
+        self.period_s = period_s
+        self.vertical_period_s = vertical_period_s
+        self.response_reduction = response_reduction
+        self.include_vertical = zone in VERTICAL_ALWAYS_IN_ZONES if include_vertical is None else include_vertical
 
     def to_dict(self):
         return self.__dict__
