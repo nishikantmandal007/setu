@@ -22,6 +22,7 @@ ops = pytest.importorskip("openseespy.opensees", reason="needs a finite element 
 SPAN_M = 35.0
 SHEAR_AT_END_I = 1
 MOMENT_AT_END_I = 5
+AXIAL_AT_END_I = 0
 PROBE_NODES = [(3, 10), (6, 20), (12, 5), (12, 30), (20, 15)]
 UNIT_LOAD_PATTERN = 99
 LIVE_LOAD_PATTERN = 100
@@ -240,3 +241,43 @@ def test_girder_forces_use_one_sign_along_the_whole_girder(built):
 
     assert forces.shear_kn[0] * forces.shear_kn[1] > 0
     assert forces.moment_kn_m[midspan] > 0, "sagging is positive"
+
+
+def test_composite_moment_surface_is_the_response_to_a_unit_load():
+    """Composite moment = steel moment + steel axial force x its lever arm to the slab mid-plane."""
+    from setu.builder.assembly import girder_centroid_level_m
+
+    model = build_bridge_model(BRIDGE)
+    deck = model.as_deck_model()
+    element = model.midspan_element_of_girder(1)
+    surface = InfluenceSolver(deck).for_girder_composite_moment("girder 1, composite midspan moment", element)
+    lever_arm_m = -girder_centroid_level_m(model.bridge, model.girder)
+
+    _configure_a_static_analysis()
+    for station_along, station_across in PROBE_NODES:
+        node = deck.deck_nodes[(station_along, station_across)]
+        steel_moment = _unit_load_response(deck, node, element, MOMENT_AT_END_I)
+        steel_axial = _unit_load_response(deck, node, element, AXIAL_AT_END_I)
+        from_the_surface = surface.influence_at(float(deck.length_mesh_m[station_along]), float(deck.width_mesh_m[station_across]))
+        assert from_the_surface == pytest.approx(steel_moment + lever_arm_m * steel_axial, rel=1e-8, abs=1e-10)
+
+
+def test_composite_moments_of_all_girders_add_up_to_statics():
+    """A point load P at midspan of a simple span makes P L / 4 across the whole deck.
+
+    The girders' composite moments carry nearly all of it; the slab's own plate bending the rest.
+    """
+    from setu.loads.load_cases import LoadCase
+    from setu.postprocess.girder_response import analyze_load_case
+
+    model = build_bridge_model(BRIDGE)
+    midspan = model.mesh.stations_along_span // 2
+    load_kn = 100.0
+    point = LoadCase("point", nodal_loads=[(model.deck_nodes[midspan, model.mesh.width_station_of_girder(1)], 0.0, -load_kn, 0.0, 0.0, 0.0, 0.0)])
+
+    forces = analyze_load_case(model, point, ops)
+    carried_by_the_girders = sum(forces[girder].composite_moment_kn_m[midspan] for girder in forces)
+    steel_alone = sum(forces[girder].moment_kn_m[midspan] for girder in forces)
+
+    assert carried_by_the_girders == pytest.approx(load_kn * SPAN_M / 4, rel=0.01)
+    assert steel_alone < 0.5 * load_kn * SPAN_M / 4, "the steel alone must not look like the whole section"

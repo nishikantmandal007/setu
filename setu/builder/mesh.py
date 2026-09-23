@@ -84,13 +84,14 @@ def tributary_length_m(stations_m, station):
 
 class DeckModel:
     def __init__(self, length_mesh_m, width_mesh_m, deck_nodes, girder_section,
-                 girder_local_axis=(0.0, 0.0, 1.0), skew=0.0, **kwargs):
+                 girder_local_axis=(0.0, 0.0, 1.0), skew=0.0, composite_lever_arm_m=0.0, **kwargs):
         self.length_mesh_m = length_mesh_m
         self.width_mesh_m = width_mesh_m
         self.deck_nodes = deck_nodes
         self.girder_section = girder_section
         self.girder_local_axis = girder_local_axis
         self.skew = skew
+        self.composite_lever_arm_m = composite_lever_arm_m
         self.girder_elements = kwargs.get("girder_elements", {})
 
         if len(length_mesh_m) < 2 or len(width_mesh_m) < 2:

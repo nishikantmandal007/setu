@@ -15,12 +15,17 @@ MZ_J = 11
 
 class GirderForces:
 
-    def __init__(self, stations_m, moment_kn_m, shear_kn, torsion_kn_m, axial_kn):
+    def __init__(self, stations_m, moment_kn_m, shear_kn, torsion_kn_m, axial_kn, composite_lever_arm_m=0.0):
         self.stations_m = np.asarray(stations_m, float)
         self.moment_kn_m = np.asarray(moment_kn_m, float)
         self.shear_kn = np.asarray(shear_kn, float)
         self.torsion_kn_m = np.asarray(torsion_kn_m, float)
         self.axial_kn = np.asarray(axial_kn, float)
+        self.composite_lever_arm_m = composite_lever_arm_m
+
+    @property
+    def composite_moment_kn_m(self):
+        return self.moment_kn_m + self.composite_lever_arm_m * self.axial_kn
 
 
 class GirderDeflections:
@@ -49,7 +54,7 @@ def girder_forces(model, girder_index, ops):
             shear[e + 1] = f[VY_J]
             torsion[e + 1] = f[T_J]
             moment[e + 1] = f[MZ_J]
-    return GirderForces(stations_m, moment, shear, torsion, axial)
+    return GirderForces(stations_m, moment, shear, torsion, axial, composite_lever_arm_m=model.composite_lever_arm_m())
 
 
 def girder_deflections(model, girder_index, ops):
