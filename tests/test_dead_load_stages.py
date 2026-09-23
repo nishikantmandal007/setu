@@ -113,3 +113,25 @@ def test_surfacing_is_kept_apart_for_its_own_factor():
 
     assert surfacing > 0
     assert factored == pytest.approx(1.35 * everything_else + 1.75 * surfacing, rel=1e-12)
+
+
+def test_superimposed_load_puts_down_exactly_what_the_strips_carry():
+    """A node on a strip boundary takes each strip's pressure over its own share of the node's width."""
+    bridge = _bridge(UNPROPPED)
+    model = build_bridge_model(bridge)
+    added = bridge.added_dead_loads
+    pressures = {"footpath": added.footpath.pressure_kpa, "kerb": added.kerb.pressure_kpa, "median": added.median.pressure_kpa}
+    expected_kn = sum(strip.width_m * SPAN_M * pressures.get(strip.name.split("_")[0], 0.0) for strip in CROSS_SECTION.strips)
+
+    applied_kn = -sum(fy for _, _, fy, *_ in superimposed_dead_load(model).nodal_loads)
+
+    assert applied_kn == pytest.approx(expected_kn, rel=1e-9)
+
+
+def test_a_symmetric_deck_loads_its_girders_symmetrically():
+    result = dead_load_forces(_bridge(UNPROPPED))
+    midspan = len(result.total[0].moment_kn_m) // 2
+    last = len(result.total) - 1
+
+    for girder in range(len(result.total) // 2):
+        assert result.total[girder].composite_moment_kn_m[midspan] == pytest.approx(result.total[last - girder].composite_moment_kn_m[midspan], rel=1e-6)

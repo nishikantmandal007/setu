@@ -29,8 +29,11 @@ from setu import (
     apply_dead_loads,
     build_bridge_model,
     find_critical_position,
+    irc6_uls_recipes,
+    live_load,
 )
 from setu.helpers import enable_reports
+from setu.postprocess.girder_response import analyze_load_case, dead_load_forces
 
 # ---------------------------------------------------------------------------
 # The bridge
@@ -93,59 +96,88 @@ def check_it_stands_up(applied_kn: float) -> None:
     print(f"  Out of balance         = {out_of_balance:12.4f} %")
 
 
-def worst_for_every_girder(model) -> dict:
+SUPPORT = 0
+RESPONSES = ("midspan composite moment", "support shear")
+
+
+def worst_live_load_on_every_girder(model, dead: dict) -> dict:
     """One influence surface and one search per girder and per response.
 
-    Every surface is solved before any other load goes on the model.
+    The search looks for the live load that adds to the dead load, so it takes
+    the dead load's sign as the adverse direction. Every surface is solved before
+    any other load goes on the model.
     """
     influence = InfluenceSolver(model.as_deck_model())
-    support = 0
+    midspan = model.mesh.stations_along_span // 2
     worst = {}
     for girder in range(BRIDGE.girders.count):
-        responses = {
-            "midspan moment": influence.for_girder_moment(
-                f"girder {girder}, midspan moment", model.midspan_element_of_girder(girder)
+        surfaces = {
+            "midspan composite moment": (
+                influence.for_girder_composite_moment(f"girder {girder}, midspan composite moment", model.midspan_element_of_girder(girder)),
+                dead[girder].composite_moment_kn_m[midspan],
             ),
-            "support shear": influence.for_girder_shear(
-                f"girder {girder}, support shear", model.element_of_girder_at(girder, support)
+            "support shear": (
+                influence.for_girder_shear(f"girder {girder}, support shear", model.element_of_girder_at(girder, SUPPORT)),
+                dead[girder].shear_kn[SUPPORT],
             ),
         }
-        for response, surface in responses.items():
-            for adverse in ("maximum", "minimum"):
-                worst[girder, response, adverse] = find_critical_position(
-                    surface,
-                    CROSS_SECTION,
-                    span_m=BRIDGE.span_m,
-                    adverse=adverse,
-                    wearing_course_thickness_m=BRIDGE.deck.wearing_course_thickness_m,
-                )
+        for response, (surface, dead_value) in surfaces.items():
+            critical = find_critical_position(
+                surface,
+                CROSS_SECTION,
+                span_m=BRIDGE.span_m,
+                adverse="maximum" if dead_value >= 0 else "minimum",
+                wearing_course_thickness_m=BRIDGE.deck.wearing_course_thickness_m,
+            )
+            worst[girder, response] = (surface, critical)
     return worst
 
 
-def print_the_governing_girder(worst: dict) -> None:
+def print_uls_design_values(factored_dead: dict, worst: dict, midspan: int) -> tuple:
+    """IRC:6-2017 Table B.2, ULS-1: 1.35 dead + 1.75 surfacing + 1.5 live."""
+    live_factor = irc6_uls_recipes()["ULS-1"]["live"]
     print()
     print("=" * 72)
-    print("WORST LIVE LOAD RESPONSE, EVERY GIRDER")
+    print("ULS-1 DESIGN VALUES, EVERY GIRDER  (1.35 dead + 1.75 surfacing + 1.5 live)")
     print("=" * 72)
-    print(f"  {'girder':<8} {'response':<16} {'adverse':<9} {'design value':>14}")
-    for (girder, response, adverse), critical in worst.items():
-        print(f"  {girder:<8} {response:<16} {adverse:<9} {critical.response:14.3f}")
-    for response in ("midspan moment", "support shear"):
-        governing = max(
-            (key for key in worst if key[1] == response), key=lambda key: abs(worst[key].response)
-        )
-        print()
-        print(f"Governing {response}: girder {governing[0]} ({governing[2]})")
-        print(worst[governing].describe())
+    print(f"  {'girder':<7} {'response':<26} {'dead':>11} {'live':>11} {'ULS':>11}")
+    design = {}
+    for (girder, response), (_, critical) in worst.items():
+        if response == "midspan composite moment":
+            dead_value = factored_dead[girder].composite_moment_kn_m[midspan]
+        else:
+            dead_value = factored_dead[girder].shear_kn[SUPPORT]
+        design[girder, response] = dead_value + live_factor * critical.response
+        print(f"  {girder:<7} {response:<26} {dead_value:11.1f} {critical.response:11.1f} {design[girder, response]:11.1f}")
+    governing = {response: max((key for key in design if key[1] == response), key=lambda key: abs(design[key])) for response in RESPONSES}
+    for response, key in governing.items():
+        print(f"  Governing {response}: girder {key[0]}, {design[key]:.1f}")
+    return governing
+
+
+def check_the_live_load_reproduces_the_search(model, worst: dict, key: tuple) -> None:
+    """Put the governing live load on the real model and read the girder back."""
+    girder, _ = key
+    surface, critical = worst[key]
+    midspan = model.mesh.stations_along_span // 2
+    forces = analyze_load_case(model, live_load(model, critical, surface), ops)
+    directly = forces[girder].composite_moment_kn_m[midspan]
+    print()
+    print(worst[key][1].describe())
+    print(f"  Applied as a load case in OpenSees = {directly:14.3f}   (search said {critical.response:.3f})")
 
 
 def main() -> None:
     enable_reports()
 
-    model = build_bridge_model(BRIDGE)
+    dead = dead_load_forces(BRIDGE)
+    factored_dead = dead.factored(irc6_uls_recipes()["ULS-1"])
 
-    worst = worst_for_every_girder(model)
-    print_the_governing_girder(worst)
+    model = build_bridge_model(BRIDGE)
+    midspan = model.mesh.stations_along_span // 2
+    worst = worst_live_load_on_every_girder(model, dead.total)
+    governing = print_uls_design_values(factored_dead, worst, midspan)
+    check_the_live_load_reproduces_the_search(model, worst, governing["midspan composite moment"])
 
     dead_load = apply_dead_loads(model)
     check_it_stands_up(dead_load.total_kn)

@@ -49,19 +49,11 @@ def start_a_fresh_load_case(ops):
     ops.setTime(START_OF_THE_LOAD_STEP)
 
 def apply_deck_and_surfacing(ops, model):
-    mesh = model.mesh
-    bridge = model.bridge
-    slab_kpa = bridge.concrete.unit_weight_kn_m3 * bridge.deck.thickness_m
+    slab_kpa = model.bridge.concrete.unit_weight_kn_m3 * model.bridge.deck.thickness_m
     applied_kn = 0.0
-    for i in range(mesh.stations_along_span):
-        along_span_m = tributary_length_m(mesh.length_mesh_m, i)
-        for j in range(mesh.stations_across_width):
-            across_width_m = tributary_length_m(mesh.width_mesh_m, j)
-            area_m2 = along_span_m * across_width_m
-            z_m = float(mesh.width_mesh_m[j])
-            load_kn = (slab_kpa + surfacing_pressure_at(model, z_m)) * area_m2
-            ops.load(model.deck_nodes[i, j], *downward_force(load_kn))
-            applied_kn += load_kn
+    for node, *force in deck_loads(model, lambda z_m: slab_kpa + surfacing_pressure_at(model, z_m)):
+        ops.load(node, *force)
+        applied_kn -= force[1]
     return applied_kn
 
 def surfacing_pressure_at(model, z_m):
@@ -158,15 +150,22 @@ def whole_dead_load(model, ops=None):
 
 def deck_loads(model, pressure_kpa_at):
     mesh = model.mesh
+    strip_edges_m = sorted({edge_m for strip in model.bridge.cross_section.strips for edge_m in (strip.z_from_m, strip.z_to_m)})
     nodal_loads = []
-    for i in range(mesh.stations_along_span):
-        along_span_m = tributary_length_m(mesh.length_mesh_m, i)
-        for j in range(mesh.stations_across_width):
-            area_m2 = along_span_m * tributary_length_m(mesh.width_mesh_m, j)
-            load_kn = pressure_kpa_at(float(mesh.width_mesh_m[j])) * area_m2
-            if load_kn:
-                nodal_loads.append((model.deck_nodes[i, j], *downward_force(load_kn)))
+    for j in range(mesh.stations_across_width):
+        kn_per_m_along = load_across_the_share_of(mesh.width_mesh_m, j, strip_edges_m, pressure_kpa_at)
+        if not kn_per_m_along:
+            continue
+        for i in range(mesh.stations_along_span):
+            load_kn = kn_per_m_along * tributary_length_m(mesh.length_mesh_m, i)
+            nodal_loads.append((model.deck_nodes[i, j], *downward_force(load_kn)))
     return nodal_loads
+
+def load_across_the_share_of(stations_m, station, strip_edges_m, pressure_kpa_at):
+    share_from_m = stations_m[0] if station == 0 else (stations_m[station - 1] + stations_m[station]) / 2
+    share_to_m = stations_m[-1] if station == len(stations_m) - 1 else (stations_m[station] + stations_m[station + 1]) / 2
+    cuts_m = [share_from_m] + [edge_m for edge_m in strip_edges_m if share_from_m < edge_m < share_to_m] + [share_to_m]
+    return sum(pressure_kpa_at((from_m + to_m) / 2) * (to_m - from_m) for from_m, to_m in zip(cuts_m, cuts_m[1:], strict=False))
 
 def report_dead_loads(model, totals):
     bridge = model.bridge
