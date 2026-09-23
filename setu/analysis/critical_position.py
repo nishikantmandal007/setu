@@ -1,9 +1,11 @@
 import numpy as np
-from setu.helpers import *
-from setu.irc6 import *
-from setu.analysis.results import *
+from setu.helpers import BIGGER_IS_WORSE, DEFAULT_SAMPLING
+from setu.irc6.lanes import footway_response, needs_residual_udl
 from setu.irc6.vehicles import vehicles_allowed_in_each_block
-from setu.analysis.vehicle_placement import *
+from setu.analysis.results import CriticalPosition, VehiclePlacement
+from setu.analysis.along_span import VehicleResponses, positions_across_width
+from setu.analysis.across_carriageway import envelope_every_block, find_worst_placement
+from setu.analysis.resultant_centring import centre_the_resultant
 
 NO_FOOTWAY_LOAD = 0.0
 READ_EACH_CARRIAGEWAY_ON_ITS_OWN = "separate"

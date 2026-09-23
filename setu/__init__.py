@@ -9,7 +9,7 @@ from setu.loads.dead_loads import apply_dead_loads
 
 from setu.analysis.influence_surface import InfluenceSolver, InfluenceSurface
 from setu.analysis.critical_position import CriticalPositionService, find_critical_position, rank_all_positions
-from setu.analysis.vehicle_placement import find_worst_train
+from setu.analysis.along_span import find_worst_train
 
 from setu.solver.backend import OpenSeesBackend
 

@@ -4,7 +4,7 @@ from setu.builder.mesh import build_mesh
 from setu.analysis.critical_position import find_critical_position, rank_all_positions
 from setu.analysis.influence_surface import InfluenceSurface
 from setu.solver.backend import OpenSeesBackend
-from setu.analysis.vehicle_placement import find_worst_train
+from setu.analysis.along_span import find_worst_train
 from setu.postprocess.girder_response import GirderForces, GirderDeflections
 from setu.loads.load_cases import LoadCase
 from setu.postprocess.envelope import Envelope
