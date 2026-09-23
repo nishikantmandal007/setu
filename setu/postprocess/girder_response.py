@@ -1,5 +1,6 @@
 import numpy as np
 from setu.errors import OtherLoadsStillActiveError
+from setu.solver.backend import configure_linear_static
 from setu.loads.load_cases import apply_load_case
 from setu.loads.dead_loads import construction_stage_load, superimposed_dead_load, surfacing_load, whole_dead_load
 from setu.utils.constants import (
@@ -95,19 +96,15 @@ def analyze_load_case(model, load_case, ops, pattern_tag=None):
     ops.reset()
     ops.setTime(0.0)
     apply_load_case(load_case, ops, pattern_tag=tag)
-    ops.system("UmfPack")
-    ops.numberer("RCM")
-    ops.constraints("Transformation")
-    ops.integrator("LoadControl", 1.0)
-    ops.algorithm("Linear")
-    ops.analysis("Static")
+    if not getattr(model, "analysis_is_set_up", False):
+        configure_linear_static(ops)
+        model.analysis_is_set_up = True
     ops.analyze(1)
     results = {}
     for k in range(model.bridge.girders.count):
         results[k] = girder_forces(model, k, ops)
     ops.remove("loadPattern", tag)
     ops.remove("timeSeries", tag)
-    ops.wipeAnalysis()
     return results
 
 

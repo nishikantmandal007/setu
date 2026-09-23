@@ -38,13 +38,7 @@ class OpenSeesBackend(FEBackend):
             self.ops.load(node, *forces)
         self.ops.reset()
         if not self._analysis_configured:
-            self.ops.wipeAnalysis()
-            self.ops.system("UmfPack")
-            self.ops.numberer("RCM")
-            self.ops.constraints("Transformation")
-            self.ops.integrator("LoadControl", 1.0)
-            self.ops.algorithm("Linear")
-            self.ops.analysis("Static")
+            configure_linear_static(self.ops)
             self._analysis_configured = True
         self.ops.setTime(0.0)
         self.ops.analyze(1)
@@ -69,6 +63,15 @@ class OpenSeesBackend(FEBackend):
         self.ops.remove("timeSeries", self.ADJOINT_TIME_SERIES)
         self.ops.reset()
         self.ops.setTime(0.0)
+
+def configure_linear_static(ops):
+    ops.wipeAnalysis()
+    ops.system("UmfPack")
+    ops.numberer("RCM")
+    ops.constraints("Transformation")
+    ops.integrator("LoadControl", 1.0)
+    ops.algorithm("Linear", "-factorOnce")
+    ops.analysis("Static")
 
 def import_opensees():
     try:
