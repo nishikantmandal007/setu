@@ -41,6 +41,9 @@ class InfluenceSurface:
         fraction_across = (across - self.width_mesh_m[j]) / (self.width_mesh_m[j + 1] - self.width_mesh_m[j])
         return (1 - fraction_along) * (1 - fraction_across) * self.values[i, j] + fraction_along * (1 - fraction_across) * self.values[i + 1, j] + fraction_along * fraction_across * self.values[i + 1, j + 1] + (1 - fraction_along) * fraction_across * self.values[i, j + 1]
 
+    def along_the_mesh(self):
+        return InfluenceSurface(values=self.values, length_mesh_m=self.length_mesh_m, width_mesh_m=self.width_mesh_m, name=self.name, describes=self.describes)
+
     def save(self, path):
         np.savez(path, values=self.values, length_mesh_m=self.length_mesh_m, width_mesh_m=self.width_mesh_m, skew=self.skew, name=str(self.name), describes=json.dumps(self.describes))
 

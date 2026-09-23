@@ -209,7 +209,7 @@ class BridgeModel:
             setattr(self, name, value)
 
     def as_deck_model(self):
-        return DeckModel(length_mesh_m=self.mesh.length_mesh_m, width_mesh_m=self.mesh.width_mesh_m, deck_nodes=self.deck_nodes, girder_section=self.girder.for_solver(self.bridge.steel), girder_local_axis=GIRDER_LOCAL_AXIS, girder_elements=self.girder_elements, composite_lever_arm_m=self.composite_lever_arm_m())
+        return DeckModel(length_mesh_m=self.mesh.length_mesh_m, width_mesh_m=self.mesh.width_mesh_m, deck_nodes=self.deck_nodes, girder_section=self.girder.for_solver(self.bridge.steel), girder_local_axis=GIRDER_LOCAL_AXIS, girder_elements=self.girder_elements, composite_lever_arm_m=self.composite_lever_arm_m(), skew=self.bridge.skew)
 
     def composite_lever_arm_m(self):
         return -girder_centroid_level_m(self.bridge, self.girder)

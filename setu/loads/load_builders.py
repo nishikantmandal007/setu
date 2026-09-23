@@ -1,5 +1,6 @@
 import numpy as np
 from setu.helpers import DEFAULT_SAMPLING
+from setu.irc6.constants import TOLERANCE_M
 from setu.irc6.vehicles import find_vehicle_or_its_reverse
 from setu.irc6.wheel_loads import wheel_load_offsets
 from setu.loads.load_cases import LoadCase
@@ -138,12 +139,15 @@ def vehicle_load(model, critical_position, wearing_course_thickness_m=0.0, sampl
 def share_between_nodes(model, x_m, z_m, load_kn, forces_kn):
     length_mesh_m = model.mesh.length_mesh_m
     width_mesh_m = model.mesh.width_mesh_m
-    is_on_the_deck = length_mesh_m[0] <= x_m <= length_mesh_m[-1] and width_mesh_m[0] <= z_m <= width_mesh_m[-1]
+    along_m = x_m - model.bridge.skew * z_m
+    is_on_the_deck = length_mesh_m[0] - TOLERANCE_M <= along_m <= length_mesh_m[-1] + TOLERANCE_M and width_mesh_m[0] - TOLERANCE_M <= z_m <= width_mesh_m[-1] + TOLERANCE_M
     if not is_on_the_deck:
         return
-    i = _cell_containing(length_mesh_m, x_m)
+    along_m = min(max(along_m, length_mesh_m[0]), length_mesh_m[-1])
+    z_m = min(max(z_m, width_mesh_m[0]), width_mesh_m[-1])
+    i = _cell_containing(length_mesh_m, along_m)
     j = _cell_containing(width_mesh_m, z_m)
-    fraction_along = (x_m - length_mesh_m[i]) / (length_mesh_m[i + 1] - length_mesh_m[i])
+    fraction_along = (along_m - length_mesh_m[i]) / (length_mesh_m[i + 1] - length_mesh_m[i])
     fraction_across = (z_m - width_mesh_m[j]) / (width_mesh_m[j + 1] - width_mesh_m[j])
     corners = (
         ((i, j), (1 - fraction_along) * (1 - fraction_across)),

@@ -42,8 +42,9 @@ class WorstAlongSpan:
 
 class VehicleResponses:
 
-    def __init__(self, surface, span_m, material='steel', member_span_m=None, wearing_course_thickness_m=0.0, apply_impact=True, allow_trains=True, sampling=DEFAULT_SAMPLING):
+    def __init__(self, surface, span_m, material='steel', member_span_m=None, wearing_course_thickness_m=0.0, apply_impact=True, allow_trains=True, sampling=DEFAULT_SAMPLING, skew=0.0):
         self.surface = surface
+        self.skew = float(skew)
         self.span_m = float(span_m)
         self.material = material
         self.member_span_m = member_span_m
@@ -61,7 +62,7 @@ class VehicleResponses:
         return self._already_built[remembered]
 
     def build_curve(self, vehicle, z_positions_m, adverse):
-        wheel_offsets = wheel_load_offsets(vehicle, self.wearing_course_thickness_m, self.sampling)
+        wheel_offsets = along_the_mesh(wheel_load_offsets(vehicle, self.wearing_course_thickness_m, self.sampling), self.skew)
         x_positions_m = positions_along_span(self.surface, wheel_offsets)
         response_to_one_vehicle = response_to_one_vehicle_everywhere(self.surface, wheel_offsets, x_positions_m, z_positions_m, self.sampling)
         if self.allow_trains:
@@ -69,7 +70,9 @@ class VehicleResponses:
         else:
             worst = self.worst_single_vehicle_at_each_position(response_to_one_vehicle, x_positions_m, adverse)
         factor = self.impact_factor_for(vehicle)
-        return ResponseCurve(vehicle_name=vehicle.name, z_positions_m=z_positions_m, response=factor * worst.response, x_positions_m=worst.x_positions_m, vehicles_in_train=worst.vehicles_in_train, train_x_front_m=worst.train_x_front_m, impact_factor=factor)
+        shift_m = self.skew * z_positions_m
+        train_x_front_m = [tuple(x_m + float(shift) for x_m in train) for train, shift in zip(worst.train_x_front_m, shift_m, strict=True)]
+        return ResponseCurve(vehicle_name=vehicle.name, z_positions_m=z_positions_m, response=factor * worst.response, x_positions_m=worst.x_positions_m + shift_m, vehicles_in_train=worst.vehicles_in_train, train_x_front_m=train_x_front_m, impact_factor=factor)
 
     def worst_single_vehicle_at_each_position(self, response_to_one_vehicle, x_positions_m, adverse):
         positions_across_the_width = response_to_one_vehicle.shape[1]
@@ -101,6 +104,11 @@ class VehicleResponses:
             return NO_IMPACT
         span_m = self.span_m if self.member_span_m is None else float(self.member_span_m)
         return impact_factor(class_of(vehicle), span_m, self.material)
+
+def along_the_mesh(wheel_offsets, skew):
+    sheared = np.array(wheel_offsets, float)
+    sheared[:, OFFSET_DX_M] -= skew * sheared[:, OFFSET_DZ_M]
+    return sheared
 
 def remembered_as(vehicle, z_positions_m, adverse):
     return (vehicle.name, adverse, len(z_positions_m), float(z_positions_m[0]), float(z_positions_m[-1]))

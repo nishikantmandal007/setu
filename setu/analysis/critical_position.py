@@ -75,15 +75,17 @@ class CriticalPositionService:
     def rank_all_positions(surface, cross_section, span_m, *, adverse=BIGGER_IS_WORSE, vehicles=None, carriageways_read_as=READ_EACH_CARRIAGEWAY_ON_ITS_OWN, material='steel', member_span_m=None, wearing_course_thickness_m=0.0, apply_impact=True, apply_lane_reduction=True, apply_residual_udl=True, apply_footway_load=False, allow_trains=True, allow_reversed_vehicles=True, follow_combination_drawings=True, sampling=DEFAULT_SAMPLING):
         options = SearchOptions(adverse=adverse, vehicles=vehicles, carriageways_read_as=carriageways_read_as, material=material, member_span_m=member_span_m, wearing_course_thickness_m=wearing_course_thickness_m, apply_impact=apply_impact, apply_lane_reduction=apply_lane_reduction, apply_residual_udl=apply_residual_udl, apply_footway_load=apply_footway_load, allow_trains=allow_trains, allow_reversed_vehicles=allow_reversed_vehicles, follow_combination_drawings=follow_combination_drawings, sampling=sampling)
         carriageways = cross_section.carriageways(split=carriageways_read_as)
-        curves = CriticalPositionService.response_curve_for_every_vehicle(surface, carriageways, span_m, options)
+        skew = surface.skew
+        surface = surface.along_the_mesh()
+        curves = CriticalPositionService.response_curve_for_every_vehicle(surface, carriageways, span_m, options, skew)
         worst = CriticalPositionService.worst_placement_across_the_width(surface, cross_section, carriageways, curves, options)
         context = PlacementContext(curves_per_carriageway=curves.per_carriageway, responses=curves.responses, permitted=curves.permitted, surface=surface, adverse=adverse, carriageways_read_as=carriageways_read_as, footway=worst.footway, udl_applied=worst.udl_applied, centred_response=worst.centred_response)
         return [CriticalPositionService.describe(placement, context) for placement in worst.placements]
 
     @staticmethod
-    def response_curve_for_every_vehicle(surface, carriageways, span_m, options):
+    def response_curve_for_every_vehicle(surface, carriageways, span_m, options, skew=0.0):
         permitted = vehicles_allowed_in_each_block(options.vehicles, options.allow_reversed_vehicles)
-        responses = VehicleResponses(surface, span_m=span_m, material=options.material, member_span_m=options.member_span_m, wearing_course_thickness_m=options.wearing_course_thickness_m, apply_impact=options.apply_impact, allow_trains=options.allow_trains, sampling=options.sampling)
+        responses = VehicleResponses(surface, span_m=span_m, material=options.material, member_span_m=options.member_span_m, wearing_course_thickness_m=options.wearing_course_thickness_m, apply_impact=options.apply_impact, allow_trains=options.allow_trains, sampling=options.sampling, skew=skew)
         every_vehicle = [vehicle for choices in permitted.values() for vehicle in choices]
         z_positions_m = positions_across_width(responses, every_vehicle, z_from_m=min((carriageway.left_m for carriageway in carriageways)), z_to_m=max((carriageway.right_m for carriageway in carriageways)), steps=options.sampling.positions_across_the_deck_to_try)
         per_carriageway = [envelope_every_block(responses, permitted, z_positions_m, options.adverse, carriageway, surface, options.apply_residual_udl, options.sampling) for carriageway in carriageways]
