@@ -1,0 +1,76 @@
+# setu input - the 35 m composite plate girder bridge from examples/plate_girder_35m.py.
+# Run:  python cli.py critical examples/bridge.toml --plot
+#       python cli.py design   examples/bridge.toml --plot
+# Units are in every key name: _m metres, _kpa kN/m2, _mps m/s, _c degrees C.
+
+[bridge]
+span_m = 35.0
+skew = 0.0                  # tan of the skew angle; 0 is a square deck
+construction = "unpropped"  # "unpropped" or "propped" (IRC:22 clause 604.1.1)
+shuttering_kpa = 0.0
+
+[cross_section]             # strips across the deck, left to right; names start with
+footpath_left = 1.50        # footpath, kerb, carriageway, median or crash_barrier
+kerb_left = 0.45
+carriageway_1 = 4.50
+median = 0.60
+carriageway_2 = 4.50
+kerb_right = 0.45
+footpath_right = 1.50
+
+[deck]
+thickness_m = 0.23
+overhang_m = 1.25
+wearing_course_thickness_m = 0.075
+
+[girders]
+count = 5
+
+[girders.section]
+top_flange_width_m = 0.550
+top_flange_thickness_m = 0.025
+bottom_flange_width_m = 0.650
+bottom_flange_thickness_m = 0.040
+web_height_m = 2.100
+web_thickness_m = 0.014
+
+[bracing]
+station_count = 7
+area_m2 = 0.01
+arrangement = "XT"          # X, XT, XB, XTB, K or KT
+
+[mesh]
+panels_between_braces = 25
+target_size_across_width_m = 0.25
+
+[concrete]
+characteristic_strength_mpa = 35   # cube strength; Ecm from IRC:22 Table III.1
+
+# Optional site loads - delete a table to leave that load out.
+[wind]                      # IRC:6 clause 209
+basic_wind_speed_mps = 39.0
+terrain = "plain"           # "plain" or "obstructed"
+height_m = 12.0
+solid_barrier_height_m = 1.1
+
+[seismic]                   # IRC:SP:114-2018
+zone = "IV"                 # II, III, IV or V
+soil = "II"                 # I, II or III
+importance = "important"    # normal, important, large critical (or a number)
+
+[temperature]               # IRC:6 clause 215
+shade_max_c = 45.0
+shade_min_c = 2.0
+
+# User loads (OsdagBridge Custom Load): group DL, SIDL, DW, LL, EL, WL, TL or your own name.
+# [[custom_loads]]
+# group = "hoarding"
+# shape = "point"           # point (kN), line (kN/m) or area (kPa)
+# magnitude = 40.0
+# x_from_bearing_m = 17.5
+# z_from_left_edge_m = 3.0
+
+# Your own combinations, for custom groups: factors per group.
+# [[combinations]]
+# name = "hoarding check"
+# factors = { dead = 1.35, surfacing = 1.75, hoarding = 1.5 }

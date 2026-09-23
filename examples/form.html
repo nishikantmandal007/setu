@@ -1,0 +1,237 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>setu input</title>
+<style>
+  :root { --bg: #fafaf9; --panel: #ffffff; --ink: #1c1917; --muted: #78716c; --line: #e7e5e4; --accent: #2563eb; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #0c0a09; --panel: #1c1917; --ink: #f5f5f4; --muted: #a8a29e; --line: #292524; --accent: #60a5fa; } }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+  header { padding: 18px 24px 6px; }
+  header h1 { margin: 0; font-size: 18px; }
+  header p { margin: 4px 0 0; color: var(--muted); }
+  main { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; padding: 12px 24px 24px; }
+  @media (max-width: 860px) { main { grid-template-columns: 1fr; } }
+  section { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; margin-bottom: 12px; }
+  section h2 { margin: 0 0 8px; font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); display: flex; justify-content: space-between; align-items: center; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 8px 12px; }
+  label { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--muted); }
+  input, select { font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 5px 7px; }
+  input:invalid { border-color: #dc2626; }
+  .row { display: grid; grid-template-columns: 1fr 1fr auto; gap: 8px; align-items: end; margin-bottom: 6px; }
+  button { font: inherit; border: 1px solid var(--line); background: var(--bg); color: var(--ink); border-radius: 6px; padding: 5px 10px; cursor: pointer; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .toggle { font-size: 12px; color: var(--ink); flex-direction: row; align-items: center; gap: 6px; text-transform: none; letter-spacing: 0; }
+  .off .grid, .off .rows { opacity: .35; pointer-events: none; }
+  aside { position: sticky; top: 12px; align-self: start; }
+  pre { margin: 0; padding: 12px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; overflow: auto; max-height: calc(100vh - 110px); font: 12px/1.45 ui-monospace, Menlo, monospace; }
+  .actions { display: flex; gap: 8px; margin-bottom: 8px; }
+  .hint { color: var(--muted); font-size: 12px; margin-top: 8px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>setu input</h1>
+  <p>Fill in the bridge, download <code>bridge.toml</code>, then run <code>python cli.py critical bridge.toml --plot</code> or <code>python cli.py design bridge.toml --plot</code>.</p>
+</header>
+<main>
+  <div id="form"></div>
+  <aside>
+    <div class="actions"><button class="primary" id="download">Download bridge.toml</button><button id="copy">Copy</button></div>
+    <pre id="preview"></pre>
+    <p class="hint">Only the checked optional loads are written. Custom groups need a custom combination to count.</p>
+  </aside>
+</main>
+
+<script type="application/json" id="schema">
+{
+  "tables": [
+    {"table": "bridge", "title": "Bridge", "fields": [
+      {"key": "span_m", "label": "Span (m)", "value": 35.0, "min": 5, "max": 150},
+      {"key": "skew", "label": "Skew (tan of angle)", "value": 0.0, "min": 0, "max": 1},
+      {"key": "construction", "label": "Construction", "value": "unpropped", "choices": ["unpropped", "propped"]},
+      {"key": "shuttering_kpa", "label": "Shuttering (kPa)", "value": 0.0, "min": 0}
+    ]},
+    {"table": "cross_section", "title": "Cross-section, left to right (m)", "strips": [
+      ["footpath_left", 1.5], ["kerb_left", 0.45], ["carriageway_1", 4.5], ["median", 0.6], ["carriageway_2", 4.5], ["kerb_right", 0.45], ["footpath_right", 1.5]
+    ]},
+    {"table": "deck", "title": "Deck slab", "fields": [
+      {"key": "thickness_m", "label": "Slab thickness (m)", "value": 0.23, "min": 0.15, "max": 0.4},
+      {"key": "overhang_m", "label": "Overhang (m)", "value": 1.25, "min": 0},
+      {"key": "wearing_course_thickness_m", "label": "Wearing course (m)", "value": 0.075, "min": 0}
+    ]},
+    {"table": "girders", "title": "Girders", "fields": [
+      {"key": "count", "label": "Number of girders", "value": 5, "min": 2, "max": 12, "integer": true}
+    ]},
+    {"table": "girders.section", "title": "Plate girder section (m)", "fields": [
+      {"key": "top_flange_width_m", "label": "Top flange width", "value": 0.55, "min": 0.1},
+      {"key": "top_flange_thickness_m", "label": "Top flange thickness", "value": 0.025, "min": 0.005},
+      {"key": "bottom_flange_width_m", "label": "Bottom flange width", "value": 0.65, "min": 0.1},
+      {"key": "bottom_flange_thickness_m", "label": "Bottom flange thickness", "value": 0.04, "min": 0.005},
+      {"key": "web_height_m", "label": "Web height", "value": 2.1, "min": 0.3},
+      {"key": "web_thickness_m", "label": "Web thickness", "value": 0.014, "min": 0.006}
+    ]},
+    {"table": "bracing", "title": "Bracing", "fields": [
+      {"key": "station_count", "label": "Brace lines along span", "value": 7, "min": 2, "integer": true},
+      {"key": "area_m2", "label": "Member area (m2)", "value": 0.01, "min": 0},
+      {"key": "arrangement", "label": "Arrangement", "value": "XT", "choices": ["X", "XT", "XB", "XTB", "K", "KT"]}
+    ]},
+    {"table": "mesh", "title": "Mesh", "fields": [
+      {"key": "panels_between_braces", "label": "Panels between braces", "value": 25, "min": 1, "integer": true},
+      {"key": "target_size_across_width_m", "label": "Target size across (m)", "value": 0.25, "min": 0.05}
+    ]},
+    {"table": "concrete", "title": "Concrete", "fields": [
+      {"key": "characteristic_strength_mpa", "label": "Cube strength fck (MPa)", "value": 35, "min": 15, "max": 90}
+    ]},
+    {"table": "wind", "title": "Wind (IRC:6 209)", "optional": true, "fields": [
+      {"key": "basic_wind_speed_mps", "label": "Basic wind speed (m/s)", "value": 39.0, "min": 20, "max": 60},
+      {"key": "terrain", "label": "Terrain", "value": "plain", "choices": ["plain", "obstructed"]},
+      {"key": "height_m", "label": "Average exposed height (m)", "value": 12.0, "min": 0, "max": 100},
+      {"key": "solid_barrier_height_m", "label": "Solid barrier height (m)", "value": 1.1, "min": 0},
+      {"key": "funnelling", "label": "Funnelling topography", "value": false, "choices": [false, true]}
+    ]},
+    {"table": "seismic", "title": "Seismic (IRC:SP:114)", "optional": true, "fields": [
+      {"key": "zone", "label": "Zone", "value": "IV", "choices": ["II", "III", "IV", "V"]},
+      {"key": "soil", "label": "Soil type", "value": "II", "choices": ["I", "II", "III"]},
+      {"key": "importance", "label": "Importance", "value": "important", "choices": ["normal", "important", "large critical"]},
+      {"key": "period_s", "label": "Period T (s), blank = Sa/g 2.5", "value": "", "min": 0, "max": 4, "blank": true}
+    ]},
+    {"table": "temperature", "title": "Temperature (IRC:6 215)", "optional": true, "fields": [
+      {"key": "shade_max_c", "label": "Max shade temperature (C)", "value": 45.0},
+      {"key": "shade_min_c", "label": "Min shade temperature (C)", "value": 2.0}
+    ]}
+  ],
+  "custom_loads": {"groups": ["DL", "SIDL", "DW", "LL", "EL", "WL", "TL"], "shapes": ["point", "line", "area"],
+                   "fields": ["group", "shape", "magnitude", "x_from_bearing_m", "z_from_left_edge_m", "x_end_m", "z_end_m"]}
+}
+</script>
+
+<script>
+const schema = JSON.parse(document.getElementById("schema").textContent);
+const form = document.getElementById("form");
+const state = { tables: {}, on: {}, strips: [], loads: [], combinations: [] };
+
+const el = (tag, attrs = {}, ...kids) => { const n = Object.assign(document.createElement(tag), attrs); n.append(...kids); return n; };
+
+function field(f, value, onChange) {
+  let input;
+  if (f.choices) {
+    input = el("select");
+    f.choices.forEach(c => input.append(el("option", { value: String(c), textContent: String(c), selected: String(c) === String(value) })));
+    input.onchange = () => onChange(input.value === "true" ? true : input.value === "false" ? false : input.value);
+  } else if (f.text) {
+    input = el("input", { type: "text", value });
+    input.oninput = () => onChange(input.value);
+  } else {
+    input = el("input", { type: "number", step: "any", value, required: !f.blank });
+    if (f.min !== undefined) input.min = f.min;
+    if (f.max !== undefined) input.max = f.max;
+    if (f.integer) input.step = 1;
+    input.oninput = () => onChange(input.value === "" ? "" : Number(input.value));
+  }
+  return el("label", {}, f.label, input);
+}
+
+function tableSection(t) {
+  const section = el("section");
+  const title = el("h2", {}, t.title);
+  section.append(title);
+  state.tables[t.table] = {};
+  if (t.optional) {
+    state.on[t.table] = true;
+    const box = el("input", { type: "checkbox", checked: true });
+    box.onchange = () => { state.on[t.table] = box.checked; section.classList.toggle("off", !box.checked); render(); };
+    title.append(el("label", { className: "toggle" }, box, "include"));
+  }
+  const grid = el("div", { className: "grid" });
+  t.fields.forEach(f => {
+    state.tables[t.table][f.key] = f.value;
+    grid.append(field(f, f.value, v => { state.tables[t.table][f.key] = v; render(); }));
+  });
+  section.append(grid);
+  return section;
+}
+
+function stripsSection(t) {
+  const section = el("section", {}, el("h2", {}, t.title));
+  const rows = el("div", { className: "rows" });
+  const draw = () => {
+    rows.replaceChildren();
+    state.strips.forEach((strip, k) => {
+      const name = el("input", { value: strip[0] }); name.oninput = () => { strip[0] = name.value; render(); };
+      const width = el("input", { type: "number", step: "any", min: 0, value: strip[1] }); width.oninput = () => { strip[1] = Number(width.value); render(); };
+      const remove = el("button", { textContent: "−" }); remove.onclick = () => { state.strips.splice(k, 1); draw(); render(); };
+      rows.append(el("div", { className: "row" }, el("label", {}, "name", name), el("label", {}, "width (m)", width), remove));
+    });
+  };
+  state.strips = t.strips.map(s => [...s]);
+  const add = el("button", { textContent: "+ strip" }); add.onclick = () => { state.strips.push(["carriageway", 3.5]); draw(); render(); };
+  draw();
+  section.append(rows, add, el("p", { className: "hint", textContent: "Names start with footpath, kerb, carriageway, median or crash_barrier." }));
+  return section;
+}
+
+function listSection(title, list, blank, fields) {
+  const section = el("section", {}, el("h2", {}, title));
+  const rows = el("div", { className: "rows" });
+  const draw = () => {
+    rows.replaceChildren();
+    list.forEach((item, k) => {
+      const grid = el("div", { className: "grid" });
+      fields.forEach(f => grid.append(field(f, item[f.key], v => { item[f.key] = v; render(); })));
+      const remove = el("button", { textContent: "− remove" }); remove.onclick = () => { list.splice(k, 1); draw(); render(); };
+      rows.append(grid, remove, el("hr"));
+    });
+  };
+  const add = el("button", { textContent: "+ add" }); add.onclick = () => { list.push({ ...blank }); draw(); render(); };
+  section.append(rows, add);
+  return section;
+}
+
+const tomlValue = v => typeof v === "string" ? JSON.stringify(v) : typeof v === "boolean" ? String(v) : String(v);
+const tomlKey = k => /^[A-Za-z0-9_-]+$/.test(k) ? k : JSON.stringify(k);
+
+function toml() {
+  const out = ["# setu input - written by examples/form.html"];
+  schema.tables.forEach(t => {
+    if (t.optional && !state.on[t.table]) return;
+    out.push("", `[${t.table}]`);
+    if (t.strips) { state.strips.forEach(([name, width]) => out.push(`${tomlKey(name)} = ${width}`)); return; }
+    Object.entries(state.tables[t.table]).forEach(([k, v]) => { if (v !== "") out.push(`${k} = ${tomlValue(v)}`); });
+  });
+  state.loads.forEach(load => {
+    out.push("", "[[custom_loads]]");
+    Object.entries(load).forEach(([k, v]) => { if (v !== "" && v !== null) out.push(`${k} = ${tomlValue(v)}`); });
+  });
+  state.combinations.forEach(c => {
+    out.push("", "[[combinations]]", `name = ${tomlValue(c.name)}`);
+    const factors = String(c.factors).split(",").map(p => p.split("=").map(s => s.trim())).filter(p => p.length === 2 && p[0]);
+    out.push(`factors = { ${factors.map(([g, f]) => `${tomlKey(g)} = ${Number(f)}`).join(", ")} }`);
+  });
+  return out.join("\n") + "\n";
+}
+
+function render() { document.getElementById("preview").textContent = toml(); }
+
+schema.tables.forEach(t => form.append(t.strips ? stripsSection(t) : tableSection(t)));
+const cl = schema.custom_loads;
+form.append(listSection("Custom loads (OsdagBridge Custom Load)", state.loads,
+  { group: "DL", shape: "point", magnitude: 10, x_from_bearing_m: 10, z_from_left_edge_m: 3, x_end_m: "", z_end_m: "" },
+  [{ key: "group", label: "Group", choices: [...cl.groups, "hoarding"] }, { key: "shape", label: "Shape", choices: cl.shapes },
+   { key: "magnitude", label: "kN / kN/m / kPa" }, { key: "x_from_bearing_m", label: "From bearing (m)" },
+   { key: "z_from_left_edge_m", label: "From left edge (m)" }, { key: "x_end_m", label: "End from bearing (m)", blank: true },
+   { key: "z_end_m", label: "End from left edge (m)", blank: true }]));
+form.append(listSection("Custom combinations", state.combinations, { name: "my check", factors: "dead = 1.35, surfacing = 1.75" },
+  [{ key: "name", label: "Name", text: true }, { key: "factors", label: "Factors: group = factor, …", text: true }]));
+
+document.getElementById("download").onclick = () => {
+  const link = el("a", { href: URL.createObjectURL(new Blob([toml()], { type: "text/plain" })), download: "bridge.toml" });
+  link.click();
+};
+document.getElementById("copy").onclick = () => navigator.clipboard.writeText(toml());
+render();
+</script>
+</body>
+</html>

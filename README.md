@@ -53,6 +53,27 @@ for girder, by_response in results.girders.items():
     print(f"girder {girder}: {governing.value:.1f} kNm ({governing.combination})")
 ```
 
+## Command line
+
+One command runs the whole analysis on a bridge file and writes everything to `analysis_results/`:
+
+```bash
+uv run python cli.py examples/bridge.toml          # add --plot to pop up the plots
+```
+
+- `analysis_results/result.json` contains:
+  - every critical position (each girder; midspan moment and support shear; both directions), each with:
+    - the vehicles, and every wheel with its x, z, load, impact and lane reduction, so it can be placed in MIDAS as static loads;
+    - the lanes, residual UDL and footway strips;
+    - the same load solved in OpenSees as a check;
+  - the design values for every girder and limit state, plus the governing ones;
+  - the dead load by construction stage;
+  - the wind, seismic and temperature numbers.
+- `analysis_results/plots/` holds the design dashboard and the critical position of every girder.
+- To write the bridge file, open `examples/form.html` in a browser: fill it in, download `bridge.toml`. The TOML format is shown in `examples/bridge.toml`.
+
+The CLI only calls setu's public API. OsdagBridge uses setu as a library.
+
 ## Structure
 
 Each folder is one layer. A layer only imports from the layers above it.
