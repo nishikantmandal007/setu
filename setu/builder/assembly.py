@@ -2,6 +2,7 @@ import numpy as np
 from setu.builder.mesh import DeckModel
 from setu.models.sections import girder_properties
 from setu.helpers import report, log
+from setu.models.materials import SHORT_TERM
 from setu.builder.mesh import build_mesh, station_at
 
 KERB_PREFIX = "kerb"
@@ -110,8 +111,9 @@ def girder_centroid_level_m(bridge, girder):
     top_of_girder_to_centroid_m = girder.depth_m - girder.neutral_axis_from_bottom_m
     return -(top_of_girder_to_centroid_m + bridge.deck.thickness_m / 2)
 
-def build_deck_shells(ops, bridge, mesh, deck_nodes):
-    ops.section('ElasticMembranePlateSection', DECK_SECTION, bridge.concrete.elastic_modulus_kpa, bridge.concrete.poissons_ratio, bridge.deck.thickness_m)
+def build_deck_shells(ops, bridge, mesh, deck_nodes, load_duration):
+    slab_modulus_kpa = bridge.concrete.modulus_for(load_duration, bridge.steel.elastic_modulus_kpa)
+    ops.section('ElasticMembranePlateSection', DECK_SECTION, slab_modulus_kpa, bridge.concrete.poissons_ratio, bridge.deck.thickness_m)
     elements = {}
     tag = DECK_ELEMENT_BASE
     for i in range(mesh.stations_along_span - 1):
@@ -199,12 +201,12 @@ class BridgeModel:
         self.girder = girder
         self.deck_nodes = deck_nodes
         self.supports = supports
-        for name, value in kwargs.items():
-            setattr(self, name, value)
         self.k_brace_nodes = {}
         self.deck_elements = {}
         self.girder_elements = {}
         self.brace_elements = {}
+        for name, value in kwargs.items():
+            setattr(self, name, value)
 
     def as_deck_model(self):
         return DeckModel(length_mesh_m=self.mesh.length_mesh_m, width_mesh_m=self.mesh.width_mesh_m, deck_nodes=self.deck_nodes, girder_section=self.girder.for_solver(self.bridge.steel), girder_local_axis=GIRDER_LOCAL_AXIS, girder_elements=self.girder_elements, composite_lever_arm_m=self.composite_lever_arm_m())
@@ -218,7 +220,7 @@ class BridgeModel:
     def midspan_element_of_girder(self, girder):
         return self.element_of_girder_at(girder, self.mesh.stations_along_span // 2)
 
-def build_bridge_model(bridge, ops=None):
+def build_bridge_model(bridge, ops=None, load_duration=SHORT_TERM):
     ops = load_opensees() if ops is None else ops
     mesh = build_mesh(bridge)
     girder = girder_properties(bridge.girders.section)
@@ -230,7 +232,8 @@ def build_bridge_model(bridge, ops=None):
     bottom_brace_nodes, top_brace_nodes = place_brace_nodes(ops, bridge, mesh, girder)
     k_brace_nodes = place_k_brace_nodes(ops, bridge, mesh, girder)
     model = BridgeModel(bridge=bridge, mesh=mesh, girder=girder, deck_nodes=deck_nodes, girder_nodes=girder_nodes, bottom_brace_nodes=bottom_brace_nodes, top_brace_nodes=top_brace_nodes, k_brace_nodes=k_brace_nodes)
-    model.deck_elements.update(build_deck_shells(ops, bridge, mesh, deck_nodes))
+    model.deck_elements.update(build_deck_shells(ops, bridge, mesh, deck_nodes, load_duration))
+    model.load_duration = load_duration
     model.girder_elements.update(build_girder_beams(ops, bridge, mesh, girder, girder_nodes))
     tie_deck_to_girders(ops, mesh, deck_nodes, girder_nodes)
     tie_braces_to_girders(ops, bridge, mesh, girder_nodes, bottom_brace_nodes, top_brace_nodes)

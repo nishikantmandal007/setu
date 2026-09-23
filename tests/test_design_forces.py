@@ -281,3 +281,34 @@ def test_composite_moments_of_all_girders_add_up_to_statics():
 
     assert carried_by_the_girders == pytest.approx(load_kn * SPAN_M / 4, rel=0.01)
     assert steel_alone < 0.5 * load_kn * SPAN_M / 4, "the steel alone must not look like the whole section"
+
+
+def test_long_term_concrete_leaves_more_to_the_steel():
+    """Creep softens the slab, so under a sustained load the steel carries more of the moment."""
+    from setu.loads.load_cases import LoadCase
+    from setu.models.materials import LONG_TERM
+    from setu.postprocess.girder_response import analyze_load_case
+
+    steel_moment = {}
+    for load_duration in ("short_term", LONG_TERM):
+        model = build_bridge_model(BRIDGE, load_duration=load_duration)
+        midspan = model.mesh.stations_along_span // 2
+        point = LoadCase("point", nodal_loads=[(model.deck_nodes[midspan, model.mesh.width_station_of_girder(1)], 0.0, -100.0, 0.0, 0.0, 0.0, 0.0)])
+        forces = analyze_load_case(model, point, ops)
+        steel_moment[load_duration] = forces[1].moment_kn_m[midspan]
+        assert sum(forces[g].composite_moment_kn_m[midspan] for g in forces) == pytest.approx(100.0 * SPAN_M / 4, rel=0.01)
+
+    assert steel_moment[LONG_TERM] > steel_moment["short_term"]
+
+
+def test_a_k_braced_bridge_builds():
+    from setu.models.bridge import Bracing
+
+    k_braced = BridgeInput(
+        span_m=SPAN_M, cross_section=CROSS_SECTION, deck=BRIDGE.deck, girders=BRIDGE.girders,
+        bracing=Bracing(station_count=7, area_m2=0.01, arrangement="KT"), mesh=BRIDGE.mesh,
+    )
+
+    model = build_bridge_model(k_braced)
+
+    assert len(model.k_brace_nodes) == (BRIDGE.girders.count - 1) * 7
