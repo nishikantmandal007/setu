@@ -1,4 +1,4 @@
-from setu.irc6.constants import ROUND_TO_DECIMALS
+from setu.helpers import ROUND_TO_DECIMALS
 from setu.errors import CrossSectionError
 
 

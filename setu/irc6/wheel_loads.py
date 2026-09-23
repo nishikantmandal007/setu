@@ -2,7 +2,7 @@ import numpy as np
 
 from setu.irc6.constants import GRAVITY_KN_PER_TONNE
 from setu.helpers import DEFAULT_SAMPLING
-from setu.models.vehicles import TrackedVehicle
+from setu.irc6.vehicles import TrackedVehicle
 
 LEFT_OF_THE_CENTRELINE = -1
 RIGHT_OF_THE_CENTRELINE = +1

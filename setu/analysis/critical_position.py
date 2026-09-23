@@ -1,8 +1,8 @@
 import numpy as np
 from setu.helpers import *
 from setu.irc6 import *
-from setu.models.results import *
-from setu.models.vehicles import vehicles_allowed_in_each_block
+from setu.analysis.results import *
+from setu.irc6.vehicles import vehicles_allowed_in_each_block
 from setu.analysis.vehicle_placement import *
 
 NO_FOOTWAY_LOAD = 0.0

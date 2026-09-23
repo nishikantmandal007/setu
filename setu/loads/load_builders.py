@@ -1,5 +1,5 @@
 import numpy as np
-from setu.postprocess.load_cases import LoadCase
+from setu.loads.load_cases import LoadCase
 from setu.builder.mesh import tributary_length_m
 
 

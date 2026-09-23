@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 from setu.postprocess.girder_response import GirderForces, GirderDeflections
-from setu.postprocess.load_cases import LoadCase, combine
+from setu.loads.load_cases import LoadCase, combine
 from setu.postprocess.envelope import Envelope, envelope
 from setu.irc6.combinations import irc6_uls_recipes, irc6_sls_recipes
 
@@ -85,7 +85,7 @@ def test_plots_importable():
 
 
 def test_load_builders_importable():
-    from setu.postprocess.load_builders import (
+    from setu.loads.load_builders import (
         pressure_load,
         line_load,
         point_load,

@@ -5,7 +5,7 @@ from setu.models.sections import PlateGirderSection, GirderSection, girder_prope
 
 from setu.builder.mesh import build_mesh, DeckModel
 from setu.builder.assembly import build_bridge_model, BridgeModel
-from setu.builder.dead_loads import apply_dead_loads
+from setu.loads.dead_loads import apply_dead_loads
 
 from setu.analysis.influence_surface import InfluenceSolver, InfluenceSurface
 from setu.analysis.critical_position import CriticalPositionService, find_critical_position, rank_all_positions
@@ -18,8 +18,8 @@ from setu.irc6.combinations import irc6_uls_recipes, irc6_sls_recipes, irc6_fati
 
 from setu.postprocess.girder_response import GirderForces, GirderDeflections, girder_forces, girder_deflections
 from setu.postprocess.envelope import Envelope, envelope, envelope_with_deflections
-from setu.postprocess.load_cases import LoadCase, apply_load_case, combine
-from setu.postprocess.load_builders import pressure_load, line_load, point_load, braking_load, seismic_load, wind_load, temperature_gradient, fatigue_moving_load
+from setu.loads.load_cases import LoadCase, apply_load_case, combine
+from setu.loads.load_builders import pressure_load, line_load, point_load, braking_load, seismic_load, wind_load, temperature_gradient, fatigue_moving_load
 
 
 def build_result_dataset(*args, **kwargs):

@@ -3,9 +3,9 @@ import itertools
 from setu.irc6 import *
 from setu.helpers import *
 from setu.errors import *
-from setu.models.results import VehiclePlacement
-from setu.models.vehicles import *
-from setu.models.vehicles import most_vehicles_that_fit, class_of
+from setu.analysis.results import VehiclePlacement
+from setu.irc6.vehicles import *
+from setu.irc6.vehicles import most_vehicles_that_fit, class_of
 
 def best_so_far(values):
     values = np.asarray(values, float)

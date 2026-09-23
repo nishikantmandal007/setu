@@ -1,5 +1,4 @@
 import numpy as np
-from setu.postprocess.girder_response import girder_forces
 
 
 LOAD_CASE_PATTERN_BASE = 100
@@ -22,25 +21,6 @@ def apply_load_case(load_case, ops, pattern_tag=None):
         ops.load(node, fx, fy, fz, mx, my, mz)
     for element, load_type, parameters in load_case.element_loads:
         ops.eleLoad("-ele", element, "-type", load_type, *parameters)
-
-
-def analyze_load_case(model, load_case, ops, pattern_tag=None):
-    tag = pattern_tag if pattern_tag is not None else LOAD_CASE_PATTERN_BASE
-    apply_load_case(load_case, ops, pattern_tag=tag)
-    ops.system("UmfPack")
-    ops.numberer("RCM")
-    ops.constraints("Transformation")
-    ops.integrator("LoadControl", 1.0)
-    ops.algorithm("Linear")
-    ops.analysis("Static")
-    ops.analyze(1)
-    results = {}
-    for k in range(model.bridge.girders.count):
-        results[k] = girder_forces(model, k, ops)
-    ops.remove("loadPattern", tag)
-    ops.remove("timeSeries", tag)
-    ops.wipeAnalysis()
-    return results
 
 
 def combine(cases, factors):

@@ -6,9 +6,9 @@ from setu.analysis.influence_surface import InfluenceSurface
 from setu.solver.backend import OpenSeesBackend
 from setu.analysis.vehicle_placement import find_worst_train
 from setu.postprocess.girder_response import GirderForces, GirderDeflections
-from setu.postprocess.load_cases import LoadCase
+from setu.loads.load_cases import LoadCase
 from setu.postprocess.envelope import Envelope
-from setu.postprocess.load_builders import pressure_load, line_load, point_load
+from setu.loads.load_builders import pressure_load, line_load, point_load
 
 
 def test_documented_public_api_imports():

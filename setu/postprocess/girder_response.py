@@ -1,4 +1,5 @@
 import numpy as np
+from setu.loads.load_cases import LOAD_CASE_PATTERN_BASE, apply_load_case
 
 
 N_I = 0
@@ -69,3 +70,22 @@ def reactions(model, ops):
             node = model.girder_nodes[k, i]
             result[node] = np.array(ops.nodeReaction(node))
     return result
+
+
+def analyze_load_case(model, load_case, ops, pattern_tag=None):
+    tag = pattern_tag if pattern_tag is not None else LOAD_CASE_PATTERN_BASE
+    apply_load_case(load_case, ops, pattern_tag=tag)
+    ops.system("UmfPack")
+    ops.numberer("RCM")
+    ops.constraints("Transformation")
+    ops.integrator("LoadControl", 1.0)
+    ops.algorithm("Linear")
+    ops.analysis("Static")
+    ops.analyze(1)
+    results = {}
+    for k in range(model.bridge.girders.count):
+        results[k] = girder_forces(model, k, ops)
+    ops.remove("loadPattern", tag)
+    ops.remove("timeSeries", tag)
+    ops.wipeAnalysis()
+    return results

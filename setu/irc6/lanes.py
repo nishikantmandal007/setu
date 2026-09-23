@@ -16,7 +16,6 @@ from setu.irc6.constants import (
     NARROWEST_LOADED_CARRIAGEWAY_M,
     RESIDUAL_UDL_APPLIES_BELOW_M,
     RESIDUAL_UDL_KPA,
-    ROUND_TO_DECIMALS,
     SMALLEST_CLASS_A_GAP_M,
     TOLERANCE_M,
     TWO_CLASS_A_LANES_AND_KERB_CLEARANCES_M,
@@ -27,7 +26,7 @@ from setu.irc6.constants import (
     ZONE_70R_AT_EDGE_M,
     ZONE_70R_INSIDE_M,
 )
-from setu.helpers import adverse_sign, where_a_load_hurts, DEFAULT_SAMPLING
+from setu.helpers import ROUND_TO_DECIMALS, adverse_sign, where_a_load_hurts, DEFAULT_SAMPLING
 
 CLASS_A_LANE = 'class_a'
 ZONE_70R = 'zone_70r'

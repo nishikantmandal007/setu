@@ -34,7 +34,7 @@ from setu.models.bridge import (
     PlateGirderSection,
 )
 from setu.builder.assembly import build_bridge_model as build_model
-from setu.builder.dead_loads import apply_dead_loads
+from setu.loads.dead_loads import apply_dead_loads
 
 ops = pytest.importorskip("openseespy.opensees", reason="needs a finite element solver")
 

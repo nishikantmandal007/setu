@@ -295,7 +295,7 @@ def test_the_report_block_still_reads(golden_and_ranked):
 def test_describe_survives_a_zero_response():
     # The shortfall is None when there is nothing to take a percentage of, and describe()
     # used to format that None straight into the report and raise TypeError.
-    from setu.models.results import CriticalPosition
+    from setu.analysis.results import CriticalPosition
 
     nothing_happened = CriticalPosition(
         response_name="a response that came out at zero",
