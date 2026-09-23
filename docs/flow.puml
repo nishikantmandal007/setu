@@ -1,36 +1,47 @@
 @startuml flow
-title setu: end-to-end flow
+!theme plain
+skinparam defaultFontName Helvetica
+skinparam defaultFontSize 13
+skinparam ActivityBorderColor #555555
+skinparam ActivityBackgroundColor #FFFFFF
+skinparam PartitionBorderColor #999999
+skinparam ArrowColor #555555
+title setu: bridge in, design forces out
 
 start
-:BridgeInput + DeckCrossSection (models);
+:Bridge input
+<size:11><color:#777>models</color></size>;
 
-partition "Dead load, in construction stages (IRC:22 §604.1.1)" {
-  if (construction?) then (un-propped, default)
-    :steel-only model: girder + bracing + wet slab + shuttering (loads.construction_stage_load);
-    :long-term composite model (m ≥ 15): kerbs, footpaths, median (loads.superimposed_dead_load);
+partition "1  Dead load  (IRC:22 stages)" {
+  if (construction?) then (un-propped)
+    :Steel alone: girders, bracing, wet slab
+    <size:11><color:#777>loads.construction_stage_load</color></size>;
+    :Composite, long term: kerbs, footpaths
+    <size:11><color:#777>loads.superimposed_dead_load</color></size>;
   else (propped)
-    :long-term composite model: all dead load (loads.whole_dead_load);
+    :Composite, long term: all dead load
+    <size:11><color:#777>loads.whole_dead_load</color></size>;
   endif
-  :long-term composite model: surfacing, kept apart for its own factor (loads.surfacing_load);
-  :dead_load_forces → per-girder forces per stage (postprocess);
+  :Surfacing, kept apart
+  <size:11><color:#777>loads.surfacing_load</color></size>;
 }
 
-partition "Live load, per girder (IRC:6)" {
-  :build_bridge_model: short-term composite model (m ≥ 7.5) (builder);
+partition "2  Live load  (IRC:6, every girder)" {
+  :Composite model, short term
+  <size:11><color:#777>builder</color></size>;
   repeat :next girder;
-    :influence surfaces: composite midspan moment, support shear (analysis + solver);
-    :search along the span: worst train, exact at minimum spacing (along_span);
-    :search across the carriageway: worst lane arrangement + residual UDL + footway (across_carriageway + irc6);
-    :take the worst = CriticalPosition (critical_position);
+    :Influence surfaces: moment, shear
+    <size:11><color:#777>analysis.influence_surface</color></size>;
+    :Worst vehicles, UDL, footway
+    <size:11><color:#777>analysis.critical_position</color></size>;
   repeat while (more girders?) is (yes)
   -> no;
-  :live_load(CriticalPosition) → "live" LoadCase, checked against the search in FE (loads);
 }
 
-partition "Design values" {
-  :factor per IRC:6 Table B.2 / B.3: dead 1.35, surfacing 1.75, live 1.5 (irc6.combinations);
-  :governing girder = worst of all girders;
-  :envelope → plots / dataset (postprocess);
+partition "3  Design values" {
+  :Factor: 1.35 dead, 1.75 surfacing, 1.5 live
+  <size:11><color:#777>irc6.combinations</color></size>;
+  :Governing girder;
 }
 stop
 @enduml

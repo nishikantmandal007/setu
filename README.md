@@ -65,12 +65,13 @@ Each folder is one layer. A layer only imports from the layers above it.
 ```text
 setu/
 ├── models/       bridge inputs: geometry, deck, materials, sections
-├── irc6/         IRC:6 rules: vehicles, impact, lanes, wheel loads, combinations
+├── irc6/         IRC:6 rules: vehicles, impact, lanes, wheel loads, combinations; irc_constants.py holds the clause values
 ├── builder/      mesh generation and OpenSees model assembly
-├── loads/        dead loads, load builders, load cases
+├── loads/        dead loads in construction stages, live load, load cases
 ├── solver/       OpenSees FE backend and stiffness matrices
 ├── analysis/     influence surfaces, along-span and across-carriageway search, critical position
-└── postprocess/  girder response, envelopes, result datasets, plots
+├── postprocess/  girder response, dead load by stage, envelopes, result datasets, plots
+└── utils/        constants.py: constants more than one module uses
 ```
 
 ## Flow
