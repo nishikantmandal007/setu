@@ -78,7 +78,6 @@ def test_load_builders_importable():
         pressure_load,
         line_load,
         point_load,
-        temperature_gradient,
     )
     assert callable(pressure_load)
 

@@ -40,29 +40,6 @@ def point_load(model, node_tag, force_kn, name):
     return LoadCase(name=name, nodal_loads=nodal_loads)
 
 
-def temperature_gradient(model, delta_t_top, delta_t_bottom, name):
-    mesh = model.mesh
-    bridge = model.bridge
-    alpha = bridge.steel.thermal_expansion if hasattr(bridge.steel, "thermal_expansion") else 12e-6
-    depth_m = model.girder.depth_m
-    delta_t = delta_t_top - delta_t_bottom
-    curvature = alpha * delta_t / depth_m
-    modulus = bridge.steel.elastic_modulus_kpa
-    inertia = model.girder.strong_axis_inertia_m4
-    equivalent_moment = modulus * inertia * curvature
-    element_loads = []
-    for element in model.girder_elements.values():
-        element_loads.append((element, "-beamUniform", (0.0, 0.0)))
-    nodal_loads = []
-    for k in range(bridge.girders.count):
-        n_stations = mesh.stations_along_span
-        for i in [0, n_stations - 1]:
-            node = model.girder_nodes[k, i]
-            sign = 1.0 if i == 0 else -1.0
-            nodal_loads.append((node, 0.0, 0.0, 0.0, 0.0, 0.0, sign * equivalent_moment))
-    return LoadCase(name=name, nodal_loads=nodal_loads)
-
-
 def fatigue_moving_load(model, vehicle, path_z_m, span_m, n_positions=50, name="fatigue"):
     from setu.irc6.irc_constants import GRAVITY_KN_PER_TONNE
     mesh = model.mesh

@@ -173,3 +173,23 @@ OTHER_DIRECTIONS_FRACTION = 0.3
 LIVE_LOAD_SEISMIC_FRACTION = 0.2
 # Table 4.1 has no superstructure row; a simply supported superstructure is taken to stay elastic
 SUPERSTRUCTURE_RESPONSE_REDUCTION = 1.0
+
+# Clause 215.2 and Table 15 - effective bridge temperature
+METALLIC_ABOVE_SHADE_MAX_C = 15.0
+METALLIC_BELOW_SHADE_MIN_C = 10.0
+SNOWBOUND_METALLIC_RANGE_C = (-35.0, 50.0)
+TABLE_15_WIDE_SHADE_RANGE_C = 20.0
+TABLE_15_SWING_WIDE_C = 10.0
+TABLE_15_SWING_NARROW_C = 5.0
+
+# Clause 215.3, Fig. 16b - temperature difference across a steel/concrete composite section (50 mm surfacing)
+FIG_16B_SLAB_DEPTHS_M = (0.2, 0.3)
+FIG_16B_POSITIVE_TOP_C = (18.0, 20.5)
+FIG_16B_POSITIVE_KINK_C = 4.0
+FIG_16B_POSITIVE_KINK_DEPTH_FRACTION = 0.6
+FIG_16B_POSITIVE_FADES_OVER_M = 0.4
+FIG_16B_REVERSE_TOP_C = (4.4, 6.8)
+FIG_16B_REVERSE_BOTTOM_C = 8.0
+
+# Clause 215.4 - coefficient of thermal expansion for RCC, PSC and steel
+THERMAL_EXPANSION_PER_C = 12.0e-6
