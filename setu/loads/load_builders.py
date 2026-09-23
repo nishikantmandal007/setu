@@ -1,11 +1,12 @@
 import numpy as np
 from setu.helpers import DEFAULT_SAMPLING, where_a_load_hurts
-from setu.irc6.constants import RESIDUAL_UDL_KPA, TOLERANCE_M
-from setu.irc6.lanes import NOTHING_THERE_M, cell_centres
+from setu.irc6.irc_constants import RESIDUAL_UDL_KPA
+from setu.irc6.lanes import cell_centres
 from setu.irc6.vehicles import find_vehicle_or_its_reverse
 from setu.irc6.wheel_loads import wheel_load_offsets
 from setu.loads.load_cases import LoadCase
 from setu.builder.mesh import tributary_length_m
+from setu.utils.constants import NOTHING_THERE_M, TOLERANCE_M
 
 
 def pressure_load(model, z_from_m, z_to_m, pressure_kpa, name):
@@ -102,7 +103,7 @@ def wind_load(model, pressure_kpa, name):
 
 
 def fatigue_moving_load(model, vehicle, path_z_m, span_m, n_positions=50, name="fatigue"):
-    from setu.irc6.constants import GRAVITY_KN_PER_TONNE
+    from setu.irc6.irc_constants import GRAVITY_KN_PER_TONNE
     mesh = model.mesh
     j = _nearest_width_station(mesh.width_mesh_m, path_z_m)
     positions = np.linspace(0, span_m, n_positions)

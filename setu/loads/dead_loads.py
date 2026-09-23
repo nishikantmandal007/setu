@@ -2,10 +2,8 @@ import numpy as np
 from setu.helpers import report
 from setu.builder.mesh import tributary_length_m
 from setu.loads.load_cases import LoadCase
+from setu.utils.constants import CRASH_BARRIER_PREFIX, KERB_PREFIX, MEDIAN_PREFIX
 
-KERB_PREFIX = "kerb"
-MEDIAN_PREFIX = "median"
-CRASH_BARRIER_PREFIX = "crash_barrier"
 
 DEAD_LOAD_PATTERN = 1
 DEAD_LOAD_TIME_SERIES = 1

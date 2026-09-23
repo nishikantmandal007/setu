@@ -1,9 +1,10 @@
 import json
 import numpy as np
 from setu.errors import InfluenceSurfaceError, ModelAlreadyLoadedError
+from setu.utils.constants import END_I_FORCE_TO_INTERNAL_FORCE, N_I
 from setu.solver.backend import FEBackend, OpenSeesBackend
 from setu.builder.mesh import DeckModel
-from setu.solver.stiffness import beam_stiffness_matrix, element_rotation_matrix, AXIAL_DOF, moment_dof_for, shear_dof_for
+from setu.solver.stiffness import beam_stiffness_matrix, element_rotation_matrix, moment_dof_for, shear_dof_for
 
 VERTICAL_DOF = 2
 OFF_THE_DECK = 0.0
@@ -60,13 +61,11 @@ def cell_containing(stations_m, positions_m):
     last_cell = len(stations_m) - 2
     return np.clip(np.searchsorted(stations_m, positions_m) - 1, 0, last_cell)
 
-import numpy as np
 NODE_I_COMPONENTS = slice(0, 6)
 NODE_J_COMPONENTS = slice(6, 12)
 UNIT_LOAD_DOWNWARDS = [0.0, -1.0, 0.0, 0.0, 0.0, 0.0]
 NO_LOADS = []
 STILL_AT_REST_M = 1e-12
-END_I_FORCE_TO_INTERNAL_FORCE = -1.0
 
 class InfluenceSolver:
 
@@ -87,7 +86,7 @@ class InfluenceSolver:
     def for_girder_composite_moment(self, name, element):
         self.check_nothing_else_is_loading_the_model()
         moment_dof = moment_dof_for(self.deck.girder_local_axis)
-        steel_moment_and_axial_couple = [(moment_dof, 1.0), (AXIAL_DOF, self.deck.composite_lever_arm_m)]
+        steel_moment_and_axial_couple = [(moment_dof, 1.0), (N_I, self.deck.composite_lever_arm_m)]
         adjoint_loads = self.adjoint_loads_for_girder_force(element, steel_moment_and_axial_couple)
         self.backend.solve_with_loads(adjoint_loads)
         return self.surface_from_solved_deck(name, describes={'response': 'girder_composite_moment', 'element': element, 'lever_arm_m': self.deck.composite_lever_arm_m})

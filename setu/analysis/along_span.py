@@ -1,9 +1,9 @@
 import numpy as np
-from setu.helpers import DEFAULT_SAMPLING, ROUND_TO_DECIMALS, adverse_sign, index_of_worst, is_worse
-from setu.irc6.constants import TOLERANCE_M
+from setu.helpers import DEFAULT_SAMPLING, adverse_sign, index_of_worst, is_worse
 from setu.irc6.impact import impact_factor
 from setu.irc6.vehicles import class_of, most_vehicles_that_fit, pitch_between_vehicles_m
-from setu.irc6.wheel_loads import OFFSET_DX_M, OFFSET_DZ_M, split_offsets, wheel_load_offsets
+from setu.irc6.wheel_loads import split_offsets, wheel_load_offsets
+from setu.utils.constants import OFFSET_DX_M, OFFSET_DZ_M, ROUND_TO_DECIMALS, TOLERANCE_M
 
 def best_so_far(values):
     values = np.asarray(values, float)

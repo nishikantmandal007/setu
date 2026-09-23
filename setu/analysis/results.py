@@ -1,4 +1,4 @@
-from setu.irc6.vehicles import REVERSED_SUFFIX
+from setu.utils.constants import REVERSED_SUFFIX
 
 RULE = "-" * 72
 

@@ -4,8 +4,6 @@
 import pytest
 
 from setu.irc6 import (
-    CLASS_A_LANE,
-    ZONE_70R,
     class_a_gap,
     count_design_lanes,
     fit_blocks_between,
@@ -15,6 +13,7 @@ from setu.irc6 import (
     narrowest_carriageway_that_fits,
     where_vehicle_sits_in_block,
 )
+from setu.utils.constants import CLASS_A_LANE, ZONE_70R
 
 
 @pytest.mark.parametrize(

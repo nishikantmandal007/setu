@@ -1,5 +1,6 @@
 from setu.models.materials import Steel, Concrete, SurfacingLayer
 from setu.models.sections import GirderSection, PlateGirderSection, ExtendedGirderSection, girder_properties
+from setu.utils.constants import UNPROPPED
 
 X_BRACING = 'X'
 X_BRACING_WITH_TOP_CHORD = 'XT'
@@ -8,9 +9,6 @@ X_BRACING_WITH_BOTH_CHORDS = 'XTB'
 K_BRACING = 'K'
 K_BRACING_WITH_TOP_CHORD = 'KT'
 
-# IRC:22-2015 Clause 604.1.1 - how the slab was cast
-UNPROPPED = 'unpropped'
-PROPPED = 'propped'
 
 
 class DeckSlab:

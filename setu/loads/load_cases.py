@@ -1,7 +1,7 @@
 import numpy as np
+from setu.utils.constants import LOAD_CASE_PATTERN_BASE
 
 
-LOAD_CASE_PATTERN_BASE = 100
 LOAD_CASE_TIME_SERIES_BASE = 100
 
 

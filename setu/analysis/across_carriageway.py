@@ -1,10 +1,8 @@
 import itertools
 import numpy as np
 from setu.errors import NoAdmissibleArrangementError
-from setu.helpers import DEFAULT_SAMPLING, ROUND_TO_DECIMALS, adverse_sign, index_of_worst, is_worst_first
-from setu.irc6.constants import TOLERANCE_M
+from setu.helpers import DEFAULT_SAMPLING, adverse_sign, index_of_worst, is_worst_first
 from setu.irc6.lanes import (
-    CLASS_A_LANE,
     fit_blocks_between,
     lane_reduction_factor,
     list_admissible_arrangements,
@@ -14,6 +12,7 @@ from setu.irc6.lanes import (
     where_vehicle_sits_in_block,
 )
 from setu.analysis.along_span import best_so_far, positions_inside_zone, read_curve
+from setu.utils.constants import CLASS_A_LANE, NO_LANE_REDUCTION, ROUND_TO_DECIMALS, TOLERANCE_M
 
 class BlockEnvelope:
     def __init__(self, z_positions_m=None, response=None, winner=None, **kwargs):
@@ -85,7 +84,6 @@ def walk_back_through_the_blocks(signed_best_total, offset_of_the_block_to_the_l
     return chosen_offsets
 
 
-NO_LANE_REDUCTION = 1.0
 
 class CarriagewayCase:
     def __init__(self, lane_pattern, design_lanes, sliding_room_m, vehicle_centres_m, response_before_reduction, response=0.0, lane_reduction=1.0, **kwargs):

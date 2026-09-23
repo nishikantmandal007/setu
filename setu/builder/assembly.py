@@ -2,12 +2,9 @@ import numpy as np
 from setu.builder.mesh import DeckModel
 from setu.models.sections import girder_properties
 from setu.helpers import report, log
-from setu.models.materials import SHORT_TERM
 from setu.builder.mesh import build_mesh, station_at
+from setu.utils.constants import SHORT_TERM
 
-KERB_PREFIX = "kerb"
-MEDIAN_PREFIX = "median"
-CRASH_BARRIER_PREFIX = "crash_barrier"
 
 DECK_NODE_BASE = 1000
 DECK_ELEMENT_BASE = 1000

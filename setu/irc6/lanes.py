@@ -2,7 +2,7 @@ from itertools import product, zip_longest
 
 import numpy as np
 
-from setu.irc6.constants import (
+from setu.irc6.irc_constants import (
     CLASS_A_GAP_OPENS_UP_BELOW_M,
     CLASS_A_KERB_CLEARANCE_M,
     CLASS_A_LANE_WIDTH_M,
@@ -10,9 +10,15 @@ from setu.irc6.constants import (
     DESIGN_LANES_BY_WIDTH,
     FOOTWAY_CROWD_KG_M2,
     FOOTWAY_FULL_LOAD_UP_TO_SPAN_M,
+    FOOTWAY_LONG_SPAN_DEDUCTION_KG_M2,
+    FOOTWAY_LONG_SPAN_KG_M2_M,
+    FOOTWAY_MEDIUM_SPAN_DIVISOR,
+    FOOTWAY_MEDIUM_SPAN_KG_M2_PER_M,
+    FOOTWAY_MEDIUM_SPAN_OFFSET_KG_M2,
     FOOTWAY_PEDESTRIAN_KG_M2,
+    FOOTWAY_WIDTH_FACTOR_BASE_M,
+    FOOTWAY_WIDTH_FACTOR_DIVISOR,
     FOOTWAY_WIDTH_MATTERS_ABOVE_SPAN_M,
-    KPA_PER_KG_M2,
     LANE_REDUCTION_BY_LANE_COUNT,
     LANE_REDUCTION_FOR_FOUR_OR_MORE_LANES,
     MOST_70R_VEHICLES_DRAWN,
@@ -21,7 +27,6 @@ from setu.irc6.constants import (
     RESIDUAL_UDL_APPLIES_BELOW_M,
     RESIDUAL_UDL_KPA,
     SMALLEST_CLASS_A_GAP_M,
-    TOLERANCE_M,
     TWO_CLASS_A_LANES_AND_KERB_CLEARANCES_M,
     VEHICLE_70R_CLEARANCE_M,
     VEHICLE_70R_WIDTH_M,
@@ -30,10 +35,9 @@ from setu.irc6.constants import (
     ZONE_70R_AT_EDGE_M,
     ZONE_70R_INSIDE_M,
 )
-from setu.helpers import ROUND_TO_DECIMALS, adverse_sign, where_a_load_hurts, DEFAULT_SAMPLING
+from setu.helpers import adverse_sign, where_a_load_hurts, DEFAULT_SAMPLING
+from setu.utils.constants import CLASS_A_LANE, KPA_PER_KG_M2, NOTHING_THERE_M, ROUND_TO_DECIMALS, TOLERANCE_M, ZONE_70R
 
-CLASS_A_LANE = 'class_a'
-ZONE_70R = 'zone_70r'
 LanePattern = list[str]
 DESIGN_LANES_PER_70R_ZONE = 2
 DESIGN_LANES_PER_CLASS_A_LANE = 1
@@ -192,7 +196,6 @@ def where_vehicle_sits_in_block(block, block_width_m):
 def lane_reduction_factor(loaded_lanes):
     return LANE_REDUCTION_BY_LANE_COUNT.get(int(loaded_lanes), LANE_REDUCTION_FOR_FOUR_OR_MORE_LANES)
 
-NOTHING_THERE_M = 1e-12
 
 def needs_residual_udl(carriageway_width_m):
     return float(carriageway_width_m) < RESIDUAL_UDL_APPLIES_BELOW_M
@@ -239,8 +242,11 @@ def footway_pressure_kpa(span_m, footway_width_m, crowd=False):
     if span_m <= FOOTWAY_FULL_LOAD_UP_TO_SPAN_M:
         return full_kg_m2 * KPA_PER_KG_M2
     if span_m <= FOOTWAY_WIDTH_MATTERS_ABOVE_SPAN_M:
-        return (full_kg_m2 - (40.0 * span_m - 300.0) / 9.0) * KPA_PER_KG_M2
-    return (full_kg_m2 - 260.0 + 4800.0 / span_m) * (16.5 - footway_width_m) / 15.0 * KPA_PER_KG_M2
+        falls_by_kg_m2 = (FOOTWAY_MEDIUM_SPAN_KG_M2_PER_M * span_m - FOOTWAY_MEDIUM_SPAN_OFFSET_KG_M2) / FOOTWAY_MEDIUM_SPAN_DIVISOR
+        return (full_kg_m2 - falls_by_kg_m2) * KPA_PER_KG_M2
+    long_span_kg_m2 = full_kg_m2 - FOOTWAY_LONG_SPAN_DEDUCTION_KG_M2 + FOOTWAY_LONG_SPAN_KG_M2_M / span_m
+    width_factor = (FOOTWAY_WIDTH_FACTOR_BASE_M - footway_width_m) / FOOTWAY_WIDTH_FACTOR_DIVISOR
+    return long_span_kg_m2 * width_factor * KPA_PER_KG_M2
 
 def footway_loaded_strips(cross_section, span_m, crowd=False):
     return [(strip.z_from_m, strip.z_to_m, footway_pressure_kpa(span_m, strip.width_m, crowd)) for strip in cross_section.footways()]

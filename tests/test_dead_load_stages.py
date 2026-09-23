@@ -9,7 +9,8 @@ import pytest
 
 from setu.builder.assembly import build_bridge_model
 from setu.loads.dead_loads import construction_stage_load, superimposed_dead_load
-from setu.models.bridge import PROPPED, UNPROPPED, Bracing, BridgeInput
+from setu.models.bridge import Bracing, BridgeInput
+from setu.utils.constants import PROPPED, UNPROPPED
 from setu.postprocess.girder_response import analyze_load_case, dead_load_forces
 
 pytest.importorskip("openseespy.opensees", reason="needs a finite element solver")

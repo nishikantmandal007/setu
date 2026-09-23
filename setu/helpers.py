@@ -1,9 +1,7 @@
 import logging
 import numpy as np
+from setu.utils.constants import BIGGER_IS_WORSE, SMALLER_IS_WORSE
 
-BIGGER_IS_WORSE = "maximum"
-SMALLER_IS_WORSE = "minimum"
-ROUND_TO_DECIMALS = 9
 
 def adverse_sign(adverse):
     if adverse == BIGGER_IS_WORSE:

@@ -1,16 +1,22 @@
 import numpy as np
 
-from setu.irc6.constants import GRAVITY_KN_PER_TONNE
 from setu.helpers import DEFAULT_SAMPLING
+from setu.irc6.irc_constants import (
+    BRAKING_FRACTION_OF_LIVE_LOAD,
+    SEISMIC_SA_OVER_G,
+    SEISMIC_ZONE_FACTOR_DIVISOR,
+    WIND_DRAG_COEFFICIENT,
+    WIND_K2_ABOVE_THE_TABLE,
+    WIND_K2_TERRAIN_CATEGORY_2,
+    WIND_PRESSURE_KPA_PER_M2_S2,
+)
 from setu.irc6.vehicles import TrackedVehicle
+from setu.utils.constants import GRAVITY_KN_PER_TONNE, OFFSET_DX_M, OFFSET_DZ_M, OFFSET_LOAD_KN
 
 LEFT_OF_THE_CENTRELINE = -1
 RIGHT_OF_THE_CENTRELINE = +1
 BOTH_SIDES = (LEFT_OF_THE_CENTRELINE, RIGHT_OF_THE_CENTRELINE)
 WHEELS_PER_AXLE = 2
-OFFSET_DX_M = 0
-OFFSET_DZ_M = 1
-OFFSET_LOAD_KN = 2
 
 
 class WheelLoad:
@@ -122,27 +128,24 @@ def loads_for_lanes(lanes):
 
 
 def braking_force_kn(total_live_load_kn):
-    return 0.2 * total_live_load_kn
+    return BRAKING_FRACTION_OF_LIVE_LOAD * total_live_load_kn
 
 
-def seismic_coefficient(zone_factor, importance_factor, response_reduction, sa_over_g=2.5):
-    return (zone_factor / 2.0) * (importance_factor / response_reduction) * sa_over_g
+def seismic_coefficient(zone_factor, importance_factor, response_reduction, sa_over_g=SEISMIC_SA_OVER_G):
+    return (zone_factor / SEISMIC_ZONE_FACTOR_DIVISOR) * (importance_factor / response_reduction) * sa_over_g
 
 
-K2_TERRAIN_CATEGORY_2 = {10: 1.00, 15: 1.05, 20: 1.10, 30: 1.15, 50: 1.20}
-
-
-def wind_pressure_kpa(basic_speed_mps, deck_height_m, drag_coefficient=1.2, terrain_category=2):
+def wind_pressure_kpa(basic_speed_mps, deck_height_m, drag_coefficient=WIND_DRAG_COEFFICIENT, terrain_category=2):
     if terrain_category != 2:
         raise ValueError(f"only terrain category 2 is implemented, got {terrain_category}")
     k1 = 1.0
     k2 = 1.0
-    for threshold, factor in K2_TERRAIN_CATEGORY_2.items():
+    for threshold, factor in WIND_K2_TERRAIN_CATEGORY_2.items():
         if deck_height_m <= threshold:
             k2 = factor
             break
     else:
-        k2 = 1.20
+        k2 = WIND_K2_ABOVE_THE_TABLE
     k3 = 1.0
     design_speed = basic_speed_mps * k1 * k2 * k3
-    return 0.6 * design_speed ** 2 / 1000 * drag_coefficient
+    return WIND_PRESSURE_KPA_PER_M2_S2 * design_speed ** 2 * drag_coefficient

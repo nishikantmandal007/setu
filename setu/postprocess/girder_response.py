@@ -1,19 +1,23 @@
 import numpy as np
 from setu.errors import OtherLoadsStillActiveError
-from setu.loads.load_cases import LOAD_CASE_PATTERN_BASE, apply_load_case
+from setu.loads.load_cases import apply_load_case
 from setu.loads.dead_loads import construction_stage_load, superimposed_dead_load, surfacing_load, whole_dead_load
-from setu.models.bridge import UNPROPPED
-from setu.models.materials import LONG_TERM
+from setu.utils.constants import (
+    END_I_FORCE_TO_INTERNAL_FORCE,
+    LOAD_CASE_PATTERN_BASE,
+    LONG_TERM,
+    MZ_I,
+    MZ_J,
+    N_I,
+    N_J,
+    T_I,
+    T_J,
+    UNPROPPED,
+    VY_I,
+    VY_J,
+)
 
 
-N_I = 0
-VY_I = 1
-T_I = 3
-MZ_I = 5
-N_J = 6
-VY_J = 7
-T_J = 9
-MZ_J = 11
 
 
 class GirderForces:
@@ -48,10 +52,10 @@ def girder_forces(model, girder_index, ops):
     axial = np.zeros(n_stations)
     for e in range(n_elements):
         f = ops.eleResponse(model.girder_elements[girder_index, e], "localForce")
-        axial[e] = -f[N_I]
-        shear[e] = -f[VY_I]
-        torsion[e] = -f[T_I]
-        moment[e] = -f[MZ_I]
+        axial[e] = END_I_FORCE_TO_INTERNAL_FORCE * f[N_I]
+        shear[e] = END_I_FORCE_TO_INTERNAL_FORCE * f[VY_I]
+        torsion[e] = END_I_FORCE_TO_INTERNAL_FORCE * f[T_I]
+        moment[e] = END_I_FORCE_TO_INTERNAL_FORCE * f[MZ_I]
         if e == n_elements - 1:
             axial[e + 1] = f[N_J]
             shear[e + 1] = f[VY_J]

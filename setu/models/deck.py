@@ -1,5 +1,5 @@
-from setu.helpers import ROUND_TO_DECIMALS
 from setu.errors import CrossSectionError
+from setu.utils.constants import ROUND_TO_DECIMALS
 
 
 class DeckStrip:

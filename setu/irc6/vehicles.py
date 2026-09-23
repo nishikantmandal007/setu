@@ -1,5 +1,5 @@
 from setu.errors import VehicleDefinitionError, VehicleNotFoundError
-from setu.irc6.constants import GRAVITY_KN_PER_TONNE
+from setu.utils.constants import GRAVITY_KN_PER_TONNE, REVERSED_SUFFIX
 
 def check_axle_and_spacing_counts_match(vehicle):
     axles = len(vehicle.axle_loads_t)
@@ -139,7 +139,6 @@ VEHICLES_ALLOWED_IN_BLOCK = {
     "class_a": ("Class_A",),
     "zone_70r": ("Class_70R_Wheeled", "Class_70R_Tracked"),
 }
-REVERSED_SUFFIX = "_reversed"
 
 def class_of(vehicle):
     return vehicle.name.removesuffix(REVERSED_SUFFIX)

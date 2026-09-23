@@ -2,7 +2,8 @@
 
 import pytest
 
-from setu.models.materials import LONG_TERM, SHORT_TERM, Concrete, Steel
+from setu.models.materials import Concrete, Steel
+from setu.utils.constants import LONG_TERM, SHORT_TERM
 
 STEEL_KPA = Steel().elastic_modulus_kpa
 

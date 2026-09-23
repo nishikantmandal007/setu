@@ -1,20 +1,18 @@
 import numpy as np
 from setu.helpers import is_worse
-from setu.irc6.constants import GRAVITY_KN_PER_TONNE, TOLERANCE_M
 from setu.irc6.lanes import (
-    CLASS_A_LANE,
     fit_blocks_between,
     lane_reduction_factor,
     list_admissible_arrangements,
     where_vehicle_sits_in_block,
 )
 from setu.irc6.vehicles import CLASS_70R_WHEELED, CLASS_A
+from setu.utils.constants import CLASS_A_LANE, GRAVITY_KN_PER_TONNE, NO_LANE_REDUCTION, TOLERANCE_M
 
 ALREADY_CENTRED_TOLERANCE_M = 1e-06
 FRACTION_TOLERANCE = 1e-09
 PACKED_HARD_LEFT = 0.0
 PACKED_HARD_RIGHT = 1.0
-NO_LANE_REDUCTION = 1.0
 
 class ResultantCentredPlacement:
     def __init__(self, lane_pattern, design_lanes, vehicle_centres_m, response_before_reduction, lane_reduction, response=0.0, **kwargs):

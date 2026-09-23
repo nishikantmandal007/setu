@@ -286,7 +286,7 @@ def test_composite_moments_of_all_girders_add_up_to_statics():
 def test_long_term_concrete_leaves_more_to_the_steel():
     """Creep softens the slab, so under a sustained load the steel carries more of the moment."""
     from setu.loads.load_cases import LoadCase
-    from setu.models.materials import LONG_TERM
+    from setu.utils.constants import LONG_TERM
     from setu.postprocess.girder_response import analyze_load_case
 
     steel_moment = {}
