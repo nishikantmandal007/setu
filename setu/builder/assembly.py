@@ -220,22 +220,25 @@ class BridgeModel:
     def midspan_element_of_girder(self, girder):
         return self.element_of_girder_at(girder, self.mesh.stations_along_span // 2)
 
-def build_bridge_model(bridge, ops=None, load_duration=SHORT_TERM):
+def build_bridge_model(bridge, ops=None, load_duration=SHORT_TERM, composite=True):
     ops = load_opensees() if ops is None else ops
     mesh = build_mesh(bridge)
     girder = girder_properties(bridge.girders.section)
     report_layout(bridge, mesh)
     ops.wipe()
     ops.model('basic', '-ndm', DIMENSIONS, '-ndf', DEGREES_OF_FREEDOM_PER_NODE)
-    deck_nodes = place_deck_nodes(ops, bridge, mesh)
+    deck_nodes = place_deck_nodes(ops, bridge, mesh) if composite else {}
     girder_nodes = place_girder_nodes(ops, bridge, mesh, girder)
     bottom_brace_nodes, top_brace_nodes = place_brace_nodes(ops, bridge, mesh, girder)
     k_brace_nodes = place_k_brace_nodes(ops, bridge, mesh, girder)
     model = BridgeModel(bridge=bridge, mesh=mesh, girder=girder, deck_nodes=deck_nodes, girder_nodes=girder_nodes, bottom_brace_nodes=bottom_brace_nodes, top_brace_nodes=top_brace_nodes, k_brace_nodes=k_brace_nodes)
-    model.deck_elements.update(build_deck_shells(ops, bridge, mesh, deck_nodes, load_duration))
     model.load_duration = load_duration
+    model.composite = composite
+    if composite:
+        model.deck_elements.update(build_deck_shells(ops, bridge, mesh, deck_nodes, load_duration))
     model.girder_elements.update(build_girder_beams(ops, bridge, mesh, girder, girder_nodes))
-    tie_deck_to_girders(ops, mesh, deck_nodes, girder_nodes)
+    if composite:
+        tie_deck_to_girders(ops, mesh, deck_nodes, girder_nodes)
     tie_braces_to_girders(ops, bridge, mesh, girder_nodes, bottom_brace_nodes, top_brace_nodes)
     model.brace_elements.update(build_bracing(ops, bridge, mesh, model))
     support_the_girders(ops, bridge, mesh, girder_nodes, k_brace_nodes)

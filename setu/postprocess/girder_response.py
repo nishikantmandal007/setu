@@ -1,6 +1,9 @@
 import numpy as np
 from setu.errors import OtherLoadsStillActiveError
 from setu.loads.load_cases import LOAD_CASE_PATTERN_BASE, apply_load_case
+from setu.loads.dead_loads import construction_stage_load, superimposed_dead_load, whole_dead_load
+from setu.models.bridge import UNPROPPED
+from setu.models.materials import LONG_TERM
 
 
 N_I = 0
@@ -100,3 +103,37 @@ def analyze_load_case(model, load_case, ops, pattern_tag=None):
     ops.remove("timeSeries", tag)
     ops.wipeAnalysis()
     return results
+
+
+class DeadLoadForces:
+    def __init__(self, stages):
+        self.stages = stages
+        girders = next(iter(stages.values())).keys()
+        self.total = {girder: sum_of(stage[girder] for stage in stages.values()) for girder in girders}
+
+
+def sum_of(girder_forces):
+    girder_forces = list(girder_forces)
+    first = girder_forces[0]
+    return GirderForces(
+        first.stations_m,
+        sum(forces.moment_kn_m for forces in girder_forces),
+        sum(forces.shear_kn for forces in girder_forces),
+        sum(forces.torsion_kn_m for forces in girder_forces),
+        sum(forces.axial_kn for forces in girder_forces),
+        composite_lever_arm_m=first.composite_lever_arm_m,
+    )
+
+
+def dead_load_forces(bridge, ops=None):
+    from setu.builder.assembly import build_bridge_model
+    from setu.solver.backend import import_opensees
+    ops = import_opensees() if ops is None else ops
+    if bridge.construction == UNPROPPED:
+        steel = build_bridge_model(bridge, ops, composite=False)
+        construction = analyze_load_case(steel, construction_stage_load(steel, ops=ops), ops)
+        composite = build_bridge_model(bridge, ops, load_duration=LONG_TERM)
+        superimposed = analyze_load_case(composite, superimposed_dead_load(composite), ops)
+        return DeadLoadForces({"construction": construction, "superimposed": superimposed})
+    composite = build_bridge_model(bridge, ops, load_duration=LONG_TERM)
+    return DeadLoadForces({"all dead load": analyze_load_case(composite, whole_dead_load(composite, ops), ops)})

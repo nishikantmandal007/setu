@@ -8,6 +8,10 @@ X_BRACING_WITH_BOTH_CHORDS = 'XTB'
 K_BRACING = 'K'
 K_BRACING_WITH_TOP_CHORD = 'KT'
 
+# IRC:22-2015 Clause 604.1.1 - how the slab was cast
+UNPROPPED = 'unpropped'
+PROPPED = 'propped'
+
 
 class DeckSlab:
     def __init__(self, thickness_m, overhang_m=0.0, wearing_course_thickness_m=0.0, **kwargs):
@@ -64,7 +68,7 @@ class AddedDeadLoads:
 
 
 class BridgeInput:
-    def __init__(self, span_m=0.0, skew=0.0, cross_section=None, deck=None, girders=None, bracing=None, cross_girders=None, section=None, wearing_course_thickness_m=0.0, mesh=None, steel=None, concrete=None, wearing_course_unit_weight_kn_m3=22.0, added_dead_loads=None, **kwargs):
+    def __init__(self, span_m=0.0, skew=0.0, cross_section=None, deck=None, girders=None, bracing=None, cross_girders=None, section=None, wearing_course_thickness_m=0.0, mesh=None, steel=None, concrete=None, wearing_course_unit_weight_kn_m3=22.0, added_dead_loads=None, construction=UNPROPPED, shuttering_kpa=0.0, **kwargs):
         self.span_m = span_m
         self.skew = skew
         self.cross_section = cross_section
@@ -80,6 +84,8 @@ class BridgeInput:
         self.concrete = concrete or Concrete()
         self.wearing_course_unit_weight_kn_m3 = wearing_course_unit_weight_kn_m3
         self.added_dead_loads = added_dead_loads or AddedDeadLoads()
+        self.construction = construction
+        self.shuttering_kpa = shuttering_kpa
 
     def width_m(self):
         return self.cross_section.total_width_m()
