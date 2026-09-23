@@ -14,7 +14,7 @@ from setu.analysis.along_span import find_worst_train
 from setu.solver.backend import OpenSeesBackend
 
 from setu.irc6.impact import impact_factor
-from setu.irc6.combinations import irc6_uls_recipes, irc6_sls_recipes, irc6_fatigue_recipe, irc6_construction_recipe
+from setu.irc6.combinations import Combination, custom_combination, design_value, irc6_combinations
 
 from setu.postprocess.girder_response import GirderForces, GirderDeflections, girder_forces, girder_deflections
 from setu.postprocess.envelope import Envelope, envelope, envelope_with_deflections

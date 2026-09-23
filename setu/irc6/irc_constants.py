@@ -1,5 +1,18 @@
 # Values from IRC:6-2017, grouped by clause.
-from setu.utils.constants import KPA_PER_KG_M2
+from setu.utils.constants import (
+    BASIC,
+    DEAD,
+    FREQUENT,
+    KPA_PER_KG_M2,
+    LIVE,
+    QUASI_PERMANENT,
+    RARE,
+    SEISMIC,
+    SEISMIC_COMBINATION,
+    SURFACING,
+    THERMAL,
+    WIND,
+)
 
 # Clause 204.3, Table 3 - transverse placement geometry
 CLASS_A_LANE_WIDTH_M = 2.30
@@ -77,3 +90,25 @@ WIND_K2_TERRAIN_CATEGORY_2 = {10: 1.00, 15: 1.05, 20: 1.10, 30: 1.15, 50: 1.20}
 WIND_K2_ABOVE_THE_TABLE = 1.20
 WIND_DRAG_COEFFICIENT = 1.2
 WIND_PRESSURE_KPA_PER_M2_S2 = 0.6 / 1000
+
+# Annex B, Tables B.2 and B.3 - partial safety factors.
+# Permanent loads: (adding, relieving). Variable loads: (leading, accompanying);
+# a variable load that relieves the effect is ignored (Annex B para 3 ii).
+PERMANENT_LOAD_FACTORS = {
+    BASIC: {DEAD: (1.35, 1.0), SURFACING: (1.75, 1.0)},
+    SEISMIC_COMBINATION: {DEAD: (1.35, 1.0), SURFACING: (1.75, 1.0)},
+    RARE: {DEAD: (1.0, 1.0), SURFACING: (1.2, 1.0)},
+    FREQUENT: {DEAD: (1.0, 1.0), SURFACING: (1.2, 1.0)},
+    QUASI_PERMANENT: {DEAD: (1.0, 1.0), SURFACING: (1.2, 1.0)},
+}
+VARIABLE_LOAD_FACTORS = {
+    BASIC: {LIVE: (1.5, 1.15), WIND: (1.5, 0.9), THERMAL: (1.5, 0.9)},
+    SEISMIC_COMBINATION: {LIVE: (None, 0.2), THERMAL: (None, 0.5), SEISMIC: (1.5, None)},
+    RARE: {LIVE: (1.0, 0.75), WIND: (1.0, 0.6), THERMAL: (1.0, 0.6)},
+    FREQUENT: {LIVE: (0.75, 0.2), WIND: (0.6, 0.5), THERMAL: (0.6, 0.5)},
+    QUASI_PERMANENT: {LIVE: (None, 0.0), WIND: (None, 0.0), THERMAL: (None, 0.5)},
+}
+EACH_VARIABLE_LOAD_LEADS_IN = (BASIC, RARE, FREQUENT)
+
+# Clause 209.3.7 - no live load on the bridge above this wind speed at deck level
+LIVE_LOAD_OFF_ABOVE_WIND_SPEED_MPS = 36.0

@@ -48,3 +48,16 @@ END_I_FORCE_TO_INTERNAL_FORCE = -1.0
 
 # OpenSees tags for a load case's pattern and time series
 LOAD_CASE_PATTERN_BASE = 100
+
+# Load groups IRC:6 Annex B combines, and the limit states it combines them for
+DEAD = "dead"
+SURFACING = "surfacing"
+LIVE = "live"
+WIND = "wind"
+THERMAL = "thermal"
+SEISMIC = "seismic"
+BASIC = "ultimate, basic"
+SEISMIC_COMBINATION = "ultimate, seismic"
+RARE = "serviceability, rare"
+FREQUENT = "serviceability, frequent"
+QUASI_PERMANENT = "serviceability, quasi-permanent"

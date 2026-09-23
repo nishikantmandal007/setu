@@ -3,7 +3,6 @@ import pytest
 from setu.postprocess.girder_response import GirderForces, GirderDeflections
 from setu.loads.load_cases import LoadCase, combine
 from setu.postprocess.envelope import Envelope, envelope
-from setu.irc6.combinations import irc6_uls_recipes, irc6_sls_recipes
 
 
 def test_girder_forces_stores_arrays():
@@ -59,16 +58,6 @@ def test_envelope_picks_min():
     assert env.governing_case[1] == "case_a"
 
 
-def test_uls_recipes_have_dead_and_live():
-    recipes = irc6_uls_recipes()
-    assert len(recipes) >= 1
-    first = next(iter(recipes.values()))
-    assert "dead" in first
-
-
-def test_sls_recipes_exist():
-    recipes = irc6_sls_recipes()
-    assert len(recipes) >= 1
 
 
 def test_plots_importable():
@@ -93,15 +82,3 @@ def test_load_builders_importable():
     )
     assert callable(pressure_load)
 
-
-def test_surfacing_takes_its_own_factor_at_uls():
-    """IRC:6-2017 Table B.2: surfacing 1.75 where dead load takes 1.35, 1.0 where dead load is 1.0."""
-    for name, factors in irc6_uls_recipes().items():
-        expected = 1.75 if factors["dead"] == 1.35 else 1.0
-        assert factors["surfacing"] == expected, name
-
-
-def test_surfacing_takes_1_2_at_sls():
-    """IRC:6-2017 Table B.3: surfacing 1.2 in rare, frequent and quasi-permanent."""
-    for name, factors in irc6_sls_recipes().items():
-        assert factors["surfacing"] == 1.2, name

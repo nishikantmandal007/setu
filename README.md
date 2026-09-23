@@ -21,8 +21,9 @@ from setu import (
     BridgeInput, DeckCrossSection, DeckSlab, Girders, Bracing,
     MeshSettings, PlateGirderSection,
     build_bridge_model, InfluenceSolver, find_critical_position,
-    irc6_uls_recipes,
+    irc6_combinations,
 )
+from setu.utils.constants import BASIC, DEAD, LIVE, SURFACING
 from setu.postprocess.girder_response import dead_load_forces
 
 bridge = BridgeInput(
@@ -42,8 +43,8 @@ bridge = BridgeInput(
     mesh=MeshSettings(panels_between_braces=4, target_size_across_width_m=0.6),
 )  # un-propped construction by default; pass construction="propped" to change it
 
-uls = irc6_uls_recipes()["ULS-1"]
-dead = dead_load_forces(bridge).factored(uls)  # staged, surfacing factored on its own
+uls = next(c for c in irc6_combinations() if c.limit_state == BASIC and c.leading == LIVE)
+dead = dead_load_forces(bridge).factored({DEAD: uls.factors[DEAD][0], SURFACING: uls.factors[SURFACING][0]})
 
 model = build_bridge_model(bridge)  # short-term composite, for live load
 midspan = model.mesh.stations_along_span // 2
@@ -54,7 +55,7 @@ for girder in range(bridge.girders.count):
     )
     live = find_critical_position(surface, bridge.cross_section, span_m=bridge.span_m,
                                   wearing_course_thickness_m=bridge.deck.wearing_course_thickness_m)
-    design = dead[girder].composite_moment_kn_m[midspan] + uls["live"] * live.response
+    design = dead[girder].composite_moment_kn_m[midspan] + uls.factors[LIVE][0] * live.response
     print(f"girder {girder}: ULS-1 midspan moment = {design:.1f} kNm")
 ```
 

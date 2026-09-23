@@ -29,10 +29,11 @@ from setu import (
     apply_dead_loads,
     build_bridge_model,
     find_critical_position,
-    irc6_uls_recipes,
+    irc6_combinations,
     live_load,
 )
 from setu.helpers import enable_reports
+from setu.utils.constants import BASIC, DEAD, LIVE, SURFACING
 from setu.postprocess.girder_response import analyze_load_case, dead_load_forces
 
 # ---------------------------------------------------------------------------
@@ -135,7 +136,7 @@ def worst_live_load_on_every_girder(model, dead: dict) -> dict:
 
 def print_uls_design_values(factored_dead: dict, worst: dict, midspan: int) -> tuple:
     """IRC:6-2017 Table B.2, ULS-1: 1.35 dead + 1.75 surfacing + 1.5 live."""
-    live_factor = irc6_uls_recipes()["ULS-1"]["live"]
+    live_factor = uls_live_leading().factors[LIVE][0]
     print()
     print("=" * 72)
     print("ULS-1 DESIGN VALUES, EVERY GIRDER  (1.35 dead + 1.75 surfacing + 1.5 live)")
@@ -167,11 +168,16 @@ def check_the_live_load_reproduces_the_search(model, worst: dict, key: tuple) ->
     print(f"  Applied as a load case in OpenSees = {directly:14.3f}   (search said {critical.response:.3f})")
 
 
+def uls_live_leading():
+    return next(c for c in irc6_combinations() if c.limit_state == BASIC and c.leading == LIVE)
+
+
 def main() -> None:
     enable_reports()
 
     dead = dead_load_forces(BRIDGE)
-    factored_dead = dead.factored(irc6_uls_recipes()["ULS-1"])
+    uls = uls_live_leading()
+    factored_dead = dead.factored({DEAD: uls.factors[DEAD][0], SURFACING: uls.factors[SURFACING][0]})
 
     model = build_bridge_model(BRIDGE)
     midspan = model.mesh.stations_along_span // 2

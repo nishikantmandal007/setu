@@ -3,6 +3,8 @@ from setu.errors import OtherLoadsStillActiveError
 from setu.loads.load_cases import apply_load_case
 from setu.loads.dead_loads import construction_stage_load, superimposed_dead_load, surfacing_load, whole_dead_load
 from setu.utils.constants import (
+    DEAD,
+    SURFACING,
     END_I_FORCE_TO_INTERNAL_FORCE,
     LOAD_CASE_PATTERN_BASE,
     LONG_TERM,
@@ -109,13 +111,13 @@ def analyze_load_case(model, load_case, ops, pattern_tag=None):
     return results
 
 
-STAGE_IS_FACTORED_AS = {"construction": "dead", "superimposed": "dead", "dead": "dead", "surfacing": "surfacing"}
+STAGE_IS_FACTORED_AS = {"construction": DEAD, "superimposed": DEAD, "dead": DEAD, "surfacing": SURFACING}
 
 
 class DeadLoadForces:
     def __init__(self, stages):
         self.stages = stages
-        self.total = self.factored({"dead": 1.0, "surfacing": 1.0})
+        self.total = self.factored({DEAD: 1.0, SURFACING: 1.0})
 
     def factored(self, factors):
         girders = next(iter(self.stages.values())).keys()
