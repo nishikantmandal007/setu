@@ -1,4 +1,5 @@
 import numpy as np
+from setu.analysis.influence_surface import OFF_THE_DECK, cell_containing
 from setu.helpers import DEFAULT_SAMPLING, adverse_sign, index_of_worst, is_worse
 from setu.irc6.impact import impact_factor
 from setu.irc6.vehicles import class_of, most_vehicles_that_fit, pitch_between_vehicles_m
@@ -152,12 +153,27 @@ def response_to_one_vehicle_everywhere(surface, wheel_offsets, x_positions_m, z_
 
 def sum_over_wheels(surface, wheel_offsets, x_positions_m, z_positions_m):
     wheel_dx_m, wheel_dz_m, wheel_loads_kn = split_offsets(np.asarray(wheel_offsets, float))
-    vehicle_front_m = np.asarray(x_positions_m, float).reshape(-1, 1, 1)
-    vehicle_centreline_m = np.asarray(z_positions_m, float).reshape(1, -1, 1)
-    wheel_x_m = vehicle_front_m + wheel_dx_m.reshape(1, 1, -1)
-    wheel_z_m = vehicle_centreline_m + wheel_dz_m.reshape(1, 1, -1)
-    influence_under_each_wheel = surface.influence_at(wheel_x_m, wheel_z_m)
-    return (influence_under_each_wheel * wheel_loads_kn).sum(axis=-1)
+    x_positions_m = np.asarray(x_positions_m, float)
+    z_positions_m = np.asarray(z_positions_m, float)
+    if surface.skew:
+        wheel_x_m = x_positions_m.reshape(-1, 1, 1) + wheel_dx_m.reshape(1, 1, -1)
+        wheel_z_m = z_positions_m.reshape(1, -1, 1) + wheel_dz_m.reshape(1, 1, -1)
+        return (surface.influence_at(wheel_x_m, wheel_z_m) * wheel_loads_kn).sum(axis=-1)
+    total = np.zeros((len(x_positions_m), len(z_positions_m)))
+    for dx_m, dz_m, load_kn in zip(wheel_dx_m, wheel_dz_m, wheel_loads_kn, strict=True):
+        total += load_kn * under_one_wheel(surface, x_positions_m + dx_m, z_positions_m + dz_m)
+    return total
+
+def under_one_wheel(surface, wheel_x_m, wheel_z_m):
+    stations_m, strips_m = surface.length_mesh_m, surface.width_mesh_m
+    j = cell_containing(strips_m, wheel_z_m)
+    across = (wheel_z_m - strips_m[j]) / (strips_m[j + 1] - strips_m[j])
+    along_each_station = surface.values[:, j] * (1 - across) + surface.values[:, j + 1] * across
+    i = cell_containing(stations_m, wheel_x_m)
+    along = ((wheel_x_m - stations_m[i]) / (stations_m[i + 1] - stations_m[i]))[:, None]
+    influence = along_each_station[i] * (1 - along) + along_each_station[i + 1] * along
+    on_the_deck = ((wheel_x_m >= stations_m[0]) & (wheel_x_m <= stations_m[-1]))[:, None] & ((wheel_z_m >= strips_m[0]) & (wheel_z_m <= strips_m[-1]))[None, :]
+    return np.where(on_the_deck, influence, OFF_THE_DECK)
 
 def bending_positions_across_width(surface, vehicle, wearing_course_thickness_m, sampling, z_from_m, z_to_m):
     wheel_offsets = wheel_load_offsets(vehicle, wearing_course_thickness_m, sampling)

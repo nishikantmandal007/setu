@@ -214,8 +214,12 @@ GOLDEN_ANSWERS = [
         residual_udl_applied=False,
         resultant_centred_response=16328.715138053403,
         total_over_all_cases=101774.74837333518,
+        # The first lane is an exact tie on this symmetric surface: Class A at x = 12.0 and the
+        # reversed Class A at x = 4.2 (its mirror about midspan) give the same response to the
+        # last bit. Since the vectorised search the two compute as exactly equal and the first
+        # listed vehicle wins; the response and every other number here did not move.
         vehicles=[
-            ("Class_A_reversed", 2.0625, 4.199999999999999, (4.199999999999999,)),
+            ("Class_A", 2.0625, 12.0, (12.0,)),
             ("Class_70R_Wheeled", 6.7325, 8.52, (8.52,)),
             ("Class_A", 11.3625, 12.0, (12.0,)),
         ],
