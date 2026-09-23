@@ -2,7 +2,6 @@ import numpy as np
 
 from setu.helpers import DEFAULT_SAMPLING
 from setu.irc6.irc_constants import (
-    BRAKING_FRACTION_OF_LIVE_LOAD,
     SEISMIC_SA_OVER_G,
     SEISMIC_ZONE_FACTOR_DIVISOR,
 )
@@ -121,10 +120,6 @@ def loads_for_lanes(lanes):
         all_wheel_loads.extend(wheel_loads)
         all_patches.extend(patches)
     return (all_wheel_loads, all_patches)
-
-
-def braking_force_kn(total_live_load_kn):
-    return BRAKING_FRACTION_OF_LIVE_LOAD * total_live_load_kn
 
 
 def seismic_coefficient(zone_factor, importance_factor, response_reduction, sa_over_g=SEISMIC_SA_OVER_G):

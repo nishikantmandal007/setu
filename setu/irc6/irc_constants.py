@@ -83,9 +83,8 @@ TRACKED_RC_IMPACT_PLATEAU_LIMIT_M = 40.0
 WHEELED_70R_IMPACT_CURVE_TAKES_OVER_STEEL_M = 23.0
 WHEELED_70R_IMPACT_CURVE_TAKES_OVER_RC_M = 12.0
 
-# Braking and seismic helpers, as implemented in irc6/wheel_loads.py.
-# Not part of the IRC:6 audit; replaced clause by clause in irc6/braking.py and irc6/seismic.py.
-BRAKING_FRACTION_OF_LIVE_LOAD = 0.2
+# Seismic helper, as implemented in irc6/wheel_loads.py.
+# Not part of the IRC:6 audit; replaced by irc6/seismic.py (IRC:SP:114-2018).
 SEISMIC_ZONE_FACTOR_DIVISOR = 2.0
 SEISMIC_SA_OVER_G = 2.5
 
@@ -147,3 +146,10 @@ EACH_VARIABLE_LOAD_LEADS_IN = (BASIC, RARE, FREQUENT)
 
 # Clause 209.3.7 - no live load on the bridge above this wind speed at deck level
 LIVE_LOAD_OFF_ABOVE_WIND_SPEED_MPS = 36.0
+
+# Clause 211.2 and 211.3 - braking
+BRAKING_FIRST_TRAIN_FRACTION = 0.20
+BRAKING_FOLLOWING_TRAINS_FRACTION = 0.10
+BRAKING_LANES_BEYOND_TWO_FRACTION = 0.05
+BRAKING_LANES_COUNTED_AS_ONE = 2
+BRAKING_ACTS_ABOVE_ROAD_M = 1.2

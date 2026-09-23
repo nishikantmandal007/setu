@@ -63,18 +63,6 @@ def temperature_gradient(model, delta_t_top, delta_t_bottom, name):
     return LoadCase(name=name, nodal_loads=nodal_loads)
 
 
-def braking_load(model, force_kn, name):
-    mesh = model.mesh
-    n_girders = model.bridge.girders.count
-    force_per_girder = force_kn / n_girders
-    nodal_loads = []
-    for k in range(n_girders):
-        mid = mesh.stations_along_span // 2
-        node = model.girder_nodes[k, mid]
-        nodal_loads.append((node, force_per_girder, 0.0, 0.0, 0.0, 0.0, 0.0))
-    return LoadCase(name=name, nodal_loads=nodal_loads)
-
-
 def seismic_load(model, ah, name):
     mesh = model.mesh
     nodal_loads = []
