@@ -65,3 +65,6 @@ QUASI_PERMANENT = "serviceability, quasi-permanent"
 # Terrain around the bridge for wind (IRC:6 Table 12)
 PLAIN_TERRAIN = "plain"
 OBSTRUCTED_TERRAIN = "obstructed"
+
+# OsdagBridge's custom load groups, and the IRC:6 Annex B group each one is combined as
+CUSTOM_LOAD_GROUPS = {"DL": DEAD, "SIDL": DEAD, "DW": SURFACING, "LL": LIVE, "EL": SEISMIC, "WL": WIND, "TL": THERMAL}
