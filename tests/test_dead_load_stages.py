@@ -82,8 +82,8 @@ def test_unpropped_puts_more_on_the_steel_than_propped():
     midspan = len(unpropped.total[2].moment_kn_m) // 2
 
     assert unpropped.total[2].moment_kn_m[midspan] > propped.total[2].moment_kn_m[midspan]
-    assert set(unpropped.stages) == {"construction", "superimposed"}
-    assert set(propped.stages) == {"all dead load"}
+    assert set(unpropped.stages) == {"construction", "superimposed", "surfacing"}
+    assert set(propped.stages) == {"dead", "surfacing"}
 
 
 def test_both_methods_carry_the_same_total_moment():
@@ -100,3 +100,16 @@ def test_both_methods_carry_the_same_total_moment():
 
 def test_the_default_is_unpropped():
     assert BridgeInput(span_m=SPAN_M).construction == UNPROPPED
+
+
+def test_surfacing_is_kept_apart_for_its_own_factor():
+    """Table B.2 factors surfacing at 1.75 and the rest of the dead load at 1.35, so they cannot be lumped."""
+    result = dead_load_forces(_bridge(UNPROPPED))
+    midspan = len(result.total[2].moment_kn_m) // 2
+    surfacing = result.stages["surfacing"][2].composite_moment_kn_m[midspan]
+    everything_else = sum(result.stages[stage][2].composite_moment_kn_m[midspan] for stage in ("construction", "superimposed"))
+
+    factored = result.factored({"dead": 1.35, "surfacing": 1.75})[2].composite_moment_kn_m[midspan]
+
+    assert surfacing > 0
+    assert factored == pytest.approx(1.35 * everything_else + 1.75 * surfacing, rel=1e-12)

@@ -138,14 +138,23 @@ def girder_weight_on_the_elements(model):
     return [(element, '-beamUniform', (down_the_local_y_axis, along_the_local_z_axis)) for element in model.girder_elements.values()]
 
 def superimposed_dead_load(model):
-    return LoadCase(name='superimposed', nodal_loads=deck_loads(model, lambda z_m: surfacing_pressure_at(model, z_m)))
+    return LoadCase(name='superimposed', nodal_loads=deck_loads(model, lambda z_m: surfacing_pressure_at(model, z_m) - wearing_course_pressure_at(model, z_m)))
+
+def surfacing_load(model):
+    return LoadCase(name='surfacing', nodal_loads=deck_loads(model, lambda z_m: wearing_course_pressure_at(model, z_m)))
+
+def wearing_course_pressure_at(model, z_m):
+    for strip in model.bridge.cross_section.strips:
+        if strip.z_from_m <= z_m <= strip.z_to_m and strip.carries_traffic():
+            return model.bridge.wearing_course.pressure_kpa
+    return NOTHING_ON_TOP_KPA
 
 def whole_dead_load(model, ops=None):
     ops = load_opensees() if ops is None else ops
     slab_kpa = model.bridge.concrete.unit_weight_kn_m3 * model.bridge.deck.thickness_m
-    nodal_loads = deck_loads(model, lambda z_m: slab_kpa + surfacing_pressure_at(model, z_m))
+    nodal_loads = deck_loads(model, lambda z_m: slab_kpa + surfacing_pressure_at(model, z_m) - wearing_course_pressure_at(model, z_m))
     nodal_loads += [(node, *downward_force(load_kn)) for node, load_kn in bracing_weight_at_its_ends(ops, model)]
-    return LoadCase(name='all dead load', nodal_loads=nodal_loads, element_loads=girder_weight_on_the_elements(model))
+    return LoadCase(name='dead', nodal_loads=nodal_loads, element_loads=girder_weight_on_the_elements(model))
 
 def deck_loads(model, pressure_kpa_at):
     mesh = model.mesh

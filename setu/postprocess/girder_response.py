@@ -1,7 +1,7 @@
 import numpy as np
 from setu.errors import OtherLoadsStillActiveError
 from setu.loads.load_cases import LOAD_CASE_PATTERN_BASE, apply_load_case
-from setu.loads.dead_loads import construction_stage_load, superimposed_dead_load, whole_dead_load
+from setu.loads.dead_loads import construction_stage_load, superimposed_dead_load, surfacing_load, whole_dead_load
 from setu.models.bridge import UNPROPPED
 from setu.models.materials import LONG_TERM
 
@@ -105,11 +105,21 @@ def analyze_load_case(model, load_case, ops, pattern_tag=None):
     return results
 
 
+STAGE_IS_FACTORED_AS = {"construction": "dead", "superimposed": "dead", "dead": "dead", "surfacing": "surfacing"}
+
+
 class DeadLoadForces:
     def __init__(self, stages):
         self.stages = stages
-        girders = next(iter(stages.values())).keys()
-        self.total = {girder: sum_of(stage[girder] for stage in stages.values()) for girder in girders}
+        self.total = self.factored({"dead": 1.0, "surfacing": 1.0})
+
+    def factored(self, factors):
+        girders = next(iter(self.stages.values())).keys()
+        return {girder: sum_of(scaled(forces[girder], factors[STAGE_IS_FACTORED_AS[name]]) for name, forces in self.stages.items()) for girder in girders}
+
+
+def scaled(forces, factor):
+    return GirderForces(forces.stations_m, factor * forces.moment_kn_m, factor * forces.shear_kn, factor * forces.torsion_kn_m, factor * forces.axial_kn, composite_lever_arm_m=forces.composite_lever_arm_m)
 
 
 def sum_of(girder_forces):
@@ -134,6 +144,8 @@ def dead_load_forces(bridge, ops=None):
         construction = analyze_load_case(steel, construction_stage_load(steel, ops=ops), ops)
         composite = build_bridge_model(bridge, ops, load_duration=LONG_TERM)
         superimposed = analyze_load_case(composite, superimposed_dead_load(composite), ops)
-        return DeadLoadForces({"construction": construction, "superimposed": superimposed})
+        surfacing = analyze_load_case(composite, surfacing_load(composite), ops)
+        return DeadLoadForces({"construction": construction, "superimposed": superimposed, "surfacing": surfacing})
     composite = build_bridge_model(bridge, ops, load_duration=LONG_TERM)
-    return DeadLoadForces({"all dead load": analyze_load_case(composite, whole_dead_load(composite, ops), ops)})
+    dead = analyze_load_case(composite, whole_dead_load(composite, ops), ops)
+    return DeadLoadForces({"dead": dead, "surfacing": analyze_load_case(composite, surfacing_load(composite), ops)})
