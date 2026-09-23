@@ -209,8 +209,11 @@ class BridgeModel:
     def as_deck_model(self):
         return DeckModel(length_mesh_m=self.mesh.length_mesh_m, width_mesh_m=self.mesh.width_mesh_m, deck_nodes=self.deck_nodes, girder_section=self.girder.for_solver(self.bridge.steel), girder_local_axis=GIRDER_LOCAL_AXIS, girder_elements=self.girder_elements)
 
+    def element_of_girder_at(self, girder, station):
+        return self.girder_elements[girder, station]
+
     def midspan_element_of_girder(self, girder):
-        return self.girder_elements[girder, self.mesh.stations_along_span // 2]
+        return self.element_of_girder_at(girder, self.mesh.stations_along_span // 2)
 
 def build_bridge_model(bridge, ops=None):
     ops = load_opensees() if ops is None else ops

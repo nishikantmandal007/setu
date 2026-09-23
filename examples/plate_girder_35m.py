@@ -93,27 +93,59 @@ def check_it_stands_up(applied_kn: float) -> None:
     print(f"  Out of balance         = {out_of_balance:12.4f} %")
 
 
+def worst_for_every_girder(model) -> dict:
+    """One influence surface and one search per girder and per response.
+
+    Every surface is solved before any other load goes on the model.
+    """
+    influence = InfluenceSolver(model.as_deck_model())
+    support = 0
+    worst = {}
+    for girder in range(BRIDGE.girders.count):
+        responses = {
+            "midspan moment": influence.for_girder_moment(
+                f"girder {girder}, midspan moment", model.midspan_element_of_girder(girder)
+            ),
+            "support shear": influence.for_girder_shear(
+                f"girder {girder}, support shear", model.element_of_girder_at(girder, support)
+            ),
+        }
+        for response, surface in responses.items():
+            for adverse in ("maximum", "minimum"):
+                worst[girder, response, adverse] = find_critical_position(
+                    surface,
+                    CROSS_SECTION,
+                    span_m=BRIDGE.span_m,
+                    adverse=adverse,
+                    wearing_course_thickness_m=BRIDGE.deck.wearing_course_thickness_m,
+                )
+    return worst
+
+
+def print_the_governing_girder(worst: dict) -> None:
+    print()
+    print("=" * 72)
+    print("WORST LIVE LOAD RESPONSE, EVERY GIRDER")
+    print("=" * 72)
+    print(f"  {'girder':<8} {'response':<16} {'adverse':<9} {'design value':>14}")
+    for (girder, response, adverse), critical in worst.items():
+        print(f"  {girder:<8} {response:<16} {adverse:<9} {critical.response:14.3f}")
+    for response in ("midspan moment", "support shear"):
+        governing = max(
+            (key for key in worst if key[1] == response), key=lambda key: abs(worst[key].response)
+        )
+        print()
+        print(f"Governing {response}: girder {governing[0]} ({governing[2]})")
+        print(worst[governing].describe())
+
+
 def main() -> None:
     enable_reports()
 
     model = build_bridge_model(BRIDGE)
 
-    middle_girder = BRIDGE.girders.count // 2
-    influence = InfluenceSolver(model.as_deck_model())
-    surface = influence.for_girder_moment(
-        "middle girder, midspan moment", model.midspan_element_of_girder(middle_girder)
-    )
-
-    for adverse in ("maximum", "minimum"):
-        worst = find_critical_position(
-            surface,
-            CROSS_SECTION,
-            span_m=BRIDGE.span_m,
-            adverse=adverse,
-            wearing_course_thickness_m=BRIDGE.deck.wearing_course_thickness_m,
-        )
-        print()
-        print(worst.describe())
+    worst = worst_for_every_girder(model)
+    print_the_governing_girder(worst)
 
     dead_load = apply_dead_loads(model)
     check_it_stands_up(dead_load.total_kn)

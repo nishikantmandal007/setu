@@ -72,7 +72,7 @@ setu/
 
 ![setu end-to-end flow](docs/flow.svg)
 
-Each girder gets its own influence surface and critical-position search. The design girder is the worst of them.
+Each girder gets its own influence surfaces (midspan moment, support shear) and critical-position search. The design girder is the worst of them. `vehicle_load(model, critical)` turns that worst position into the `"live"` load case the IRC:6 combinations need. `examples/plate_girder_35m.py` runs the loop over every girder.
 
 ## Tests
 

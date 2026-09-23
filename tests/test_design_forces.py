@@ -1,0 +1,192 @@
+"""From influence surface to design force, checked against real FE solves.
+
+Three claims:
+
+    a shear surface, and a moment surface away from midspan, are the response to a unit load,
+    the live load built from a critical position gives back the response the search reported, and
+    every girder gets its own answer.
+"""
+
+import pytest
+
+from setu.analysis.critical_position import find_critical_position
+from setu.analysis.influence_surface import InfluenceSolver
+from setu.builder.assembly import build_bridge_model
+from setu.loads.load_builders import vehicle_load
+from setu.loads.load_cases import apply_load_case
+from setu.models.bridge import Bracing, BridgeInput, DeckSlab, Girders, MeshSettings, PlateGirderSection
+from setu.models.deck import DeckCrossSection
+
+ops = pytest.importorskip("openseespy.opensees", reason="needs a finite element solver")
+
+SPAN_M = 35.0
+SHEAR_AT_END_I = 1
+MOMENT_AT_END_I = 5
+PROBE_NODES = [(3, 10), (6, 20), (12, 5), (12, 30), (20, 15)]
+UNIT_LOAD_PATTERN = 99
+LIVE_LOAD_PATTERN = 100
+ONLY_THE_VEHICLES = dict(apply_residual_udl=False, apply_footway_load=False)
+
+CROSS_SECTION = DeckCrossSection.from_widths(
+    {
+        "footpath_left": 1.50,
+        "kerb_left": 0.45,
+        "carriageway_1": 4.50,
+        "median": 0.60,
+        "carriageway_2": 4.50,
+        "kerb_right": 0.45,
+        "footpath_right": 1.50,
+    }
+)
+
+BRIDGE = BridgeInput(
+    span_m=SPAN_M,
+    cross_section=CROSS_SECTION,
+    deck=DeckSlab(thickness_m=0.23, overhang_m=1.25),
+    girders=Girders(
+        count=5,
+        section=PlateGirderSection(
+            top_flange_width_m=0.550,
+            top_flange_thickness_m=0.025,
+            bottom_flange_width_m=0.650,
+            bottom_flange_thickness_m=0.040,
+            web_thickness_m=0.014,
+            web_height_m=2.100,
+        ),
+    ),
+    bracing=Bracing(station_count=7, area_m2=0.01, arrangement="XT"),
+    mesh=MeshSettings(panels_between_braces=4, target_size_across_width_m=0.6),
+)
+
+
+def _configure_a_static_analysis():
+    ops.wipeAnalysis()
+    ops.system("UmfPack")
+    ops.numberer("RCM")
+    ops.constraints("Transformation")
+    ops.integrator("LoadControl", 1.0)
+    ops.algorithm("Linear")
+    ops.analysis("Static")
+
+
+def _read_directly(element, component, pattern_tag):
+    ops.reset()
+    ops.setTime(0.0)
+    ops.analyze(1)
+    force = ops.eleResponse(element, "localForce")[component]
+    ops.remove("loadPattern", pattern_tag)
+    ops.remove("timeSeries", pattern_tag)
+    return force
+
+
+def _unit_load_response(deck, node, element, component):
+    ops.timeSeries("Linear", UNIT_LOAD_PATTERN)
+    ops.pattern("Plain", UNIT_LOAD_PATTERN, UNIT_LOAD_PATTERN)
+    ops.load(node, 0.0, -1.0, 0.0, 0.0, 0.0, 0.0)
+    return _read_directly(element, component, UNIT_LOAD_PATTERN)
+
+
+def _live_load_response(model, critical, element, component):
+    apply_load_case(vehicle_load(model, critical), ops, pattern_tag=LIVE_LOAD_PATTERN)
+    return _read_directly(element, component, LIVE_LOAD_PATTERN)
+
+
+@pytest.fixture(scope="module")
+def built():
+    """Every surface is solved first: nothing else may load the model while they are."""
+    model = build_bridge_model(BRIDGE)
+    deck = model.as_deck_model()
+    solver = InfluenceSolver(deck)
+    quarter_span = model.mesh.stations_along_span // 4
+    outer_girder = 0
+    middle_girder = BRIDGE.girders.count // 2
+
+    checks = {
+        "outer girder, quarter-span moment": (
+            model.element_of_girder_at(outer_girder, quarter_span), MOMENT_AT_END_I, solver.for_girder_moment
+        ),
+        "outer girder, support shear": (
+            model.element_of_girder_at(outer_girder, 0), SHEAR_AT_END_I, solver.for_girder_shear
+        ),
+        "middle girder, support shear": (
+            model.element_of_girder_at(middle_girder, 0), SHEAR_AT_END_I, solver.for_girder_shear
+        ),
+    }
+    for girder in range(BRIDGE.girders.count):
+        checks[f"girder {girder}, midspan moment"] = (
+            model.midspan_element_of_girder(girder), MOMENT_AT_END_I, solver.for_girder_moment
+        )
+
+    surfaces = {name: solve(name, element) for name, (element, _, solve) in checks.items()}
+
+    _configure_a_static_analysis()
+    reciprocity = {}
+    for name, (element, component, _) in checks.items():
+        for station_along, station_across in PROBE_NODES:
+            node = deck.deck_nodes[(station_along, station_across)]
+            from_the_surface = surfaces[name].influence_at(
+                float(deck.length_mesh_m[station_along]), float(deck.width_mesh_m[station_across])
+            )
+            reciprocity[name, (station_along, station_across)] = (
+                from_the_surface, _unit_load_response(deck, node, element, component)
+            )
+
+    return model, checks, surfaces, reciprocity
+
+
+@pytest.mark.parametrize(
+    "name", ["outer girder, quarter-span moment", "outer girder, support shear", "middle girder, support shear"]
+)
+@pytest.mark.parametrize("probe", PROBE_NODES)
+def test_reciprocity_away_from_midspan_and_for_shear(built, name, probe):
+    *_, reciprocity = built
+    from_the_surface, directly = reciprocity[name, probe]
+
+    assert from_the_surface == pytest.approx(directly, rel=1e-8, abs=1e-10)
+
+
+@pytest.mark.parametrize(
+    "name", ["outer girder, quarter-span moment", "outer girder, support shear", "middle girder, support shear"]
+)
+def test_the_new_surfaces_are_not_trivially_zero(built, name):
+    *_, reciprocity = built
+
+    assert max(abs(directly) for (checked, _), (_, directly) in reciprocity.items() if checked == name) > 0.01
+
+
+def test_midspan_is_one_of_the_stations(built):
+    model, *_ = built
+    midspan = model.mesh.stations_along_span // 2
+
+    assert model.midspan_element_of_girder(1) == model.element_of_girder_at(1, midspan)
+
+
+@pytest.mark.parametrize(
+    "name", ["girder 0, midspan moment", "girder 2, midspan moment", "outer girder, support shear"]
+)
+@pytest.mark.parametrize("adverse", ["maximum", "minimum"])
+def test_the_live_load_gives_back_the_searched_response(built, name, adverse):
+    """The search adds up influence x wheel load; the FE model must agree when the load is really applied."""
+    model, checks, surfaces, _ = built
+    element, component, _ = checks[name]
+    critical = find_critical_position(surfaces[name], CROSS_SECTION, span_m=SPAN_M, adverse=adverse, **ONLY_THE_VEHICLES)
+
+    _configure_a_static_analysis()
+    directly = _live_load_response(model, critical, element, component)
+
+    assert directly == pytest.approx(critical.response, rel=1e-6)
+
+
+def test_each_girder_gets_its_own_critical_position(built):
+    """The outer girder is loaded by vehicles near its edge, the middle one by vehicles near the centre."""
+    _, _, surfaces, _ = built
+    worst = {
+        girder: find_critical_position(surfaces[f"girder {girder}, midspan moment"], CROSS_SECTION, span_m=SPAN_M)
+        for girder in range(BRIDGE.girders.count)
+    }
+
+    responses = [worst[girder].response for girder in worst]
+    assert len({round(response, 6) for response in responses}) > 1
+    outer_vehicle_m = min(placed.z_centre_m for placed in worst[0].vehicles)
+    middle_vehicle_m = min(placed.z_centre_m for placed in worst[BRIDGE.girders.count // 2].vehicles)
+    assert outer_vehicle_m <= middle_vehicle_m

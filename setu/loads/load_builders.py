@@ -1,4 +1,7 @@
 import numpy as np
+from setu.helpers import DEFAULT_SAMPLING
+from setu.irc6.vehicles import find_vehicle_or_its_reverse
+from setu.irc6.wheel_loads import wheel_load_offsets
 from setu.loads.load_cases import LoadCase
 from setu.builder.mesh import tributary_length_m
 
@@ -115,6 +118,46 @@ def fatigue_moving_load(model, vehicle, path_z_m, span_m, n_positions=50, name="
             nodal_loads.append((node, 0.0, -load_kn, 0.0, 0.0, 0.0, 0.0))
         cases.append(LoadCase(name=f"{name}_{p}", nodal_loads=nodal_loads))
     return cases
+
+
+def vehicle_load(model, critical_position, wearing_course_thickness_m=0.0, sampling=DEFAULT_SAMPLING, name="live"):
+    # ponytail: vehicles only - the residual UDL and footway load are not placed yet, so this matches
+    # critical_position.response only when it was searched with apply_residual_udl=False and apply_footway_load=False
+    forces_kn = {}
+    for placed in critical_position.vehicles:
+        vehicle = find_vehicle_or_its_reverse(placed.vehicle_name)
+        offsets = wheel_load_offsets(vehicle, wearing_course_thickness_m, sampling)
+        factor = placed.impact_factor * critical_position.lane_reduction
+        for x_front_m in placed.train_x_front_m:
+            for dx_m, dz_m, load_kn in offsets:
+                share_between_nodes(model, x_front_m + dx_m, placed.z_centre_m + dz_m, factor * load_kn, forces_kn)
+    nodal_loads = [(model.deck_nodes[i, j], 0.0, -force_kn, 0.0, 0.0, 0.0, 0.0) for (i, j), force_kn in forces_kn.items()]
+    return LoadCase(name=name, nodal_loads=nodal_loads)
+
+
+def share_between_nodes(model, x_m, z_m, load_kn, forces_kn):
+    length_mesh_m = model.mesh.length_mesh_m
+    width_mesh_m = model.mesh.width_mesh_m
+    is_on_the_deck = length_mesh_m[0] <= x_m <= length_mesh_m[-1] and width_mesh_m[0] <= z_m <= width_mesh_m[-1]
+    if not is_on_the_deck:
+        return
+    i = _cell_containing(length_mesh_m, x_m)
+    j = _cell_containing(width_mesh_m, z_m)
+    fraction_along = (x_m - length_mesh_m[i]) / (length_mesh_m[i + 1] - length_mesh_m[i])
+    fraction_across = (z_m - width_mesh_m[j]) / (width_mesh_m[j + 1] - width_mesh_m[j])
+    corners = (
+        ((i, j), (1 - fraction_along) * (1 - fraction_across)),
+        ((i + 1, j), fraction_along * (1 - fraction_across)),
+        ((i + 1, j + 1), fraction_along * fraction_across),
+        ((i, j + 1), (1 - fraction_along) * fraction_across),
+    )
+    for node, weight in corners:
+        forces_kn[node] = forces_kn.get(node, 0.0) + weight * load_kn
+
+
+def _cell_containing(stations_m, position_m):
+    last_cell = len(stations_m) - 2
+    return int(np.clip(np.searchsorted(stations_m, position_m) - 1, 0, last_cell))
 
 
 def _nearest_width_station(width_mesh_m, z_m):

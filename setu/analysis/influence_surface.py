@@ -3,7 +3,7 @@ import numpy as np
 from setu.errors import InfluenceSurfaceError, ModelAlreadyLoadedError
 from setu.solver.backend import FEBackend, OpenSeesBackend
 from setu.builder.mesh import DeckModel
-from setu.solver.stiffness import beam_stiffness_matrix, element_rotation_matrix, moment_dof_for
+from setu.solver.stiffness import beam_stiffness_matrix, element_rotation_matrix, moment_dof_for, shear_dof_for
 
 VERTICAL_DOF = 2
 OFF_THE_DECK = 0.0
@@ -76,9 +76,16 @@ class InfluenceSolver:
         self.check_nothing_else_is_loading_the_model()
         if response_dof is None:
             response_dof = moment_dof_for(self.deck.girder_local_axis)
-        adjoint_loads = self.adjoint_loads_for_girder_moment(element, response_dof)
+        adjoint_loads = self.adjoint_loads_for_girder_force(element, response_dof)
         self.backend.solve_with_loads(adjoint_loads)
         return self.surface_from_solved_deck(name, describes={'response': 'girder_moment', 'element': element, 'dof': response_dof})
+
+    def for_girder_shear(self, name, element):
+        self.check_nothing_else_is_loading_the_model()
+        response_dof = shear_dof_for(self.deck.girder_local_axis)
+        adjoint_loads = self.adjoint_loads_for_girder_force(element, response_dof)
+        self.backend.solve_with_loads(adjoint_loads)
+        return self.surface_from_solved_deck(name, describes={'response': 'girder_shear', 'element': element, 'dof': response_dof})
 
     def for_deflection(self, name, node):
         self.check_nothing_else_is_loading_the_model()
@@ -99,14 +106,15 @@ class InfluenceSolver:
         self.backend.solve_with_loads([(node_i, list(-axial_stiffness * direction) + no_moments), (node_j, list(+axial_stiffness * direction) + no_moments)])
         return self.surface_from_solved_deck(name, describes={'response': 'truss_axial', 'element': element})
 
-    def adjoint_loads_for_girder_moment(self, element, response_dof):
+    def adjoint_loads_for_girder_force(self, element, response_dof):
         deck = self.deck
-        midspan = deck.stations_along_span // 2
-        element_length_m = float(deck.length_mesh_m[midspan + 1] - deck.length_mesh_m[midspan])
+        node_i, node_j = self.backend.element_nodes(element)
+        start = np.array(self.backend.node_coordinates(node_i), float)
+        end = np.array(self.backend.node_coordinates(node_j), float)
+        element_length_m = float(np.linalg.norm(end - start))
         stiffness = beam_stiffness_matrix(element_length_m, deck.girder_section)
         rotation = element_rotation_matrix(deck.girder_local_axis)
         nodal_forces = rotation.T @ stiffness[:, response_dof]
-        node_i, node_j = self.backend.element_nodes(element)
         return [(node_i, nodal_forces[NODE_I_COMPONENTS].tolist()), (node_j, nodal_forces[NODE_J_COMPONENTS].tolist())]
 
     def check_nothing_else_is_loading_the_model(self):

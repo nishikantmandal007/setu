@@ -7,7 +7,7 @@ start
 
 partition "Critical vehicle position" {
   repeat :next girder;
-    :InfluenceSolver: one influence surface for this girder (analysis + solver);
+    :InfluenceSolver: midspan moment + support shear surfaces for this girder (analysis + solver);
     :search along the span: worst train (along_span);
     :search across the carriageway: worst IRC:6 lane arrangement (across_carriageway + irc6);
     :rank_all_positions → take the worst = CriticalPosition (critical_position);
@@ -17,6 +17,7 @@ partition "Critical vehicle position" {
 }
 
 partition "Load cases" {
+  :vehicle_load(worst CriticalPosition) → live LoadCase (loads);
   :dead, wind, seismic, braking, temperature loads (loads);
   :combine with IRC:6 factors (irc6.combinations → loads.combine);
   :solve → girder forces and deflections (postprocess);

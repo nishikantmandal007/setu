@@ -60,3 +60,8 @@ def moment_dof_for(local_axis):
     if tuple(local_axis) == GIRDER_LOCAL_AXIS_ALONG_Z:
         return BENDING_MOMENT_ABOUT_STRONG_AXIS
     return BENDING_MOMENT_ABOUT_WEAK_AXIS
+
+def shear_dof_for(local_axis):
+    if tuple(local_axis) == GIRDER_LOCAL_AXIS_ALONG_Z:
+        return STRONG_AXIS_SHEAR_DOFS[0]
+    return WEAK_AXIS_SHEAR_DOFS[0]
