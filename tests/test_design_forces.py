@@ -25,6 +25,7 @@ MOMENT_AT_END_I = 5
 PROBE_NODES = [(3, 10), (6, 20), (12, 5), (12, 30), (20, 15)]
 UNIT_LOAD_PATTERN = 99
 LIVE_LOAD_PATTERN = 100
+END_I_FORCE_TO_INTERNAL_FORCE = -1.0
 ONLY_THE_VEHICLES = dict(apply_residual_udl=False, apply_footway_load=False)
 
 CROSS_SECTION = DeckCrossSection.from_widths(
@@ -73,7 +74,7 @@ def _read_directly(element, component, pattern_tag):
     ops.reset()
     ops.setTime(0.0)
     ops.analyze(1)
-    force = ops.eleResponse(element, "localForce")[component]
+    force = END_I_FORCE_TO_INTERNAL_FORCE * ops.eleResponse(element, "localForce")[component]
     ops.remove("loadPattern", pattern_tag)
     ops.remove("timeSeries", pattern_tag)
     return force
@@ -190,3 +191,52 @@ def test_each_girder_gets_its_own_critical_position(built):
     outer_vehicle_m = min(placed.z_centre_m for placed in worst[0].vehicles)
     middle_vehicle_m = min(placed.z_centre_m for placed in worst[BRIDGE.girders.count // 2].vehicles)
     assert outer_vehicle_m <= middle_vehicle_m
+
+
+def test_a_load_case_after_the_surfaces_is_not_polluted_by_them(built):
+    """Influence solves leave the model deflected; a load case solved next must not see that."""
+    from setu.postprocess.girder_response import analyze_load_case
+
+    model, checks, surfaces, _ = built
+    element, component, _ = checks["girder 2, midspan moment"]
+    critical = find_critical_position(surfaces["girder 2, midspan moment"], CROSS_SECTION, span_m=SPAN_M, **ONLY_THE_VEHICLES)
+    midspan = model.mesh.stations_along_span // 2
+    solver = InfluenceSolver(model.as_deck_model())
+    solver.for_girder_moment("pollute the model first", element)
+
+    forces = analyze_load_case(model, vehicle_load(model, critical), ops)
+
+    assert forces[2].moment_kn_m[midspan] == pytest.approx(critical.response, rel=1e-6)
+
+
+def test_a_load_case_refuses_to_run_on_top_of_another(built):
+    from setu.errors import OtherLoadsStillActiveError
+    from setu.postprocess.girder_response import analyze_load_case
+
+    model, checks, surfaces, _ = built
+    critical = find_critical_position(surfaces["girder 2, midspan moment"], CROSS_SECTION, span_m=SPAN_M, **ONLY_THE_VEHICLES)
+    ops.timeSeries("Constant", UNIT_LOAD_PATTERN)
+    ops.pattern("Plain", UNIT_LOAD_PATTERN, UNIT_LOAD_PATTERN)
+    try:
+        with pytest.raises(OtherLoadsStillActiveError):
+            analyze_load_case(model, vehicle_load(model, critical), ops)
+    finally:
+        ops.remove("loadPattern", UNIT_LOAD_PATTERN)
+        ops.remove("timeSeries", UNIT_LOAD_PATTERN)
+
+
+def test_girder_forces_use_one_sign_along_the_whole_girder(built):
+    """Shear just inside the support and at the support itself must agree in sign."""
+    from setu.loads.load_cases import LoadCase
+    from setu.postprocess.girder_response import analyze_load_case
+
+    model, *_ = built
+    midspan = model.mesh.stations_along_span // 2
+    downwards_at_midspan = LoadCase("point", nodal_loads=[
+        (model.deck_nodes[midspan, model.mesh.width_station_of_girder(2)], 0.0, -100.0, 0.0, 0.0, 0.0, 0.0)
+    ])
+
+    forces = analyze_load_case(model, downwards_at_midspan, ops)[2]
+
+    assert forces.shear_kn[0] * forces.shear_kn[1] > 0
+    assert forces.moment_kn_m[midspan] > 0, "sagging is positive"

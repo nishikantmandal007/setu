@@ -137,7 +137,7 @@ def _check_against_real_unit_loads(deck, surface, element):
         ops.setTime(0.0)
         ops.analyze(1)
 
-        directly = ops.eleResponse(element, "localForce")[MOMENT_ABOUT_STRONG_AXIS]
+        directly = -ops.eleResponse(element, "localForce")[MOMENT_ABOUT_STRONG_AXIS]
         from_the_surface = surface.influence_at(
             float(deck.length_mesh_m[station_along]),
             float(deck.width_mesh_m[station_across]),

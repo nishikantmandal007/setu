@@ -1,4 +1,5 @@
 import numpy as np
+from setu.errors import OtherLoadsStillActiveError
 from setu.loads.load_cases import LOAD_CASE_PATTERN_BASE, apply_load_case
 
 
@@ -39,15 +40,15 @@ def girder_forces(model, girder_index, ops):
     axial = np.zeros(n_stations)
     for e in range(n_elements):
         f = ops.eleResponse(model.girder_elements[girder_index, e], "localForce")
-        if e == 0:
-            axial[0] = f[N_I]
-            shear[0] = f[VY_I]
-            torsion[0] = f[T_I]
-            moment[0] = f[MZ_I]
-        axial[e + 1] = f[N_J]
-        shear[e + 1] = f[VY_J]
-        torsion[e + 1] = f[T_J]
-        moment[e + 1] = f[MZ_J]
+        axial[e] = -f[N_I]
+        shear[e] = -f[VY_I]
+        torsion[e] = -f[T_I]
+        moment[e] = -f[MZ_I]
+        if e == n_elements - 1:
+            axial[e + 1] = f[N_J]
+            shear[e + 1] = f[VY_J]
+            torsion[e + 1] = f[T_J]
+            moment[e + 1] = f[MZ_J]
     return GirderForces(stations_m, moment, shear, torsion, axial)
 
 
@@ -74,6 +75,11 @@ def reactions(model, ops):
 
 def analyze_load_case(model, load_case, ops, pattern_tag=None):
     tag = pattern_tag if pattern_tag is not None else LOAD_CASE_PATTERN_BASE
+    already_loading = ops.getPatterns()
+    if already_loading:
+        raise OtherLoadsStillActiveError(f"load patterns {already_loading} are still on the model, so they would be added into {load_case.name!r}. Remove them, or combine them into this load case, first.")
+    ops.reset()
+    ops.setTime(0.0)
     apply_load_case(load_case, ops, pattern_tag=tag)
     ops.system("UmfPack")
     ops.numberer("RCM")

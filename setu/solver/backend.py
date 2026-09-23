@@ -66,6 +66,9 @@ class OpenSeesBackend(FEBackend):
 
     def clear_loads(self):
         self.ops.remove("loadPattern", self.ADJOINT_PATTERN)
+        self.ops.remove("timeSeries", self.ADJOINT_TIME_SERIES)
+        self.ops.reset()
+        self.ops.setTime(0.0)
 
 def import_opensees():
     try:

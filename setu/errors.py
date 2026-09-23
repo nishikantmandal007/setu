@@ -24,3 +24,6 @@ class ModelAlreadyLoadedError(SetuError):
 
 class NotLinearError(SetuError):
     pass
+
+class OtherLoadsStillActiveError(SetuError):
+    pass

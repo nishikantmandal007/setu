@@ -63,6 +63,7 @@ NODE_J_COMPONENTS = slice(6, 12)
 UNIT_LOAD_DOWNWARDS = [0.0, -1.0, 0.0, 0.0, 0.0, 0.0]
 NO_LOADS = []
 STILL_AT_REST_M = 1e-12
+END_I_FORCE_TO_INTERNAL_FORCE = -1.0
 
 class InfluenceSolver:
 
@@ -114,7 +115,7 @@ class InfluenceSolver:
         element_length_m = float(np.linalg.norm(end - start))
         stiffness = beam_stiffness_matrix(element_length_m, deck.girder_section)
         rotation = element_rotation_matrix(deck.girder_local_axis)
-        nodal_forces = rotation.T @ stiffness[:, response_dof]
+        nodal_forces = END_I_FORCE_TO_INTERNAL_FORCE * (rotation.T @ stiffness[:, response_dof])
         return [(node_i, nodal_forces[NODE_I_COMPONENTS].tolist()), (node_j, nodal_forces[NODE_J_COMPONENTS].tolist())]
 
     def check_nothing_else_is_loading_the_model(self):
