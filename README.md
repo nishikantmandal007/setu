@@ -55,15 +55,25 @@ print(worst.describe())
 
 ## Structure
 
+Each folder is one layer. A layer only imports from the layers above it.
+
 ```text
 setu/
-├── models/       bridge geometry, materials, sections, vehicles, results
-├── irc6/         IRC:6 impact, lane rules, wheel loads, load combinations
+├── models/       bridge inputs: geometry, deck, materials, sections
+├── irc6/         IRC:6 rules: vehicles, impact, lanes, wheel loads, combinations
+├── builder/      mesh generation and OpenSees model assembly
+├── loads/        dead loads, load builders, load cases
 ├── solver/       OpenSees FE backend and stiffness matrices
-├── builder/      mesh generation, model assembly, dead loads
-├── analysis/     influence surfaces, vehicle placement, critical position search
-└── postprocess/  girder response, envelopes, load cases, plots
+├── analysis/     influence surfaces, along-span and across-carriageway search, critical position
+└── postprocess/  girder response, envelopes, result datasets, plots
 ```
+
+## Two flows
+
+- **Critical position**: build the model → solve an influence surface → search along the span and across the carriageway → worst IRC:6 vehicle position. See [docs/critical_position_flow.puml](docs/critical_position_flow.puml).
+- **Load cases**: build the model → make load cases → combine with IRC:6 factors → solve → girder forces, envelopes, plots. See [docs/load_case_flow.puml](docs/load_case_flow.puml).
+
+How the layers depend on each other: [docs/layers.puml](docs/layers.puml).
 
 ## Tests
 
