@@ -68,3 +68,7 @@ OBSTRUCTED_TERRAIN = "obstructed"
 
 # OsdagBridge's custom load groups, and the IRC:6 Annex B group each one is combined as
 CUSTOM_LOAD_GROUPS = {"DL": DEAD, "SIDL": DEAD, "DW": SURFACING, "LL": LIVE, "EL": SEISMIC, "WL": WIND, "TL": THERMAL}
+
+# The girder responses setu gives design values for
+MIDSPAN_MOMENT = "midspan composite moment"
+SUPPORT_SHEAR = "support shear"

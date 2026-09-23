@@ -37,3 +37,15 @@ class SeismicSite:
 
     def to_dict(self):
         return self.__dict__
+
+
+class TemperatureSite:
+    def __init__(self, shade_max_c, shade_min_c, metallic=True, snowbound=False, reverse_depths_m=None, **kwargs):
+        self.shade_max_c = shade_max_c
+        self.shade_min_c = shade_min_c
+        self.metallic = metallic
+        self.snowbound = snowbound
+        self.reverse_depths_m = reverse_depths_m
+
+    def to_dict(self):
+        return self.__dict__

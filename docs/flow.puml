@@ -9,7 +9,7 @@ skinparam ArrowColor #555555
 title setu: bridge in, design forces out
 
 start
-:Bridge input
+:Bridge input + site (wind, seismic, temperature, custom loads)
 <size:11><color:#777>models</color></size>;
 
 partition "1  Dead load  (IRC:22 stages)" {
@@ -32,16 +32,24 @@ partition "2  Live load  (IRC:6, every girder)" {
   repeat :next girder;
     :Influence surfaces: moment, shear
     <size:11><color:#777>analysis.influence_surface</color></size>;
-    :Worst vehicles, UDL, footway
-    <size:11><color:#777>analysis.critical_position</color></size>;
+    :Worst vehicles, UDL, footway, braking
+    <size:11><color:#777>analysis.critical_position, loads.braking_loads</color></size>;
   repeat while (more girders?) is (yes)
   -> no;
 }
 
-partition "3  Design values" {
-  :Factor: 1.35 dead, 1.75 surfacing, 1.5 live
+partition "3  Other loads" {
+  :Wind (209), seismic (SP:114), custom loads
+  <size:11><color:#777>loads.wind_loads, loads.seismic_loads, loads.custom_loads</color></size>;
+  :Temperature (215): stresses and bearing movement
+  <size:11><color:#777>postprocess.thermal_stresses</color></size>;
+}
+
+partition "4  Design values" {
+  :Annex B: one leading load at a time
   <size:11><color:#777>irc6.combinations</color></size>;
-  :Governing girder;
+  :Governing value for every girder
+  <size:11><color:#777>postprocess.design_values</color></size>;
 }
 stop
 @enduml

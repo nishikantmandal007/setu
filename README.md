@@ -20,11 +20,10 @@ uv sync
 from setu import (
     BridgeInput, DeckCrossSection, DeckSlab, Girders, Bracing,
     MeshSettings, PlateGirderSection,
-    build_bridge_model, InfluenceSolver, find_critical_position,
-    irc6_combinations,
 )
-from setu.utils.constants import BASIC, DEAD, LIVE, SURFACING
-from setu.postprocess.girder_response import dead_load_forces
+from setu.models.site import SeismicSite, TemperatureSite, WindSite
+from setu.postprocess.design_values import girder_design_values
+from setu.utils.constants import BASIC, BIGGER_IS_WORSE, MIDSPAN_MOMENT, PLAIN_TERRAIN
 
 bridge = BridgeInput(
     span_m=35.0,
@@ -43,20 +42,15 @@ bridge = BridgeInput(
     mesh=MeshSettings(panels_between_braces=4, target_size_across_width_m=0.6),
 )  # un-propped construction by default; pass construction="propped" to change it
 
-uls = next(c for c in irc6_combinations() if c.limit_state == BASIC and c.leading == LIVE)
-dead = dead_load_forces(bridge).factored({DEAD: uls.factors[DEAD][0], SURFACING: uls.factors[SURFACING][0]})
-
-model = build_bridge_model(bridge)  # short-term composite, for live load
-midspan = model.mesh.stations_along_span // 2
-solver = InfluenceSolver(model.as_deck_model())
-for girder in range(bridge.girders.count):
-    surface = solver.for_girder_composite_moment(
-        f"girder {girder}, midspan", model.midspan_element_of_girder(girder)
-    )
-    live = find_critical_position(surface, bridge.cross_section, span_m=bridge.span_m,
-                                  wearing_course_thickness_m=bridge.deck.wearing_course_thickness_m)
-    design = dead[girder].composite_moment_kn_m[midspan] + uls.factors[LIVE][0] * live.response
-    print(f"girder {girder}: ULS-1 midspan moment = {design:.1f} kNm")
+results = girder_design_values(
+    bridge,
+    wind=WindSite(basic_wind_speed_mps=39.0, terrain=PLAIN_TERRAIN, height_m=12.0, solid_barrier_height_m=1.1),
+    seismic=SeismicSite(zone="IV", soil="II"),
+    temperature=TemperatureSite(shade_max_c=45.0, shade_min_c=2.0),
+)
+for girder, by_response in results.girders.items():
+    governing = by_response[MIDSPAN_MOMENT][BASIC][BIGGER_IS_WORSE]
+    print(f"girder {girder}: {governing.value:.1f} kNm ({governing.combination})")
 ```
 
 ## Structure
@@ -79,10 +73,14 @@ setu/
 
 ![setu end-to-end flow](docs/flow.svg)
 
-- **Dead load** is solved in the IRC:22 construction stages: bare steel for the wet slab when un-propped, then the long-term composite deck (m ≥ 15) for everything laid on it. Surfacing is kept apart because IRC:6 Table B.2 factors it at 1.75, not 1.35.
-- **Live load** uses the short-term composite deck (m ≥ 7.5). Each girder gets its own influence surfaces: composite moment (steel moment + steel axial force × lever arm to the slab) and shear. Each surface gets its own critical-position search, including the residual UDL and the clause 206.3 footway load.
-- `live_load(model, critical, surface)` turns a critical position into the `"live"` load case. Solved in OpenSees, it gives back the same response the search reported.
-- Every force is an internal force, sagging positive. `examples/plate_girder_35m.py` runs the whole loop and prints the governing girder.
+- **Dead load** is solved in the IRC:22 construction stages: bare steel for the wet slab when un-propped, then the long-term composite deck (m ≥ 15) for everything laid on it. Surfacing is kept apart, because IRC:6 Table B.2 factors it at 1.75 rather than 1.35.
+- **Live load** uses the short-term composite deck (m ≥ 7.5). Each girder gets its own influence surfaces (composite moment and shear) and its own critical-position search, including the residual UDL and the clause 206.3 footway load. Braking (211) goes with the traffic it comes from.
+- **Wind** follows IRC:6 clause 209: Table 12 pressure, F_T at the centroid of its area, F_L, F_V, and wind on the live load.
+- **Seismic** follows IRC:SP:114-2018, which replaced IRC:6 clause 218: Ah = (Z/2)(I/R)(Sa/g) with the Table 5.2 minimum, 20 % live load, and the 100/30/30 combination.
+- **Temperature** (215) gives no girder force on a simply supported span with a free bearing. It is reported as the Fig. 16b primary stresses and the bearing movement instead. Fig. 16b does not give the reverse profile's depths, so pass them yourself if you need it.
+- **Custom loads**: point, line or area loads filed under DL / SIDL / DW / LL / EL / WL / TL, or a group of your own that only a custom combination picks up.
+- **Combinations** follow IRC:6 Annex B. One variable load leads at a time; a variable load that relieves the effect is left out; permanent loads take their adding or relieving factor; no live load in winds over 36 m/s.
+- Every force is an internal force, sagging positive.
 
 ## Tests
 

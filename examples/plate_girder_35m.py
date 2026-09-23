@@ -1,17 +1,13 @@
-"""A 35 m composite plate girder bridge, from input to critical vehicle position.
+"""A 35 m composite plate girder bridge, from input to IRC:6 design values for every girder.
 
 Run it::
 
     python examples/plate_girder_35m.py
 
-It builds the bridge, solves one influence surface for the middle girder's
-midspan moment, finds the worst legal IRC:6 traffic that moment has to carry,
-and then checks the bridge stands up under its own weight.
-
-The order matters. An influence surface is read off the deflected shape under
-one imaginary load, so it has to be solved on a model nothing else is loading -
-which is why the dead load goes on last. setu checks this rather than trusting
-it, because a dead load left switched on makes every surface quietly wrong.
+One call does it all: dead load in its IRC:22 construction stages, the worst legal
+IRC:6 traffic for each girder (with braking), wind (209), seismic (IRC:SP:114-2018),
+temperature (215) and a user load, combined per IRC:6 Annex B. It then checks the
+bridge stands up under its own weight.
 """
 
 
@@ -23,18 +19,24 @@ from setu import (
     DeckCrossSection,
     DeckSlab,
     Girders,
-    InfluenceSolver,
     MeshSettings,
     PlateGirderSection,
     apply_dead_loads,
     build_bridge_model,
-    find_critical_position,
-    irc6_combinations,
-    live_load,
 )
 from setu.helpers import enable_reports
-from setu.utils.constants import BASIC, DEAD, LIVE, SURFACING
-from setu.postprocess.girder_response import analyze_load_case, dead_load_forces
+from setu.models.site import SeismicSite, TemperatureSite, WindSite
+from setu.postprocess.design_values import girder_design_values
+from setu.utils.constants import (
+    BASIC,
+    BIGGER_IS_WORSE,
+    MIDSPAN_MOMENT,
+    PLAIN_TERRAIN,
+    RARE,
+    SEISMIC_COMBINATION,
+    SMALLER_IS_WORSE,
+    SUPPORT_SHEAR,
+)
 
 # ---------------------------------------------------------------------------
 # The bridge
@@ -97,94 +99,41 @@ def check_it_stands_up(applied_kn: float) -> None:
     print(f"  Out of balance         = {out_of_balance:12.4f} %")
 
 
-SUPPORT = 0
-RESPONSES = ("midspan composite moment", "support shear")
+WIND = WindSite(basic_wind_speed_mps=39.0, terrain=PLAIN_TERRAIN, height_m=12.0, solid_barrier_height_m=1.1)
+SEISMIC = SeismicSite(zone="IV", soil="II", importance="important")
+TEMPERATURE = TemperatureSite(shade_max_c=45.0, shade_min_c=2.0)
+COLUMNS = (
+    ("ULS sagging", MIDSPAN_MOMENT, BASIC, BIGGER_IS_WORSE),
+    ("ULS seismic", MIDSPAN_MOMENT, SEISMIC_COMBINATION, BIGGER_IS_WORSE),
+    ("SLS rare", MIDSPAN_MOMENT, RARE, BIGGER_IS_WORSE),
+    ("ULS shear", SUPPORT_SHEAR, BASIC, SMALLER_IS_WORSE),
+)
 
 
-def worst_live_load_on_every_girder(model, dead: dict) -> dict:
-    """One influence surface and one search per girder and per response.
-
-    The search looks for the live load that adds to the dead load, so it takes
-    the dead load's sign as the adverse direction. Every surface is solved before
-    any other load goes on the model.
-    """
-    influence = InfluenceSolver(model.as_deck_model())
-    midspan = model.mesh.stations_along_span // 2
-    worst = {}
-    for girder in range(BRIDGE.girders.count):
-        surfaces = {
-            "midspan composite moment": (
-                influence.for_girder_composite_moment(f"girder {girder}, midspan composite moment", model.midspan_element_of_girder(girder)),
-                dead[girder].composite_moment_kn_m[midspan],
-            ),
-            "support shear": (
-                influence.for_girder_shear(f"girder {girder}, support shear", model.element_of_girder_at(girder, SUPPORT)),
-                dead[girder].shear_kn[SUPPORT],
-            ),
-        }
-        for response, (surface, dead_value) in surfaces.items():
-            critical = find_critical_position(
-                surface,
-                CROSS_SECTION,
-                span_m=BRIDGE.span_m,
-                adverse="maximum" if dead_value >= 0 else "minimum",
-                wearing_course_thickness_m=BRIDGE.deck.wearing_course_thickness_m,
-            )
-            worst[girder, response] = (surface, critical)
-    return worst
-
-
-def print_uls_design_values(factored_dead: dict, worst: dict, midspan: int) -> tuple:
-    """IRC:6-2017 Table B.2, ULS-1: 1.35 dead + 1.75 surfacing + 1.5 live."""
-    live_factor = uls_live_leading().factors[LIVE][0]
+def print_design_values(results) -> None:
     print()
     print("=" * 72)
-    print("ULS-1 DESIGN VALUES, EVERY GIRDER  (1.35 dead + 1.75 surfacing + 1.5 live)")
+    print("IRC:6 ANNEX B DESIGN VALUES, EVERY GIRDER  (moments kNm, shear kN)")
     print("=" * 72)
-    print(f"  {'girder':<7} {'response':<26} {'dead':>11} {'live':>11} {'ULS':>11}")
-    design = {}
-    for (girder, response), (_, critical) in worst.items():
-        if response == "midspan composite moment":
-            dead_value = factored_dead[girder].composite_moment_kn_m[midspan]
-        else:
-            dead_value = factored_dead[girder].shear_kn[SUPPORT]
-        design[girder, response] = dead_value + live_factor * critical.response
-        print(f"  {girder:<7} {response:<26} {dead_value:11.1f} {critical.response:11.1f} {design[girder, response]:11.1f}")
-    governing = {response: max((key for key in design if key[1] == response), key=lambda key: abs(design[key])) for response in RESPONSES}
-    for response, key in governing.items():
-        print(f"  Governing {response}: girder {key[0]}, {design[key]:.1f}")
-    return governing
-
-
-def check_the_live_load_reproduces_the_search(model, worst: dict, key: tuple) -> None:
-    """Put the governing live load on the real model and read the girder back."""
-    girder, _ = key
-    surface, critical = worst[key]
-    midspan = model.mesh.stations_along_span // 2
-    forces = analyze_load_case(model, live_load(model, critical, surface), ops)
-    directly = forces[girder].composite_moment_kn_m[midspan]
-    print()
-    print(worst[key][1].describe())
-    print(f"  Applied as a load case in OpenSees = {directly:14.3f}   (search said {critical.response:.3f})")
-
-
-def uls_live_leading():
-    return next(c for c in irc6_combinations() if c.limit_state == BASIC and c.leading == LIVE)
+    print(f"  {'girder':<8}" + "".join(f"{title:>15}" for title, *_ in COLUMNS))
+    for girder, by_response in results.girders.items():
+        print(f"  {girder:<8}" + "".join(f"{by_response[response][limit_state][adverse].value:15.1f}" for _, response, limit_state, adverse in COLUMNS))
+    for title, response, limit_state, adverse in COLUMNS:
+        girder, governing = results.governing(response, limit_state, adverse)
+        print(f"  Governing {title}: girder {girder}, {governing.value:.1f} ({governing.combination})")
+    thermal = results.thermal
+    positive = thermal["positive difference"]
+    print(f"  Temperature: no girder force (free bearing); slab top {positive.slab_top_kpa / 1000:.2f} MPa, "
+          f"steel bottom {positive.steel_bottom_kpa / 1000:.2f} MPa; bearing movement {thermal['free bearing movement m'] * 1000:.1f} mm")
 
 
 def main() -> None:
     enable_reports()
 
-    dead = dead_load_forces(BRIDGE)
-    uls = uls_live_leading()
-    factored_dead = dead.factored({DEAD: uls.factors[DEAD][0], SURFACING: uls.factors[SURFACING][0]})
+    results = girder_design_values(BRIDGE, wind=WIND, seismic=SEISMIC, temperature=TEMPERATURE)
+    print_design_values(results)
 
     model = build_bridge_model(BRIDGE)
-    midspan = model.mesh.stations_along_span // 2
-    worst = worst_live_load_on_every_girder(model, dead.total)
-    governing = print_uls_design_values(factored_dead, worst, midspan)
-    check_the_live_load_reproduces_the_search(model, worst, governing["midspan composite moment"])
-
     dead_load = apply_dead_loads(model)
     check_it_stands_up(dead_load.total_kn)
 
