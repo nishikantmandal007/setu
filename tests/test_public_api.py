@@ -1,29 +1,13 @@
-from setu.models.bridge import BridgeInput
-from setu.irc6 import impact_factor
-from setu.builder.mesh import build_mesh
-from setu.analysis.critical_position import find_critical_position, rank_all_positions
-from setu.analysis.influence_surface import InfluenceSurface
-from setu.solver.backend import OpenSeesBackend
-from setu.analysis.vehicle_placement import find_worst_train
-from setu.postprocess.girder_response import GirderForces, GirderDeflections
-from setu.postprocess.load_cases import LoadCase
-from setu.postprocess.envelope import Envelope
-from setu.postprocess.load_builders import pressure_load, line_load, point_load
+import setu
+
+EXPLICITLY_CALLED = [
+    "AddedDeadLoads", "BridgeInput", "DeckSlab", "Girders", "Bracing", "MeshSettings", "DeckCrossSection",
+    "Steel", "Concrete", "SurfacingLayer", "PlateGirderSection", "SeismicSite", "TemperatureSite", "WindSite", "CustomLoad",
+    "build_mesh", "build_bridge_model", "InfluenceSolver", "find_critical_position", "rank_all_positions", "custom_combination",
+    "applied_live_loads", "live_load", "girder_design_values", "analyze_load_case", "dead_load_forces",
+    "result_dataset", "merge_datasets",
+]
 
 
-def test_documented_public_api_imports():
-    assert BridgeInput is not None
-    assert callable(build_mesh)
-    assert callable(find_critical_position)
-    assert callable(find_worst_train)
-    assert callable(impact_factor)
-    assert InfluenceSurface is not None
-    assert OpenSeesBackend is not None
-    assert callable(rank_all_positions)
-    assert GirderForces is not None
-    assert GirderDeflections is not None
-    assert LoadCase is not None
-    assert Envelope is not None
-    assert callable(pressure_load)
-    assert callable(line_load)
-    assert callable(point_load)
+def test_the_public_api_is_what_the_cli_and_osdagbridge_call():
+    assert [name for name in EXPLICITLY_CALLED if not hasattr(setu, name)] == []

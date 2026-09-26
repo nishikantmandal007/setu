@@ -7,14 +7,9 @@ import numpy as np
 import pytest
 
 from setu.models.deck import DeckCrossSection
-from setu.models.bridge import (
-    Bracing,
-    BridgeInput,
-    DeckSlab,
-    Girders,
-    MeshSettings,
-    PlateGirderSection,
-)
+from setu.models.bridge import Bracing, BridgeInput, DeckSlab, Girders, MeshSettings
+from setu.models.sections import PlateGirderSection
+from test_design_forces import ADDED_DEAD_LOADS, CONCRETE, STEEL
 from setu.builder.mesh import build_mesh
 
 CROSS_SECTION = DeckCrossSection.from_widths(
@@ -31,6 +26,7 @@ CROSS_SECTION = DeckCrossSection.from_widths(
 
 BRIDGE = BridgeInput(
     span_m=35.0,
+    skew=0.0,
     cross_section=CROSS_SECTION,
     deck=DeckSlab(thickness_m=0.23, overhang_m=1.25, wearing_course_thickness_m=0.075),
     girders=Girders(
@@ -46,6 +42,10 @@ BRIDGE = BridgeInput(
     ),
     bracing=Bracing(station_count=7, area_m2=0.01, arrangement="XT"),
     mesh=MeshSettings(panels_between_braces=4, target_size_across_width_m=0.6),
+    steel=STEEL,
+    concrete=CONCRETE,
+    wearing_course_unit_weight_kn_m3=22.0,
+    added_dead_loads=ADDED_DEAD_LOADS,
 )
 
 
@@ -107,13 +107,15 @@ def test_the_girders_are_evenly_spaced_between_the_overhangs():
 
 def test_a_crash_barrier_strip_carries_its_own_dead_load():
     # It used to match none of the named prefixes and fall through to zero, so a deck with
-    # crash barriers silently lost their weight. OsdagBridge names strips this way.
-    from setu.builder.dead_loads import surfacing_pressure_at
+    # crash barriers silently lost their weight. OsdagBridge names strips this way and loads each as a line load.
+    from setu.builder.assembly import build_bridge_model
+    from setu.loads.dead_loads import superimposed_dead_load
+    from setu.models.bridge import AddedDeadLoads
 
-    with_barriers = BridgeInput(**{**BRIDGE.__dict__, "cross_section": DeckCrossSection.from_widths({"crash_barrier_left": 0.45, "carriageway": 7.5, "crash_barrier_right": 0.45})})
-    model = SimpleNamespace(bridge=with_barriers)
+    with_barriers = BridgeInput(**{**BRIDGE.__dict__, "cross_section": DeckCrossSection.from_widths({"crash_barrier_left": 0.45, "carriageway": 7.5, "crash_barrier_right": 0.45}),
+                                   "added_dead_loads": AddedDeadLoads(0.0, 0.0, 0.0, 6.54, 0.0)})
+    model = build_bridge_model(with_barriers)
 
-    on_the_barrier = surfacing_pressure_at(model, 0.2)
+    applied_kn = -sum(fy for _, _, fy, *_ in superimposed_dead_load(model).nodal_loads)
 
-    assert on_the_barrier == with_barriers.added_dead_loads.crash_barrier.pressure_kpa
-    assert on_the_barrier > 0.0
+    assert applied_kn == pytest.approx(2 * 6.54 * with_barriers.span_m, rel=1e-9)

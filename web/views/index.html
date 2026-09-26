@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Setu bridge check</title>
+<script src="https://cdn.jsdelivr.net/npm/plotly.js-dist-min@2.35.2/plotly.min.js" defer></script>
+<script src="/shared/vehicles.js"></script>
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+<header>
+  <picture class="logo">
+    <source media="(prefers-color-scheme: dark)" srcset="/shared/logo-dark.svg">
+    <img src="/shared/logo.svg" alt="Setu">
+  </picture>
+  <p>Composite plate girder bridge · IRC:6-2017 · IRC:22-2015 · IRC:SP:114-2018</p>
+</header>
+<main>
+  <section id="inputs" class="card">
+    <div id="fields"></div>
+    <div class="go">
+      <button class="primary" id="analyse">Analyse</button>
+      <div class="error" id="input-error"></div>
+    </div>
+  </section>
+  <div id="out">
+    <div class="card empty">
+      <svg viewBox="0 0 520 150" aria-hidden="true">
+        <rect x="10" y="60" width="500" height="18" rx="3" fill="var(--kerb)"/>
+        <rect x="10" y="78" width="500" height="10" fill="var(--line)"/>
+        <rect x="30" y="88" width="14" height="50" fill="var(--line)"/><rect x="476" y="88" width="14" height="50" fill="var(--line)"/>
+        <rect x="150" y="30" width="120" height="30" rx="5" fill="var(--truck)"/><rect x="270" y="38" width="30" height="22" rx="4" fill="var(--truck-edge)"/>
+      </svg>
+      <p>Fill in the bridge on the left and press <b>Analyse</b>.<br>You will see the worst place for every vehicle, the design forces for each girder, and the deflection checks, in plain words.</p>
+    </div>
+  </div>
+</main>
+
+<script src="/static/app.js"></script>
+</body>
+</html>

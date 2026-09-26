@@ -2,12 +2,14 @@
 
 
 import numpy as np
+
+from setu.helpers import DEFAULT_SAMPLING
 import pytest
 
 from setu.models.deck import Carriageway
-from setu.irc6 import CLASS_A_LANE, ZONE_70R
-from setu.analysis.vehicle_placement import find_worst_placement
-from setu.analysis.vehicle_placement import place_vehicles
+from setu.utils.constants import CLASS_A_LANE, ZONE_70R
+from setu.analysis.across_carriageway import find_worst_placement
+from setu.analysis.across_carriageway import place_vehicles
 import oracles
 from oracles import worst_chain_by_enumeration
 
@@ -51,7 +53,7 @@ def test_worst_case_is_ranked_first():
         }
     ]
 
-    ranked = find_worst_placement(carriageway, curves, adverse="minimum")
+    ranked = find_worst_placement(carriageway, curves, "minimum", np.linspace(0.0, 9.0, 91), DEFAULT_SAMPLING)
 
     assert ranked[0].response == min(placement.response for placement in ranked)
 
@@ -62,4 +64,4 @@ def test_complains_when_curves_and_carriageways_disagree():
     one_set = [{CLASS_A_LANE: lambda z: np.zeros_like(z), ZONE_70R: lambda z: np.zeros_like(z)}]
 
     with pytest.raises(ValueError, match="own residual UDL"):
-        find_worst_placement(carriageways, one_set)
+        find_worst_placement(carriageways, one_set, "maximum", np.linspace(0.0, 19.0, 191), DEFAULT_SAMPLING)

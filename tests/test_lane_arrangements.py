@@ -4,8 +4,7 @@
 import pytest
 
 from setu.irc6 import (
-    CLASS_A_LANE,
-    ZONE_70R,
+    is_drawn_in_the_combinations,
     class_a_gap,
     count_design_lanes,
     fit_blocks_between,
@@ -15,6 +14,7 @@ from setu.irc6 import (
     narrowest_carriageway_that_fits,
     where_vehicle_sits_in_block,
 )
+from setu.utils.constants import CLASS_A_LANE, ZONE_70R
 
 
 @pytest.mark.parametrize(
@@ -55,13 +55,13 @@ def test_two_class_a_vehicles_need_the_tabulated_width():
     Which is exactly the width above which Table 3 gives the full 1.20 m gap -
     the two readings of the table agree at the point where they meet.
     """
-    assert narrowest_carriageway_that_fits([CLASS_A_LANE, CLASS_A_LANE]) == pytest.approx(6.10)
+    assert narrowest_carriageway_that_fits([CLASS_A_LANE, CLASS_A_LANE], 6.10) == pytest.approx(6.10)
     assert class_a_gap(6.10) == pytest.approx(1.20)
 
 
 def test_a_lone_70r_needs_only_its_own_clearances():
     """2.90 m wide plus 1.20 m either side = 5.30 m."""
-    assert narrowest_carriageway_that_fits([ZONE_70R]) == pytest.approx(5.30)
+    assert narrowest_carriageway_that_fits([ZONE_70R], 5.30) == pytest.approx(5.30)
 
 
 def test_partly_loaded_arrangements_are_included():
@@ -132,18 +132,12 @@ def test_two_70r_vehicles_are_searched_wherever_they_fit():
     "carriageway_width_m", [4.25, 5.30, 6.10, 7.50, 9.60, 11.0, 13.10, 16.60, 20.10, 23.60]
 )
 def test_nothing_that_fits_is_left_out(carriageway_width_m):
-    """With the placement rule lifted, everything that fits must be searched.
-
-    Anything that fits between the kerbs and uses no more lanes than Table 6
-    allows is a position someone could legally drive into.
-    """
+    """Everything that fits, uses no more lanes than Table 6 allows and is drawn in Table 6A must be searched."""
     from itertools import product
 
     searched = {
         tuple(arrangement.lane_pattern)
-        for arrangement in list_admissible_arrangements(
-            carriageway_width_m, follow_combination_drawings=False
-        )
+        for arrangement in list_admissible_arrangements(carriageway_width_m)
     }
 
     design_lanes = count_design_lanes(carriageway_width_m)
@@ -153,7 +147,7 @@ def test_nothing_that_fits_is_left_out(carriageway_width_m):
             lanes_used = sum(2 if block == ZONE_70R else 1 for block in pattern)
             if lanes_used <= design_lanes and fits_in_carriageway(
                 list(pattern), carriageway_width_m
-            ):
+            ) and is_drawn_in_the_combinations(pattern):
                 everything_that_fits.add(pattern)
 
     assert searched == everything_that_fits
@@ -179,21 +173,6 @@ def test_the_placement_rule_is_what_rules_a_boxed_in_70r_out():
     assert is_70r_placed_as_the_code_draws_it([CLASS_A_LANE, ZONE_70R, ZONE_70R])
     assert is_70r_placed_as_the_code_draws_it([ZONE_70R, CLASS_A_LANE, ZONE_70R])
     assert is_70r_placed_as_the_code_draws_it([ZONE_70R, CLASS_A_LANE, CLASS_A_LANE, ZONE_70R])
-
-
-def test_lifting_the_rule_only_ever_adds_cases():
-    for step in range(425, 2400, 5):
-        carriageway_width_m = step / 100.0
-        strict = {
-            tuple(a.lane_pattern) for a in list_admissible_arrangements(carriageway_width_m)
-        }
-        open_ = {
-            tuple(a.lane_pattern)
-            for a in list_admissible_arrangements(
-                carriageway_width_m, follow_combination_drawings=False
-            )
-        }
-        assert strict <= open_
 
 
 # Every band and every case of the standard combination document, as drawn.

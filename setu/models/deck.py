@@ -1,37 +1,40 @@
-from setu.irc6.constants import ROUND_TO_DECIMALS
 from setu.errors import CrossSectionError
+from setu.utils.constants import ROUND_TO_DECIMALS
 
 
 class DeckStrip:
+    # one named strip across the deck, with its edges from the left
     def __init__(self, name, width_m, z_from_m, z_to_m):
         self.name = name
         self.width_m = width_m
         self.z_from_m = z_from_m
         self.z_to_m = z_to_m
 
+    # carriageway strips carry vehicles
     def carries_traffic(self):
         return self.name.startswith("carriageway")
 
+    # footway and footpath strips carry people
     def carries_pedestrians(self):
         return self.name.startswith(("footway", "footpath"))
 
-    def to_dict(self):
-        return self.__dict__
-
-
 class Carriageway:
+    # a stretch of road between two kerbs
     def __init__(self, left_m, right_m):
         self.left_m = left_m
         self.right_m = right_m
 
+    # kerb to kerb width
     def width_m(self):
         return round(self.right_m - self.left_m, ROUND_TO_DECIMALS)
 
 
 class DeckCrossSection:
+    # the strips across the deck, left to right
     def __init__(self, strips):
         self.strips = tuple(strips)
 
+    # build the strips from {name: width}, laid out left to right
     @staticmethod
     def from_widths(widths):
         strips = []
@@ -52,28 +55,18 @@ class DeckCrossSection:
             raise CrossSectionError("cross-section has no carriageway")
         return cs
 
+    # edge to edge width of the deck
     def total_width_m(self):
         return round(sum(s.width_m for s in self.strips), ROUND_TO_DECIMALS)
 
+    # is there any road on this deck
     def has_carriageway(self):
         return any(s.carries_traffic() for s in self.strips)
 
-    def strip_named(self, name):
-        for s in self.strips:
-            if s.name.startswith(name):
-                return s
-        return None
-
+    # all the strips people walk on
     def footways(self):
         return [s for s in self.strips if s.carries_pedestrians()]
 
-    def carriageways(self, split="separate"):
-        stretches = [
-            Carriageway(left_m=s.z_from_m, right_m=s.z_to_m)
-            for s in self.strips if s.carries_traffic()
-        ]
-        if split == "separate":
-            return stretches
-        if split == "combined":
-            return [Carriageway(left_m=stretches[0].left_m, right_m=stretches[-1].right_m)]
-        raise CrossSectionError(f"split must be 'separate' or 'combined', got {split!r}")
+    # each road stretch between its kerbs
+    def carriageways(self):
+        return [Carriageway(left_m=s.z_from_m, right_m=s.z_to_m) for s in self.strips if s.carries_traffic()]

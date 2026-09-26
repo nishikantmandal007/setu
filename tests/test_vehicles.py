@@ -5,7 +5,7 @@ import numpy as np
 import pytest
 
 from setu.errors import VehicleDefinitionError, VehicleNotFoundError
-from setu.models.vehicles import (
+from setu.irc6.vehicles import (
     CLASS_70R_TRACKED,
     CLASS_70R_WHEELED,
     CLASS_A,
@@ -17,11 +17,8 @@ from setu.models.vehicles import (
     most_vehicles_that_fit,
     pitch_between_vehicles_m,
 )
-from setu.irc6 import (
-    contact_patches_at,
-    wheel_load_offsets,
-    wheel_loads_at,
-)
+from setu.helpers import DEFAULT_SAMPLING
+from setu.irc6.wheel_loads import wheel_load_offsets
 
 
 def test_class_a_is_the_tabulated_vehicle():
@@ -35,13 +32,14 @@ def test_70r_wheeled_is_the_tabulated_vehicle():
     assert len(CLASS_70R_WHEELED.axle_positions_m()) == 7
 
 
-def test_70r_tracked_spreads_its_load_over_its_tracks():
-    expected_kpa = 35.0 * 9.81 / (4.57 * 0.84)
-    assert CLASS_70R_TRACKED.contact_pressure_kpa() == pytest.approx(expected_kpa)
+def test_70r_wheel_lines_are_centred_on_their_tyre_groups():
+    """IRC:6-2017 Fig. 1: 2.79 m over the tyres, 0.86 m tyre groups; 2.90 m over 0.84 m tracks."""
+    assert CLASS_70R_WHEELED.transverse_gauge_m == pytest.approx(2.79 - 0.86)
+    assert CLASS_70R_TRACKED.transverse_gauge_m == pytest.approx(2.90 - 0.84)
 
 
 def test_every_axle_becomes_two_wheels():
-    offsets = wheel_load_offsets(CLASS_A)
+    offsets = wheel_load_offsets(CLASS_A, 0.0, DEFAULT_SAMPLING)
 
     assert len(offsets) == 2 * len(CLASS_A.axle_loads_t)
     assert offsets[:, 2].sum() == pytest.approx(CLASS_A.total_load_t() * 9.81)
@@ -49,34 +47,17 @@ def test_every_axle_becomes_two_wheels():
 
 def test_a_tracked_vehicle_keeps_its_total_load_however_it_is_sampled():
     for wearing_course_m in (0.0, 0.075, 0.15):
-        offsets = wheel_load_offsets(CLASS_70R_TRACKED, wearing_course_m)
+        offsets = wheel_load_offsets(CLASS_70R_TRACKED, wearing_course_m, DEFAULT_SAMPLING)
         assert offsets[:, 2].sum() == pytest.approx(2 * 35.0 * 9.81)
 
 
 def test_the_wearing_course_spreads_the_footprint_wider():
     """Clause 204.2: load disperses at 45 degrees on its way through surfacing."""
-    bare = wheel_load_offsets(CLASS_70R_TRACKED, 0.0)
-    through_surfacing = wheel_load_offsets(CLASS_70R_TRACKED, 0.075)
+    bare = wheel_load_offsets(CLASS_70R_TRACKED, 0.0, DEFAULT_SAMPLING)
+    through_surfacing = wheel_load_offsets(CLASS_70R_TRACKED, 0.075, DEFAULT_SAMPLING)
 
     assert np.ptp(through_surfacing[:, 0]) > np.ptp(bare[:, 0])
     assert np.ptp(through_surfacing[:, 1]) > np.ptp(bare[:, 1])
-
-
-def test_placing_a_vehicle_is_its_shape_plus_where_it_stands():
-    offsets = wheel_load_offsets(CLASS_A)
-    placed = wheel_loads_at(CLASS_A, x_front_m=7.25, z_centre_m=3.5)
-
-    for (dx, dz, load), wheel in zip(offsets, placed, strict=True):
-        assert wheel.x_m == pytest.approx(7.25 + dx)
-        assert wheel.z_m == pytest.approx(3.5 + dz)
-        assert wheel.load_kn == pytest.approx(load)
-
-
-def test_a_tracked_vehicle_puts_down_two_patches():
-    patches = contact_patches_at(CLASS_70R_TRACKED, x_front_m=0.0, z_centre_m=5.0)
-
-    assert len(patches) == 2
-    assert sum(patch.total_load_kn() for patch in patches) == pytest.approx(2 * 35.0 * 9.81)
 
 
 def test_reversing_class_a_reverses_its_axles():
@@ -145,40 +126,3 @@ def test_a_measurement_cannot_be_zero_or_negative():
 def test_the_registry_holds_the_three_standard_vehicles():
     assert set(IRC_VEHICLES) == {"Class_A", "Class_70R_Wheeled", "Class_70R_Tracked"}
     assert np.isfinite([v.total_load_t() for v in IRC_VEHICLES.values()] ).all()
-
-
-def test_the_fatigue_and_special_vehicles_are_defined_but_not_placed():
-    """Clause 204.6 and 204.5.1 - both exist, neither belongs in a lane arrangement.
-
-    The special vehicle has Clause 204.5.3's own placement regime (alone on the
-    carriageway, crawling, no impact) and the fatigue vehicle answers a different
-    question, so neither may leak into the ordinary transverse search.
-    """
-    from setu.models.vehicles import (
-        FATIGUE_VEHICLE,
-        SPECIAL_VEHICLE,
-        VEHICLES_ALLOWED_IN_BLOCK,
-        VEHICLES_OUTSIDE_LANE_ARRANGEMENTS,
-    )
-
-    placeable = {name for names in VEHICLES_ALLOWED_IN_BLOCK.values() for name in names}
-
-    assert FATIGUE_VEHICLE.name not in placeable
-    assert SPECIAL_VEHICLE.name not in placeable
-    assert set(VEHICLES_OUTSIDE_LANE_ARRANGEMENTS) == {"Fatigue_Vehicle", "Special_Vehicle"}
-    assert set(IRC_VEHICLES).isdisjoint(VEHICLES_OUTSIDE_LANE_ARRANGEMENTS)
-
-
-def test_the_special_vehicle_carries_what_clause_204_5_says():
-    from setu.models.vehicles import SPECIAL_VEHICLE
-
-    # One steering axle, two bogie axles, twenty trailer axles.
-    assert len(SPECIAL_VEHICLE.axle_loads_t) == 23
-    assert SPECIAL_VEHICLE.total_load_t() == pytest.approx(385.0)
-
-
-def test_the_fatigue_vehicle_carries_what_clause_204_6_says():
-    from setu.models.vehicles import FATIGUE_VEHICLE
-
-    assert FATIGUE_VEHICLE.axle_loads_t == (12.0, 14.0, 14.0)
-    assert FATIGUE_VEHICLE.total_load_t() == pytest.approx(40.0)

@@ -1,16 +1,19 @@
 import numpy as np
 
+from setu.utils.constants import MY_I, MY_J, MZ_I, MZ_J, N_I, N_J, T_I, T_J, VY_I, VY_J, VZ_I, VZ_J
+
 DEGREES_OF_FREEDOM = 12
-AXIAL_DOFS = (0, 6)
-TORSION_DOFS = (3, 9)
-STRONG_AXIS_SHEAR_DOFS = (1, 7)
-STRONG_AXIS_ROTATION_DOFS = (5, 11)
-WEAK_AXIS_SHEAR_DOFS = (2, 8)
-WEAK_AXIS_ROTATION_DOFS = (4, 10)
+AXIAL_DOFS = (N_I, N_J)
+TORSION_DOFS = (T_I, T_J)
+STRONG_AXIS_SHEAR_DOFS = (VY_I, VY_J)
+STRONG_AXIS_ROTATION_DOFS = (MZ_I, MZ_J)
+WEAK_AXIS_SHEAR_DOFS = (VZ_I, VZ_J)
+WEAK_AXIS_ROTATION_DOFS = (MY_I, MY_J)
 BENDING_MOMENT_ABOUT_STRONG_AXIS = STRONG_AXIS_ROTATION_DOFS[0]
 BENDING_MOMENT_ABOUT_WEAK_AXIS = WEAK_AXIS_ROTATION_DOFS[0]
 GIRDER_LOCAL_AXIS_ALONG_Z = (0.0, 0.0, 1.0)
 
+# 12x12 local stiffness of a 3D Euler beam
 def beam_stiffness_matrix(length_m, section):
     length = float(length_m)
     modulus = section.elastic_modulus_kpa
@@ -27,6 +30,7 @@ def beam_stiffness_matrix(length_m, section):
     add_bending_terms(stiffness, modulus, section.weak_axis_inertia_m4, length, shear_dofs=WEAK_AXIS_SHEAR_DOFS, rotation_dofs=WEAK_AXIS_ROTATION_DOFS, coupling_sign=-1)
     return stiffness
 
+# the bending terms for one axis into the stiffness matrix
 def add_bending_terms(stiffness, modulus, inertia_m4, length, *, shear_dofs, rotation_dofs, coupling_sign):
     shear = 12 * modulus * inertia_m4 / length ** 3
     coupling = coupling_sign * 6 * modulus * inertia_m4 / length ** 2
@@ -43,6 +47,7 @@ def add_bending_terms(stiffness, modulus, inertia_m4, length, *, shear_dofs, rot
     stiffness[rotation_i, rotation_i] = stiffness[rotation_j, rotation_j] = near_rotation
     stiffness[rotation_i, rotation_j] = stiffness[rotation_j, rotation_i] = far_rotation
 
+# 12x12 rotation from global to the beam's local axes
 def element_rotation_matrix(local_axis, along=(1.0, 0.0, 0.0)):
     x_axis = np.array(along, float)
     x_axis = x_axis / np.linalg.norm(x_axis)
@@ -56,7 +61,14 @@ def element_rotation_matrix(local_axis, along=(1.0, 0.0, 0.0)):
         rotation[starts_at:starts_at + 3, starts_at:starts_at + 3] = axes
     return rotation
 
+# which local dof is the girder's bending moment
 def moment_dof_for(local_axis):
     if tuple(local_axis) == GIRDER_LOCAL_AXIS_ALONG_Z:
         return BENDING_MOMENT_ABOUT_STRONG_AXIS
     return BENDING_MOMENT_ABOUT_WEAK_AXIS
+
+# which local dof is the girder's shear
+def shear_dof_for(local_axis):
+    if tuple(local_axis) == GIRDER_LOCAL_AXIS_ALONG_Z:
+        return STRONG_AXIS_SHEAR_DOFS[0]
+    return WEAK_AXIS_SHEAR_DOFS[0]

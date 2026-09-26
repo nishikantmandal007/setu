@@ -1,35 +1,65 @@
-def irc6_uls_recipes():
-    return {
-        "ULS-1": {"dead": 1.35, "live": 1.50},
-        "ULS-2": {"dead": 1.35, "live": 1.50, "wind": 1.15},
-        "ULS-3": {"dead": 1.35, "live": 1.50, "temperature": 0.90},
-        "ULS-4": {"dead": 1.35, "temperature": 1.50},
-        "ULS-5": {"dead": 1.35, "temperature": 1.50, "wind": 1.15},
-        "ULS-6": {"dead": 1.00, "wind": 1.50},
-        "ULS-7": {"dead": 1.35, "live": 1.50, "braking": 1.50},
-        "ULS-8": {"dead": 1.35, "seismic": 1.50},
-        "ULS-9": {"dead": 1.35, "live": 0.20, "seismic": 1.50},
-        "ULS-10": {"dead": 1.00, "live": 1.00},
-    }
+from setu.helpers import adverse_sign
+from setu.irc6.irc_constants import (
+    EACH_VARIABLE_LOAD_LEADS_IN,
+    LIVE_LOAD_OFF_ABOVE_WIND_SPEED_MPS,
+    PERMANENT_LOAD_FACTORS,
+    VARIABLE_LOAD_FACTORS,
+)
+from setu.utils.constants import LIVE, WIND
+
+IGNORED_WHEN_RELIEVING = 0.0
 
 
-def irc6_sls_recipes():
-    return {
-        "SLS-rare-1": {"dead": 1.00, "live": 1.00},
-        "SLS-rare-2": {"dead": 1.00, "live": 1.00, "wind": 0.60},
-        "SLS-rare-3": {"dead": 1.00, "live": 1.00, "temperature": 0.60},
-        "SLS-rare-4": {"dead": 1.00, "temperature": 1.00},
-        "SLS-rare-5": {"dead": 1.00, "wind": 1.00},
-        "SLS-freq-1": {"dead": 1.00, "live": 0.75},
-        "SLS-freq-2": {"dead": 1.00, "live": 0.75, "temperature": 0.50},
-        "SLS-qp-1": {"dead": 1.00},
-        "SLS-qp-2": {"dead": 1.00, "temperature": 0.50},
-    }
+class Combination:
+    # one Annex B combination: its limit state and a factor pair per load group
+    def __init__(self, name, limit_state, factors, leading=None):
+        self.name = name
+        self.limit_state = limit_state
+        self.factors = factors
+        self.leading = leading
+
+# every Annex B combination, one variable load leading at a time
+def irc6_combinations(wind_speed_at_deck_mps=None):
+    combinations = []
+    for limit_state, variable_loads in VARIABLE_LOAD_FACTORS.items():
+        if limit_state in EACH_VARIABLE_LOAD_LEADS_IN:
+            leaders = list(variable_loads)
+        else:
+            leaders = [group for group, (leading, _) in variable_loads.items() if leading is not None] or [None]
+        for leading in leaders:
+            factors = dict(PERMANENT_LOAD_FACTORS[limit_state])
+            for group, (leading_factor, accompanying_factor) in variable_loads.items():
+                factor = leading_factor if group == leading else accompanying_factor
+                factors[group] = (factor, IGNORED_WHEN_RELIEVING)
+            if too_windy_for_traffic(wind_speed_at_deck_mps) and LIVE in factors and WIND in factors:
+                del factors[LIVE if leading == WIND else WIND]
+            name = limit_state if leading is None else f"{limit_state}, {leading} leading"
+            combinations.append(Combination(name, limit_state, factors, leading))
+    return combinations
 
 
-def irc6_fatigue_recipe():
-    return {"fatigue": {"dead": 1.00, "fatigue": 1.00}}
+# over 36 m/s at deck level no live load goes with wind
+def too_windy_for_traffic(wind_speed_at_deck_mps):
+    return wind_speed_at_deck_mps is not None and wind_speed_at_deck_mps > LIVE_LOAD_OFF_ABOVE_WIND_SPEED_MPS
 
 
-def irc6_construction_recipe():
-    return {"construction": {"dead": 1.00, "construction": 1.20}}
+# a user combination: same factor whether it adds or relieves
+def custom_combination(name, factors, limit_state="custom"):
+    return Combination(name, limit_state, {group: (factor, factor) for group, factor in factors.items()})
+
+
+# factored sum for one combination, each group taking its adding or relieving factor
+def design_value(effects, combination, adverse):
+    worse_is_positive = adverse_sign(adverse)
+    shares = {}
+    for group, (adding, relieving) in combination.factors.items():
+        effect = worst_of(effects.get(group, 0.0), worse_is_positive)
+        factor = adding if worse_is_positive * effect >= 0 else relieving
+        shares[group] = factor * effect
+    return (sum(shares.values()), shares)
+
+
+# worst of a group's alternatives in this direction
+def worst_of(effect, worse_is_positive):
+    alternatives = effect if isinstance(effect, (list, tuple)) else [effect]
+    return max(alternatives, key=lambda value: worse_is_positive * value)

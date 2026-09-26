@@ -1,0 +1,36 @@
+:root, [data-md-color-scheme="default"] {
+  --md-primary-fg-color: #1d3557;
+  --md-primary-fg-color--light: #4a6d91;
+  --md-primary-fg-color--dark: #12233b;
+  --md-accent-fg-color: #1591b3;
+  --md-typeset-a-color: #2c56b3;
+}
+[data-md-color-scheme="slate"] {
+  --md-primary-fg-color: #1d3557;
+  --md-accent-fg-color: #2bb3d6;
+  --md-typeset-a-color: #8fb1ff;
+}
+
+.hide-title { display: none; }
+.hero { text-align: center; margin: 1rem 0 2rem; }
+.hero img { width: min(380px, 85%); }
+.hero .md-button { margin: .3rem .2rem; }
+.hero p { font-size: 1.15rem; color: var(--md-default-fg-color--light); margin-top: .4rem; }
+[data-md-color-scheme="default"] .only-dark, [data-md-color-scheme="slate"] .only-light { display: none !important; }
+
+.anim { border: 1px solid var(--md-default-fg-color--lightest); border-radius: 12px; padding: 12px 14px 10px; margin: 1.2rem 0; background: var(--md-code-bg-color); }
+.md-typeset .anim-svg.anim-wide { max-width: 1100px; }
+.md-typeset .anim-svg { max-width: 760px; margin: 0 auto; width: 100%; height: auto; display: block; color: var(--md-default-fg-color); font-family: var(--md-text-font-family); }
+.anim-caption { margin: .5rem 0 0; font-size: .78rem; min-height: 2.6em; color: var(--md-default-fg-color--light); }
+.anim-bar { display: flex; gap: 10px; align-items: center; margin-top: 6px; }
+.anim-button { font: inherit; font-size: .72rem; font-weight: 600; padding: 4px 12px; border-radius: 6px; border: 0; cursor: pointer;
+  background: var(--md-primary-fg-color); color: #fff; }
+.anim-scrub { flex: 1; accent-color: var(--md-accent-fg-color); }
+[data-md-color-scheme="slate"] .md-typeset .md-button:not(.md-button--primary) { color: #c9d6f5; border-color: #6f93ba; }
+[data-md-color-scheme="slate"] .md-typeset .md-button--primary { background: #2f5a86; border-color: #2f5a86; }
+.md-typeset img.diagram { display: block; width: 100%; max-width: 1000px; margin: 1.2rem auto; }
+.anim-controls { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 10px; font-size: .72rem; }
+.anim-controls span { color: var(--md-default-fg-color--light); font-weight: 600; margin-right: 2px; }
+.anim-controls span.gap { margin-left: 14px; }
+.anim-controls button { font: inherit; padding: 4px 10px; border-radius: 6px; border: 1px solid var(--md-default-fg-color--lightest); background: var(--md-default-bg-color); color: var(--md-default-fg-color); cursor: pointer; }
+.anim-controls button.on { background: var(--md-primary-fg-color); border-color: var(--md-primary-fg-color); color: #fff; }

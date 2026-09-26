@@ -1,0 +1,89 @@
+site_name: Setu
+site_description: Find the worst legal traffic on a bridge deck and the IRC design forces for every girder.
+site_url: https://nishikantmandal007.github.io/setu
+repo_url: https://github.com/nishikantmandal007/setu
+repo_name: setu
+
+theme:
+  name: material
+  logo: assets/mark-white.svg
+  favicon: assets/mark.svg
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: custom
+      accent: custom
+      toggle: { icon: material/weather-night, name: Dark mode }
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: custom
+      accent: custom
+      toggle: { icon: material/weather-sunny, name: Light mode }
+  features:
+    - navigation.instant
+    - navigation.sections
+    - navigation.top
+    - navigation.footer
+    - content.code.copy
+    - search.highlight
+
+nav:
+  - Home: index.md
+  - Getting started: getting-started.md
+  - How it works:
+      - The big picture: how-it-works/index.md
+      - Influence surfaces: how-it-works/influence-surfaces.md
+      - Finding the worst traffic: how-it-works/worst-traffic.md
+      - Dead load in stages: how-it-works/dead-load.md
+      - From forces to design values: how-it-works/design-values.md
+  - Theory:
+      - Theory and package design: theory/index.md
+      - The structural model: theory/model.md
+      - Meshing: theory/mesh.md
+      - Influence surfaces: theory/influence.md
+      - Search along the span: theory/along-span.md
+      - Search across the carriageway: theory/across.md
+      - Design values: theory/design-values.md
+      - Verification: theory/verification.md
+  - Guide:
+      - Describing a bridge: guide/inputs.md
+      - Reading the results: guide/results.md
+      - Web app: guide/web-app.md
+      - API reference: guide/api.md
+  - Codes followed: codes.md
+  - Accuracy and limits: accuracy.md
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - toc: { permalink: true }
+  - pymdownx.details
+  - pymdownx.highlight: { anchor_linenums: true }
+  - pymdownx.inlinehilite
+  - pymdownx.tabbed: { alternate_style: true }
+  - pymdownx.arithmatex: { generic: true }
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - pymdownx.superfences
+
+extra_css:
+  - stylesheets/extra.css
+extra_javascript:
+  - javascripts/vehicles.js
+  - javascripts/animations/core.js
+  - javascripts/animations/influence.js
+  - javascripts/animations/adjoint.js
+  - javascripts/animations/replay.js
+  - javascripts/animations/stages.js
+  - javascripts/animations/combination.js
+  - javascripts/animations/temperature.js
+  - javascripts/animations/mesh.js
+  - javascripts/animations/breakpoints.js
+  - javascripts/animations/trains.js
+  - javascripts/animations/lanes.js
+  - javascripts/animations/start.js
+  - javascripts/mathjax.js
+  - javascripts/vendor/mathjax-tex-svg.js
