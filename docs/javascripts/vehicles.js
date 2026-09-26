@@ -1,4 +1,4 @@
-// IRC vehicles drawn from above, to scale, in metres. One file for the docs and the web app (web/app.py serves it).
+// IRC vehicles drawn from above, to scale, in metres. One file for the docs and the web app (web/main.py serves it).
 // A vehicle's own frame: x from its front axle (the other axles lie behind it in +x), y across from its centre line.
 (() => {
   const NS = "http://www.w3.org/2000/svg";
