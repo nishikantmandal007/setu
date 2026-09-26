@@ -86,6 +86,30 @@ uv run python cli.py examples/bridge.toml          # add --plot to pop up the pl
 
 The CLI only calls setu's public API. OsdagBridge uses setu as a library: `girder_design_values`, `applied_live_loads` and `dead_load_forces(...).dataset` / `result_dataset` are the calls it needs.
 
+## Web app
+
+```bash
+uv run --with flask python web/app.py              # then open http://localhost:5000
+```
+
+A local page to run the same analysis as the CLI. Fill in the bridge, press **Analyse** and watch the progress. The results appear in plain words:
+- the largest moment, shear, reaction, deflections against their limits, and the fatigue range;
+- **Critical positions:** a top view of the deck with the vehicles drawn to scale where they stand for each girder's largest bending moment;
+- **Search replay:** an animation of the search. Each vehicle rolls along each lane, and the girder moment it causes (read off the influence surface) is drawn as it goes. Then setu's best lane arrangements roll together and the worst one wins;
+- **Girder diagrams:** bending moment, shear and deflection along one girder (stacked, with a hover readout) or every girder overlaid, for each dead stage and each critical live load;
+- **3D model:** the deck mesh, girders and braces, with the chosen force drawn as a ribbon on each girder and the wheel loads as cones;
+- a table of design values for every girder.
+
+The plots use plotly.js, loaded from a CDN, so the page needs internet access the first time.
+
+**Export CSV for MIDAS** writes that load case for a static check:
+- the vehicles, for reference;
+- every wheel as a point load, with impact and lane reduction already applied;
+- the residual lane load and the footpath load as area loads;
+- the moment setu expects MIDAS to match.
+
+The inputs come from the schema in `examples/form.html`. The app lives in `web/` and does not change setu or `cli.py`.
+
 ## Structure
 
 Each folder is one layer. A layer only imports from the layers above it.
