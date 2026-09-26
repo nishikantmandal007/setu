@@ -1,5 +1,4 @@
 from setu.errors import VehicleDefinitionError, VehicleNotFoundError
-from setu.utils.constants import GRAVITY_KN_PER_TONNE
 
 REVERSED_SUFFIX = "_reversed"
 

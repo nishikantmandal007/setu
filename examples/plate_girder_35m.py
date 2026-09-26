@@ -30,7 +30,7 @@ from setu.utils.constants import (
     KPA_PER_MPA,
     BASIC,
     BIGGER_IS_WORSE,
-    MIDSPAN_MOMENT,
+    MAX_MOMENT,
     PLAIN_TERRAIN,
     RARE,
     SEISMIC_COMBINATION,
@@ -75,10 +75,7 @@ BRIDGE = BridgeInput(
     steel=Steel(elastic_modulus_mpa=200000.0, poissons_ratio=0.3, unit_weight_kn_m3=78.5),
     concrete=Concrete(elastic_modulus_mpa=32000.0, poissons_ratio=0.2, unit_weight_kn_m3=25.0),
     wearing_course_unit_weight_kn_m3=22.0,
-    added_dead_loads=AddedDeadLoads(
-        footpath=SurfacingLayer(0.15, 24.0), kerb=SurfacingLayer(0.3, 24.0),
-        median=SurfacingLayer(0.25, 24.0), crash_barrier=SurfacingLayer(0.3, 24.0),
-    ),
+    added_dead_loads=AddedDeadLoads(footpath_kpa=3.6, kerb_kn_per_m=3.24, median_kn_per_m=3.6, crash_barrier_kn_per_m=0.0, railing_kn_per_m=0.0),
 )
 
 
@@ -86,9 +83,9 @@ WIND = WindSite(basic_wind_speed_mps=39.0, terrain=PLAIN_TERRAIN, height_m=12.0,
 SEISMIC = SeismicSite(zone="IV", soil="II", importance_factor=1.2, period_s=0.5, response_reduction=1.0)
 TEMPERATURE = TemperatureSite(shade_max_c=45.0, shade_min_c=2.0)
 COLUMNS = (
-    ("ULS sagging", MIDSPAN_MOMENT, BASIC, BIGGER_IS_WORSE),
-    ("ULS seismic", MIDSPAN_MOMENT, SEISMIC_COMBINATION, BIGGER_IS_WORSE),
-    ("SLS rare", MIDSPAN_MOMENT, RARE, BIGGER_IS_WORSE),
+    ("ULS sagging", MAX_MOMENT, BASIC, BIGGER_IS_WORSE),
+    ("ULS seismic", MAX_MOMENT, SEISMIC_COMBINATION, BIGGER_IS_WORSE),
+    ("SLS rare", MAX_MOMENT, RARE, BIGGER_IS_WORSE),
     ("ULS shear", SUPPORT_SHEAR, BASIC, SMALLER_IS_WORSE),
 )
 
@@ -105,7 +102,7 @@ def print_design_values(results) -> None:
         girder, governing = results.governing(response, limit_state, adverse)
         print(f"  Governing {title}: girder {girder}, {governing.value:.1f} ({governing.combination})")
     thermal = results.thermal
-    positive = thermal["positive difference"]
+    positive = thermal["girders"][0]["positive difference"]
     print(f"  Temperature: no girder force (free bearing); slab top {positive.slab_top_kpa / KPA_PER_MPA:.2f} MPa, "
           f"steel bottom {positive.steel_bottom_kpa / KPA_PER_MPA:.2f} MPa; bearing movement {thermal['free bearing movement m'] * 1000:.1f} mm")
 

@@ -42,11 +42,12 @@ def test_every_critical_position_gets_a_midas_csv_and_osdagbridge_gets_the_datas
     csvs = sorted((out / "midas").iterdir())
     dataset = xr.open_dataset(out / "girder_results.nc")
 
-    assert len(csvs) == 5 * 2 * 2
+    # moment, shear and reaction both ways, and the deflection, for 5 girders
+    assert len(csvs) == 5 * (3 * 2 + 1)
     assert "wheel_load_kn" in csvs[0].read_text() and "pressure_kpa" in csvs[0].read_text()
     assert dataset["forces"].dims == ("Loadcase", "Element", "Component")
-    assert len(dataset["Loadcase"]) == 3 + 5 * 2 * 2
-    assert result["critical_positions"]["girder 0"]["midspan composite moment"]["maximum"]["udl_and_footway_patches"]
+    assert len(dataset["Loadcase"]) == 4 + 5 * (3 * 2 + 1)
+    assert result["critical_positions"]["girder 0"]["maximum composite moment"]["maximum"]["udl_and_footway_patches"]
 
 
 def test_every_critical_position_is_there_and_matches_opensees(run):
@@ -55,8 +56,9 @@ def test_every_critical_position_is_there_and_matches_opensees(run):
 
     assert len(positions) == 5
     for by_response in positions.values():
-        for by_direction in by_response.values():
-            assert set(by_direction) == {"maximum", "minimum"}
+        assert set(by_response) == {"maximum composite moment", "support shear", "bearing reaction", "midspan deflection"}
+        for response, by_direction in by_response.items():
+            assert set(by_direction) == ({"maximum"} if response == "midspan deflection" else {"maximum", "minimum"})
             for position in by_direction.values():
                 assert position["solved_in_opensees"] == pytest.approx(position["live_load_response"], rel=1e-5, abs=1e-3)
                 assert position["vehicles"] and position["wheels"]
@@ -64,7 +66,7 @@ def test_every_critical_position_is_there_and_matches_opensees(run):
 
 def test_each_wheel_carries_impact_and_lane_reduction(run):
     _, result = run
-    for wheel in result["critical_positions"]["girder 1"]["midspan composite moment"]["maximum"]["wheels"]:
+    for wheel in result["critical_positions"]["girder 1"]["maximum composite moment"]["maximum"]["wheels"]:
         assert wheel["applied_kn"] == pytest.approx(wheel["wheel_load_kn"] * wheel["impact_factor"] * wheel["lane_reduction"], rel=1e-5)
         assert isinstance(wheel["on_span"], bool)
 
@@ -73,8 +75,8 @@ def test_mirror_girders_match(run):
     _, result = run
     design = result["design_values"]
 
-    assert design["girder 0"]["midspan composite moment"]["ultimate, basic"]["maximum"]["value"] == pytest.approx(
-        design["girder 4"]["midspan composite moment"]["ultimate, basic"]["maximum"]["value"], rel=1e-6)
+    assert design["girder 0"]["maximum composite moment"]["ultimate, basic"]["maximum"]["value"] == pytest.approx(
+        design["girder 4"]["maximum composite moment"]["ultimate, basic"]["maximum"]["value"], rel=1e-6)
 
 
 def test_a_typo_names_the_valid_keys(tmp_path, capsys):

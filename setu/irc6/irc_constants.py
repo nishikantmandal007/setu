@@ -68,6 +68,17 @@ FOOTWAY_LONG_SPAN_KG_M2_M = 4800.0
 FOOTWAY_WIDTH_FACTOR_BASE_M = 16.5
 FOOTWAY_WIDTH_FACTOR_DIVISOR = 15.0
 
+# Clause 204.6, Fig. 7 - the 40 t fatigue truck: axles 12, 14, 14 t at 4.5 m and 1.4 m; dual tyres 310 mm wide in 710 mm pairs,
+# 2390 mm overall so the pair centres are 1.68 m apart; one truck, single passage, outer tyre edge at least 150 mm off the kerb;
+# 50% of the clause 208 impact
+FATIGUE_TRUCK_AXLE_LOADS_T = (12.0, 14.0, 14.0)
+FATIGUE_TRUCK_AXLE_SPACING_M = (4.5, 1.4)
+FATIGUE_TRUCK_OVERALL_WIDTH_M = 2.39
+FATIGUE_TRUCK_TYRE_PAIR_WIDTH_M = 0.71
+FATIGUE_TRUCK_TYRE_WIDTH_M = 0.31
+FATIGUE_TRUCK_KERB_CLEARANCE_M = 0.15
+FATIGUE_IMPACT_SHARE = 0.5
+
 # Clause 208, Figure 9 - dynamic impact allowance for a steel bridge
 SHORTEST_TABULATED_SPAN_M = 3.0
 LONGEST_TABULATED_SPAN_M = 45.0
@@ -169,12 +180,17 @@ LIVE_LOAD_SEISMIC_FRACTION = 0.2
 METALLIC_ABOVE_SHADE_MAX_C = 15.0
 METALLIC_BELOW_SHADE_MIN_C = 10.0
 
-# Clause 215.3, Fig. 16b - temperature difference across a steel/concrete composite section (50 mm surfacing)
-FIG_16B_SLAB_DEPTHS_M = (0.2, 0.3)
-FIG_16B_POSITIVE_TOP_C = (18.0, 20.5)
-FIG_16B_POSITIVE_KINK_C = 4.0
-FIG_16B_POSITIVE_KINK_DEPTH_FRACTION = 0.6
-FIG_16B_POSITIVE_FADES_OVER_M = 0.4
+# Clause 215.3, Fig. 17b / Table 15B (same as EN 1991-1-5 Fig. 6.2b) - temperature difference across a steel/concrete composite deck.
+# Heating: dT1 at the top, dT2 at h1, 0 at h1 + h2. Cooling: dT1 at the top, 0 at h1, dT2 at h1 + h2. h1 = 0.6h, h2 = 0.4 m in both.
+# Rows are slab depth h, columns surfacing thickness; the published figure gives 50 mm, Table 15B of the draft amendment adds 100 mm.
+TABLE_15B_SLAB_DEPTHS_M = (0.2, 0.3)
+TABLE_15B_SURFACINGS_M = (0.05, 0.10)
+TABLE_15B_HEATING_DT1_C = ((18.0, 13.0), (20.5, 16.0))
+TABLE_15B_COOLING_DT1_C = ((-4.4, -3.5), (-6.8, -5.0))
+TABLE_15B_HEATING_DT2_C = 4.0
+TABLE_15B_COOLING_DT2_C = -8.0
+TEMPERATURE_H1_FRACTION_OF_SLAB = 0.6
+TEMPERATURE_H2_M = 0.4
 
 # Clause 215.4 - coefficient of thermal expansion for RCC, PSC and steel
 THERMAL_EXPANSION_PER_C = 12.0e-6

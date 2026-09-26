@@ -129,11 +129,11 @@ def test_vertical_seismic_force(seismic):
 
 def test_the_seismic_weight_is_the_whole_dead_load(seismic):
     """Slab, surfacing, footpaths and kerbs, girders and bracing: the same total the dead load puts down."""
-    from setu.loads.dead_loads import construction_stage_load, superimposed_dead_load, surfacing_load
+    from setu.loads.dead_loads import steel_self_weight_load, superimposed_dead_load, surfacing_load, wet_slab_load
 
     model, cases = seismic
-    steel_stage = construction_stage_load(model)
+    steel_stage = steel_self_weight_load(model)
     element_kn = -sum(p[0] for _, _, p in steel_stage.element_loads) * BRIDGE.span_m / (model.mesh.stations_along_span - 1)
-    nodal_kn = -sum(fy for _, _, fy, *_ in steel_stage.nodal_loads + superimposed_dead_load(model).nodal_loads + surfacing_load(model).nodal_loads)
+    nodal_kn = -sum(fy for _, _, fy, *_ in steel_stage.nodal_loads + wet_slab_load(model).nodal_loads + superimposed_dead_load(model).nodal_loads + surfacing_load(model).nodal_loads)
 
     assert cases.dead_weight_kn == pytest.approx(element_kn + nodal_kn, rel=1e-9)

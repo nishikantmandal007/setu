@@ -11,6 +11,11 @@ DECK_ELEMENT_BASE = 1000
 DECK_SECTION = 1
 GIRDER_TRANSFORM = 1
 BRACE_MATERIAL = 10
+BEARING_MATERIAL = 11
+# a bearing is a vertical spring this stiff: rigid for the analysis, and it makes the reaction an element force with an exact influence surface
+BEARING_VERTICAL_STIFFNESS_KN_PER_M = 1.0e10
+VERTICAL_DOF = 2
+ALL_FIXED = (1, 1, 1, 1, 1, 1)
 DIMENSIONS = 3
 DEGREES_OF_FREEDOM_PER_NODE = 6
 GIRDER_LOCAL_AXIS = (0.0, 0.0, 1.0)
@@ -184,8 +189,9 @@ def brace_members(bridge, model, corners, k, n):
         members.append(('bottom_chord', (corners['bottom_left'], corners['bottom_right'])))
     return members
 
-PINNED = (1, 1, 1, 0, 0, 0)
-ROLLER = (0, 1, 1, 0, 0, 0)
+# the vertical dof is left to the bearing spring
+PINNED = (1, 0, 1, 0, 0, 0)
+ROLLER = (0, 0, 1, 0, 0, 0)
 FREE_TO_MOVE_WITH_THE_DECK = (1, 0, 0, 1, 1, 1)
 
 # rigid links from each girder node up to the deck node above
@@ -203,15 +209,24 @@ def tie_braces_to_girders(ops, bridge, mesh, girder_nodes, bottom_brace_nodes, t
             ops.rigidLink('beam', girder_nodes[k, i], bottom_brace_nodes[k, n])
             ops.rigidLink('beam', girder_nodes[k, i], top_brace_nodes[k, n])
 
-# pinned at one end, roller at the other; K brace points move with the deck
-def support_the_girders(ops, bridge, mesh, girder_nodes, k_brace_nodes):
+# a stiff vertical bearing spring under each girder end, pinned along the span at one end and free at the other; K brace points move with the deck
+def support_the_girders(ops, bridge, mesh, girder_nodes, k_brace_nodes, first_free_node_tag, first_free_element_tag):
+    ops.uniaxialMaterial('Elastic', BEARING_MATERIAL, BEARING_VERTICAL_STIFFNESS_KN_PER_M)
     near_end = 0
     far_end = mesh.stations_along_span - 1
+    bearings = {}
     for k in range(bridge.girders.count):
-        ops.fix(girder_nodes[k, near_end], *PINNED)
-        ops.fix(girder_nodes[k, far_end], *ROLLER)
+        for end, restraint in ((near_end, PINNED), (far_end, ROLLER)):
+            girder_node = girder_nodes[k, end]
+            ground = first_free_node_tag + len(bearings)
+            ops.node(ground, *ops.nodeCoord(girder_node))
+            ops.fix(ground, *ALL_FIXED)
+            ops.fix(girder_node, *restraint)
+            ops.element('zeroLength', first_free_element_tag + len(bearings), ground, girder_node, '-mat', BEARING_MATERIAL, '-dir', VERTICAL_DOF)
+            bearings[k, end] = girder_node
     for tag in k_brace_nodes.values():
         ops.fix(tag, *FREE_TO_MOVE_WITH_THE_DECK)
+    return bearings
 
 
 class BridgeModel:
@@ -228,6 +243,7 @@ class BridgeModel:
         self.deck_elements = {}
         self.girder_elements = {}
         self.brace_elements = {}
+        self.bearings = {}
 
     # the numbers the influence solver needs from this model
     def as_deck_model(self):
@@ -267,7 +283,7 @@ def build_bridge_model(bridge, ops=None, load_duration=SHORT_TERM, composite=Tru
         tie_deck_to_girders(ops, mesh, deck_nodes, girder_nodes)
     tie_braces_to_girders(ops, bridge, mesh, girder_nodes, bottom_brace_nodes, top_brace_nodes)
     model.brace_elements.update(build_bracing(ops, bridge, mesh, model))
-    support_the_girders(ops, bridge, mesh, girder_nodes, k_brace_nodes)
+    model.bearings = support_the_girders(ops, bridge, mesh, girder_nodes, k_brace_nodes, max(ops.getNodeTags()) + 1, max(ops.getEleTags()) + 1)
     report_what_was_built(model)
     return model
 

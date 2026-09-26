@@ -8,26 +8,35 @@ NOTHING_BEYOND_THE_PROFILE_C = 0.0
 
 
 class ThermalStresses:
-    # primary stress through the depth, with slab and steel top and bottom picked out
-    def __init__(self, layers, stresses, slab_thickness_m):
+    # primary stress through the depth, with slab and steel top and bottom picked out, and the slab width it was worked on
+    def __init__(self, layers, stresses, slab_thickness_m, slab_width_m):
         self.layers = layers
+        self.slab_width_m = slab_width_m
         self.stresses = stresses
         depths_m = [depth_m for depth_m, _, _ in layers]
         self.slab_top_kpa = stresses[0]
         self.slab_bottom_kpa = stresses[int(np.searchsorted(depths_m, slab_thickness_m)) - 1]
         self.steel_top_kpa = stresses[int(np.searchsorted(depths_m, slab_thickness_m))]
         self.steel_bottom_kpa = stresses[-1]
-        self.girder_forces_note = "simply supported with a free bearing: no girder force from temperature, only these primary stresses"
 
-# self-balancing stresses from a temperature difference profile
-def primary_thermal_stresses(bridge, profile):
-    layers = composite_layers(bridge)
-    return ThermalStresses(layers, primary_stresses(layers, profile), bridge.deck.thickness_m)
+# self-balancing stresses in one girder's composite section from a temperature difference profile
+def primary_thermal_stresses(bridge, girder, profile):
+    slab_width_m = effective_slab_width_m(bridge, girder)
+    layers = composite_layers(bridge, slab_width_m)
+    return ThermalStresses(layers, primary_stresses(layers, profile), bridge.deck.thickness_m, slab_width_m)
 
 
-# slab (one girder spacing wide) and girder plates cut into thin layers with their moduli
-def composite_layers(bridge):
-    slab_width_m = (bridge.width_m() - 2 * bridge.deck.overhang_m) / (bridge.girders.count - 1)
+# IRC:22 clause 603.2.1: inner girder min(L/4, spacing); outer girder min(L/8, spacing/2) + min(overhang, L/8)
+def effective_slab_width_m(bridge, girder):
+    spacing_m = (bridge.width_m() - 2 * bridge.deck.overhang_m) / (bridge.girders.count - 1)
+    eighth_of_span_m = bridge.span_m / 8
+    if girder in (0, bridge.girders.count - 1):
+        return min(eighth_of_span_m, spacing_m / 2) + min(bridge.deck.overhang_m, eighth_of_span_m)
+    return min(2 * eighth_of_span_m, spacing_m)
+
+
+# the slab over its effective width and the girder plates, cut into thin layers with their moduli
+def composite_layers(bridge, slab_width_m):
     girder = bridge.girders.section
     concrete_kpa = bridge.concrete.modulus_for(SHORT_TERM, bridge.steel.elastic_modulus_kpa)
     steel_kpa = bridge.steel.elastic_modulus_kpa

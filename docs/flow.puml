@@ -13,9 +13,9 @@ start
 <size:11><color:#777>models</color></size>;
 
 partition "1  Dead load  (IRC:22 stages, un-propped)" {
-  :Steel alone: girders, bracing, wet slab
-  <size:11><color:#777>loads.construction_stage_load</color></size>;
-  :Composite, long term: kerbs, footpaths
+  :Steel alone: girders and bracing, then the wet slab
+  <size:11><color:#777>loads.steel_self_weight_load, loads.wet_slab_load</color></size>;
+  :Composite, long term: footpath (kN/m²), kerb / median / barrier / railing (kN/m)
   <size:11><color:#777>loads.superimposed_dead_load</color></size>;
   :Surfacing, kept apart
   <size:11><color:#777>loads.surfacing_load</color></size>;
@@ -25,10 +25,10 @@ partition "2  Live load  (IRC:6, every girder)" {
   :Composite model, short term
   <size:11><color:#777>builder</color></size>;
   repeat :next girder;
-    :Influence surfaces: moment, shear
+    :Influence surfaces: moment near midspan, shear, bearing reaction, deflection
     <size:11><color:#777>analysis.influence_surface</color></size>;
-    :Worst vehicles, UDL, footway, braking
-    <size:11><color:#777>analysis.critical_position, loads.braking_loads</color></size>;
+    :Worst vehicles, UDL, footway, braking; fatigue truck range
+    <size:11><color:#777>analysis.critical_position, loads.braking_loads, analysis.fatigue</color></size>;
   repeat while (more girders?) is (yes)
   -> no;
 }
@@ -36,15 +36,17 @@ partition "2  Live load  (IRC:6, every girder)" {
 partition "3  Other loads" {
   :Wind (209), seismic (SP:114), custom loads
   <size:11><color:#777>loads.wind_loads, loads.seismic_loads, loads.custom_loads</color></size>;
-  :Temperature (215): stresses and bearing movement
+  :Temperature (215): heating and cooling stresses per girder, bearing movement
   <size:11><color:#777>postprocess.thermal_stresses</color></size>;
 }
 
 partition "4  Design values" {
   :Annex B: one leading load at a time
   <size:11><color:#777>irc6.combinations</color></size>;
-  :Governing value for every girder
+  :Governing value for every girder; IRC:22 deflections
   <size:11><color:#777>postprocess.design_values</color></size>;
+  :MIDAS loads and OsdagBridge dataset
+  <size:11><color:#777>midas_loads, result_dataset</color></size>;
 }
 stop
 @enduml

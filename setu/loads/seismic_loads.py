@@ -4,7 +4,7 @@ from setu.irc6.braking import wheels_on_the_span
 from setu.irc6.irc_constants import LIVE_LOAD_SEISMIC_FRACTION
 from setu.irc6.seismic import horizontal_seismic_coefficient, vertical_seismic_coefficient
 from setu.irc6.vehicles import find_vehicle_or_its_reverse
-from setu.loads.dead_loads import bracing_weight_at_its_ends, deck_loads, surfacing_pressure_at
+from setu.loads.dead_loads import bracing_weight_at_its_ends, deck_loads, superimposed_dead_load, surfacing_load
 from setu.loads.load_builders import share_between_nodes
 from setu.loads.load_cases import LoadCase
 
@@ -37,13 +37,14 @@ def seismic_load_cases(model, site, live_critical, ops=None):
     return SeismicLoadCases(cases, sum(dead_kn.values()), sum(live_kn.values()), ah, av)
 
 
-# the whole dead weight lumped at the nodes
+# the whole dead weight lumped at the nodes: slab, SIDL, surfacing, girders and bracing
 def dead_weight_at_nodes(model, ops=None):
     ops = import_opensees() if ops is None else ops
     bridge = model.bridge
     slab_kpa = bridge.concrete.unit_weight_kn_m3 * bridge.deck.thickness_m
     weights_kn = {}
-    for node, _, fy, *_ in deck_loads(model, lambda z_m: slab_kpa + surfacing_pressure_at(model, z_m)):
+    on_the_deck = deck_loads(model, lambda z_m: slab_kpa) + superimposed_dead_load(model).nodal_loads + surfacing_load(model).nodal_loads
+    for node, _, fy, *_ in on_the_deck:
         weights_kn[node] = weights_kn.get(node, 0.0) - fy
     girder_kn_per_m = bridge.steel.unit_weight_kn_m3 * model.girder.area_m2
     for (_, i), node in model.girder_nodes.items():

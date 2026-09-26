@@ -91,21 +91,12 @@
       {"key": "poissons_ratio", "label": "Poisson's ratio", "value": 0.2, "min": 0, "max": 0.5},
       {"key": "unit_weight_kn_m3", "label": "Unit weight (kN/m3)", "value": 25.0, "min": 0}
     ]},
-    {"table": "added_dead_loads.footpath", "title": "Footpath layer", "fields": [
-      {"key": "thickness_m", "label": "Thickness (m)", "value": 0.15, "min": 0},
-      {"key": "unit_weight_kn_m3", "label": "Unit weight (kN/m3)", "value": 24.0, "min": 0}
-    ]},
-    {"table": "added_dead_loads.kerb", "title": "Kerb layer", "fields": [
-      {"key": "thickness_m", "label": "Thickness (m)", "value": 0.3, "min": 0},
-      {"key": "unit_weight_kn_m3", "label": "Unit weight (kN/m3)", "value": 24.0, "min": 0}
-    ]},
-    {"table": "added_dead_loads.median", "title": "Median layer", "fields": [
-      {"key": "thickness_m", "label": "Thickness (m)", "value": 0.25, "min": 0},
-      {"key": "unit_weight_kn_m3", "label": "Unit weight (kN/m3)", "value": 24.0, "min": 0}
-    ]},
-    {"table": "added_dead_loads.crash_barrier", "title": "Crash barrier layer", "fields": [
-      {"key": "thickness_m", "label": "Thickness (m)", "value": 0.3, "min": 0},
-      {"key": "unit_weight_kn_m3", "label": "Unit weight (kN/m3)", "value": 24.0, "min": 0}
+    {"table": "added_dead_loads", "title": "SIDL (footpath area load, the rest line loads per strip)", "fields": [
+      {"key": "footpath_kpa", "label": "Footpath (kN/m2)", "value": 3.6, "min": 0},
+      {"key": "kerb_kn_per_m", "label": "Kerb (kN/m)", "value": 3.24, "min": 0},
+      {"key": "median_kn_per_m", "label": "Median (kN/m)", "value": 3.6, "min": 0},
+      {"key": "crash_barrier_kn_per_m", "label": "Crash barrier (kN/m)", "value": 0.0, "min": 0},
+      {"key": "railing_kn_per_m", "label": "Railing (kN/m)", "value": 0.0, "min": 0}
     ]},
     {"table": "wind", "title": "Wind (IRC:6 209)", "optional": true, "fields": [
       {"key": "basic_wind_speed_mps", "label": "Basic wind speed (m/s)", "value": 39.0, "min": 20, "max": 60},

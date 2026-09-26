@@ -43,22 +43,22 @@ from setu import (
 )
 from setu.irc6.combinations import custom_combination
 from setu.irc6.seismic import horizontal_seismic_coefficient, vertical_seismic_coefficient
-from setu.irc6.temperature import temperature_difference_profile
 from setu.loads.wind_loads import wind_load_cases
 from setu.models.custom_load import CustomLoad
-from setu.models.materials import Concrete, Steel, SurfacingLayer
+from setu.models.materials import Concrete, Steel
 from setu.models.site import SeismicSite, TemperatureSite, WindSite
 from setu.loads.load_builders import applied_live_loads
 from setu.postprocess.design_values import girder_design_values, midas_loads
 from setu.postprocess.result_dataset import merge_datasets, result_dataset
-from setu.postprocess.girder_response import analyze_load_case, dead_load_forces
+from setu.postprocess.girder_response import analyze_load_case
 from setu.utils.constants import (
     BASIC,
     BIGGER_IS_WORSE,
     KPA_PER_MPA,
-    MIDSPAN_MOMENT,
+    BEARING_REACTION,
+    MAX_MOMENT,
+    MIDSPAN_DEFLECTION,
     RARE,
-    RESPONSES,
     RULE,
     SEISMIC_COMBINATION,
     SMALLER_IS_WORSE,
@@ -68,19 +68,24 @@ from setu.utils.constants import (
 
 BAD_INPUT = 2
 WHEEL_COLUMNS = ("vehicle", "train", "x_m", "z_m", "wheel_load_kn", "impact_factor", "lane_reduction", "applied_kn", "on_span")
-DIRECTIONS = (BIGGER_IS_WORSE, SMALLER_IS_WORSE)
 BRIDGE_KEYS = {"span_m", "skew", "wearing_course_unit_weight_kn_m3"}
-ADDED_DEAD_LOAD_STRIPS = ("footpath", "kerb", "median", "crash_barrier")
+# the direction each response is printed and plotted in
+WORSE_WAY = {MAX_MOMENT: BIGGER_IS_WORSE, SUPPORT_SHEAR: SMALLER_IS_WORSE, BEARING_REACTION: BIGGER_IS_WORSE, MIDSPAN_DEFLECTION: BIGGER_IS_WORSE}
+UNIT = {MAX_MOMENT: "kN·m", SUPPORT_SHEAR: "kN", BEARING_REACTION: "kN", MIDSPAN_DEFLECTION: "m"}
+# deflection is solved in m and printed in mm
+PRINTED_SCALE = {MIDSPAN_DEFLECTION: 1000.0}
+PRINTED_UNIT = {MIDSPAN_DEFLECTION: " (mm)"}
 TABLE_CLASSES = {"deck": DeckSlab, "girders.section": PlateGirderSection, "bracing": Bracing, "mesh": MeshSettings,
                  "concrete": Concrete, "steel": Steel, "wind": WindSite, "seismic": SeismicSite, "temperature": TemperatureSite,
-                 **{f"added_dead_loads.{strip}": SurfacingLayer for strip in ADDED_DEAD_LOAD_STRIPS}}
+                 "added_dead_loads": AddedDeadLoads}
 TABLES = {"bridge", "cross_section", "deck", "girders", "bracing", "mesh", "concrete", "steel", "added_dead_loads",
           "wind", "seismic", "temperature", "custom_loads", "combinations"}
 DESIGN_COLUMNS = (
-    ("ULS sagging", MIDSPAN_MOMENT, BASIC, BIGGER_IS_WORSE),
-    ("ULS seismic", MIDSPAN_MOMENT, SEISMIC_COMBINATION, BIGGER_IS_WORSE),
-    ("SLS rare", MIDSPAN_MOMENT, RARE, BIGGER_IS_WORSE),
+    ("ULS sagging", MAX_MOMENT, BASIC, BIGGER_IS_WORSE),
+    ("ULS seismic", MAX_MOMENT, SEISMIC_COMBINATION, BIGGER_IS_WORSE),
+    ("SLS rare", MAX_MOMENT, RARE, BIGGER_IS_WORSE),
     ("ULS shear", SUPPORT_SHEAR, BASIC, SMALLER_IS_WORSE),
+    ("ULS reaction", BEARING_REACTION, BASIC, BIGGER_IS_WORSE),
 )
 
 
@@ -142,7 +147,7 @@ def read_input(path):
         girders=Girders(section=build("girders.section", data), **checked("girders", girders, {"count"}, {"count"})),
         bracing=build("bracing", data), mesh=build("mesh", data),
         steel=build("steel", data), concrete=build("concrete", data),
-        added_dead_loads=AddedDeadLoads(**{strip: build(f"added_dead_loads.{strip}", data) for strip in ADDED_DEAD_LOAD_STRIPS}),
+        added_dead_loads=build("added_dead_loads", data),
         **checked("bridge", table_of(data, "bridge"), BRIDGE_KEYS, BRIDGE_KEYS),
     )
     loads = {
@@ -159,26 +164,35 @@ def read_input(path):
 
 # solve every critical position's live load in OpenSees as a check
 def checked_in_opensees(bridge, results, model):
-    midspan = model.mesh.stations_along_span // 2
     found = {}
     datasets = []
-    for (girder, response, adverse), critical in results.criticals.items():
-        surface = results.surfaces[girder, response]
+    for key, critical in results.criticals.items():
+        girder, response, adverse = key
+        surface = results.surfaces[key]
         forces = analyze_load_case(model, live_load(model, critical, surface), ops)[girder]
         datasets.append(result_dataset(model, ops, f"live, girder {girder}, {response}, {adverse}"))
-        solved = forces.composite_moment_kn_m[midspan] if response == MIDSPAN_MOMENT else forces.shear_kn[SUPPORT]
-        found[girder, response, adverse] = (surface, critical, float(solved))
+        found[key] = (surface, critical, solved_at(forces, response, results.stations[key]))
     return found, datasets
+
+
+# the response read straight off the solved girder, at the station the critical position was searched for
+def solved_at(forces, response, station):
+    if response == MAX_MOMENT:
+        return float(forces.composite_moment_kn_m[station])
+    if response == SUPPORT_SHEAR:
+        return float(forces.shear_kn[station])
+    if response == BEARING_REACTION:
+        return forces.reaction_kn
+    return float(forces.deflection_m[station])
 
 
 # design values, the OpenSees check, wind and dead load for the bridge
 def analyse(bridge, loads):
     results = girder_design_values(bridge, ops=ops, **loads)
-    dead = dead_load_forces(bridge, ops)
     model = build_bridge_model(bridge, ops)
     found, live_datasets = checked_in_opensees(bridge, results, model)
     wind = wind_load_cases(model, loads["wind"]) if loads["wind"] else None
-    return found, wind, results, dead, merge_datasets([dead.dataset, *live_datasets])
+    return found, wind, results, merge_datasets([results.dead.dataset, *live_datasets])
 
 
 # ── result.json ───────────────────────────────────────────────────────────────
@@ -203,11 +217,14 @@ def critical_to_dict(critical, solved, wheels, patches):
 
 
 # everything for result.json
-def result_to_dict(bridge, loads, found, wind, results, dead, midas):
+def result_to_dict(bridge, loads, found, wind, results, midas):
+    dead = results.dead
     midspan = len(dead.total[0].moment_kn_m) // 2
-    critical = {f"girder {girder}": {response: {adverse: critical_to_dict(found[girder, response, adverse][1], found[girder, response, adverse][2], *midas[girder, response, adverse])
-                                                for adverse in DIRECTIONS} for response in RESPONSES}
-                for girder in range(bridge.girders.count)}
+    critical = {}
+    for (girder, response, adverse), (_, position, solved) in found.items():
+        critical.setdefault(f"girder {girder}", {}).setdefault(response, {})[adverse] = {
+            "at_m": float(dead.total[girder].stations_m[results.stations[girder, response, adverse]]),
+            **critical_to_dict(position, solved, *midas[girder, response, adverse])}
     design = {f"girder {girder}": {response: {limit: {adverse: value.to_dict() for adverse, value in by_direction.items()}
                                               for limit, by_direction in by_limit.items()}
                                    for response, by_limit in by_response.items()}
@@ -217,9 +234,16 @@ def result_to_dict(bridge, loads, found, wind, results, dead, midas):
         girder, value = results.governing(response, limit, adverse)
         governing[title] = {"girder": girder, **value.to_dict()}
     dead_loads = {f"girder {girder}": {stage: {"midspan_composite_moment_kn_m": float(forces[girder].composite_moment_kn_m[midspan]),
-                                               "support_shear_kn": float(forces[girder].shear_kn[SUPPORT])}
+                                               "support_shear_kn": float(forces[girder].shear_kn[SUPPORT]),
+                                               "bearing_reaction_kn": forces[girder].reaction_kn,
+                                               "midspan_deflection_m": float(forces[girder].deflection_m[midspan])}
                                        for stage, forces in dead.stages.items()}
                   for girder in range(bridge.girders.count)}
+    fatigue = {f"girder {girder}": {response: {"range": found_range.range, "largest": found_range.largest, "smallest": found_range.smallest,
+                                               "at_m": found_range.at_m, "truck_centre_z_m": found_range.z_centre_m, "impact_factor": found_range.impact_factor,
+                                               "truck_front_x_m_at_largest": found_range.x_front_at_largest_m, "truck_front_x_m_at_smallest": found_range.x_front_at_smallest_m}
+                                    for response, found_range in by_response.items()}
+               for girder, by_response in results.fatigue.items()}
     result = {
         "bridge": {"span_m": bridge.span_m, "skew": bridge.skew, "girders": bridge.girders.count, "deck_width_m": bridge.width_m(),
                    "strips": [[s.name, s.width_m] for s in bridge.cross_section.strips]},
@@ -228,6 +252,10 @@ def result_to_dict(bridge, loads, found, wind, results, dead, midas):
         "design_values": design,
         "governing": governing,
         "dead_loads_unfactored": dead_loads,
+        "deflections_m": {f"girder {girder}": deflection for girder, deflection in results.deflections.items()},
+        "deflection_limits_m": {"live_load_and_impact": bridge.span_m / 800, "total": bridge.span_m / 600},
+        "fatigue_ranges": fatigue,
+        "live_shear_range_kn": {f"girder {girder}": value for girder, value in results.live_shear_range_kn.items()},
     }
     if wind is not None:
         result["wind"] = {"forces_kn": wind.forces_kn, "wind_speed_at_deck_mps": wind.speed_at_deck_mps}
@@ -235,17 +263,22 @@ def result_to_dict(bridge, loads, found, wind, results, dead, midas):
         result["seismic"] = {"horizontal_coefficient": horizontal_seismic_coefficient(loads["seismic"]),
                              "vertical_coefficient": vertical_seismic_coefficient(loads["seismic"]), "vertical_included": loads["seismic"].include_vertical}
     if results.thermal:
-        positive = results.thermal["positive difference"]
-        result["temperature"] = {"girder_forces": positive.girder_forces_note, "effective_range_c": results.thermal["effective range c"],
-                                 "free_bearing_movement_m": results.thermal["free bearing movement m"],
-                                 "primary_stress_kpa": {"slab_top": positive.slab_top_kpa, "slab_bottom": positive.slab_bottom_kpa,
-                                                        "steel_top": positive.steel_top_kpa, "steel_bottom": positive.steel_bottom_kpa}}
+        result["temperature"] = {"effective_range_c": results.thermal["effective range c"], "free_bearing_movement_m": results.thermal["free bearing movement m"],
+                                 "profiles_depth_m_and_c": results.thermal["profiles"],
+                                 "primary_stress_kpa": {f"girder {girder}": {kind: {"slab_top": stresses.slab_top_kpa, "slab_bottom": stresses.slab_bottom_kpa,
+                                                                                    "steel_top": stresses.steel_top_kpa, "steel_bottom": stresses.steel_bottom_kpa,
+                                                                                    "effective_slab_width_m": stresses.slab_width_m}
+                                                                             for kind, stresses in by_kind.items()}
+                                                        for girder, by_kind in results.thermal["girders"].items()},
+                                 "girder_forces": "simply supported with a free bearing: no girder force from temperature, only these primary stresses"}
     return result
 
 
-# one CSV per critical position: every wheel, then every UDL/footway patch, ready to type into MIDAS as static loads
+# one CSV per critical position (clearing any left from an earlier run): every wheel, then every UDL/footway patch, ready to type into MIDAS
 def write_midas_csvs(folder, midas):
     folder.mkdir(parents=True, exist_ok=True)
+    for old_file in folder.glob("*.csv"):
+        old_file.unlink()
     for (girder, response, adverse), (wheels, patches) in midas.items():
         with open(folder / f"girder{girder}_{response.replace(' ', '_')}_{adverse}.csv", "w", newline="") as file:
             rows = csv.writer(file)
@@ -280,10 +313,11 @@ def print_results(bridge, found, results):
     print(RULE)
     print(f" {'girder':<7}{'response':<27}{'live load':>11}{'OpenSees':>11}   lanes                     vehicles (centre z, front x)")
     for (girder, response, adverse), (_, critical, solved) in found.items():
-        if adverse != (BIGGER_IS_WORSE if response == MIDSPAN_MOMENT else SMALLER_IS_WORSE):
+        if adverse != WORSE_WAY[response]:
             continue
         vehicles = "; ".join(f"{v.vehicle_name} ({v.z_centre_m:.2f}, {v.x_front_m:.2f})" for v in critical.vehicles)
-        print(f"   {girder:<5}{response:<27}{critical.response:11.1f}{solved:11.1f}   {critical.design_lanes}×{critical.lane_reduction:<4g}{critical.lane_pattern:<21} {vehicles}")
+        shown = PRINTED_SCALE.get(response, 1.0)
+        print(f"   {girder:<5}{response + PRINTED_UNIT.get(response, ''):<27}{shown * critical.response:11.1f}{shown * solved:11.1f}   {critical.design_lanes}×{critical.lane_reduction:<4g}{critical.lane_pattern:<21} {vehicles}")
     print(RULE)
     print(f" {'girder':<7}" + "".join(f"{title:>15}" for title, *_ in DESIGN_COLUMNS) + "     design values (kN·m, kN)")
     for girder, by_response in results.girders.items():
@@ -306,7 +340,7 @@ def plot_critical(bridge, found, girder):
     import matplotlib.pyplot as plt
     import numpy as np
     figure, axes = plt.subplots(2, 1, figsize=(13, 9), constrained_layout=True)
-    for axis, response in zip(axes, (MIDSPAN_MOMENT, SUPPORT_SHEAR), strict=True):
+    for axis, response in zip(axes, (MAX_MOMENT, SUPPORT_SHEAR), strict=True):
         worst = max((found[girder, response, adverse] for adverse in (BIGGER_IS_WORSE, SMALLER_IS_WORSE)), key=lambda item: abs(item[1].response))
         surface, critical, solved = worst
         along, across = np.meshgrid(surface.length_mesh_m, surface.width_mesh_m, indexing="ij")
@@ -328,8 +362,7 @@ def plot_critical(bridge, found, girder):
         axis.set_ylim(surface.width_mesh_m[0], surface.width_mesh_m[-1])
         axis.set_xlabel("along the span (m)")
         axis.set_ylabel("across the deck from the left edge (m)")
-        unit = "kN·m" if response == MIDSPAN_MOMENT else "kN"
-        axis.set_title(f"Girder {girder} · {response}: {critical.response:.1f} {unit} ({critical.lane_pattern}) · OpenSees {solved:.1f}")
+        axis.set_title(f"Girder {girder} · {response}: {critical.response:.1f} {UNIT[response]} ({critical.lane_pattern}) · OpenSees {solved:.1f}")
         axis.legend(loc="upper right", fontsize=8)
     figure.suptitle("setu · critical vehicle position", fontweight="bold")
     return figure
@@ -342,10 +375,10 @@ def plot_design(bridge, results):
     import numpy as np
     figure, axes = plt.subplots(2, 2, figsize=(14, 9), constrained_layout=True)
     girders = list(results.girders)
-    width = 0.2
+    width = 0.8 / len(DESIGN_COLUMNS)
     for k, (title, response, limit, adverse) in enumerate(DESIGN_COLUMNS):
         values = [results.girders[g][response][limit][adverse].value for g in girders]
-        axes[0, 0].bar(np.array(girders) + (k - 1.5) * width, values, width, label=title)
+        axes[0, 0].bar(np.array(girders) + (k - (len(DESIGN_COLUMNS) - 1) / 2) * width, values, width, label=title)
     axes[0, 0].axhline(0, color="k", lw=0.6)
     axes[0, 0].set_xticks(girders)
     axes[0, 0].set_xlabel("girder")
@@ -353,13 +386,13 @@ def plot_design(bridge, results):
     axes[0, 0].set_title("Design values per girder")
     axes[0, 0].legend(fontsize=8)
 
-    girder, governing = results.governing(MIDSPAN_MOMENT, BASIC, BIGGER_IS_WORSE)
+    girder, governing = results.governing(MAX_MOMENT, BASIC, BIGGER_IS_WORSE)
     shares = {group: share for group, share in governing.shares.items() if share}
     axes[0, 1].barh(list(shares), list(shares.values()), color="tab:blue")
     axes[0, 1].set_title(f"Governing ULS sagging, girder {girder}: {governing.value:.1f} kN·m\n{governing.combination}")
     axes[0, 1].set_xlabel("factored share (kN·m)")
 
-    dead = dead_load_forces(bridge, ops)
+    dead = results.dead
     for stage, forces in dead.stages.items():
         axes[1, 0].plot(forces[girder].stations_m, forces[girder].composite_moment_kn_m, label=stage)
     axes[1, 0].plot(dead.total[girder].stations_m, dead.total[girder].composite_moment_kn_m, "k", lw=2, label="all dead load")
@@ -369,15 +402,16 @@ def plot_design(bridge, results):
     axes[1, 0].legend(fontsize=8)
 
     if results.thermal:
-        stresses = results.thermal["positive difference"]
-        depths = [depth for depth, _, _ in stresses.layers]
-        axes[1, 1].plot([s / KPA_PER_MPA for s in stresses.stresses], depths, "tab:red", label="primary stress (MPa)")
-        profile = temperature_difference_profile(bridge.deck.thickness_m)
-        axes[1, 1].plot([t for _, t in profile], [d for d, _ in profile], "tab:orange", ls="--", label="temperature difference (°C)")
+        for kind, colour in (("positive difference", "tab:red"), ("reverse difference", "tab:blue")):
+            stresses = results.thermal["girders"][girder][kind]
+            depths = [depth for depth, _, _ in stresses.layers]
+            axes[1, 1].plot([s / KPA_PER_MPA for s in stresses.stresses], depths, colour, label=f"{kind}: primary stress (MPa)")
+            profile = results.thermal["profiles"][kind]
+            axes[1, 1].plot([t for _, t in profile], [d for d, _ in profile], colour, ls="--", label=f"{kind}: temperature (°C)")
         axes[1, 1].axhline(bridge.deck.thickness_m, color="0.5", lw=0.6)
         axes[1, 1].invert_yaxis()
         axes[1, 1].set_ylabel("depth from slab top (m)")
-        axes[1, 1].set_title("Temperature (Fig. 16b, positive) through the composite section")
+        axes[1, 1].set_title(f"Temperature (Fig. 17b) through girder {girder}'s composite section")
         axes[1, 1].legend(fontsize=8)
     else:
         axes[1, 1].axis("off")
@@ -393,7 +427,7 @@ def save_plots(bridge, found, results, out_dir, pop_up):
     import matplotlib.pyplot as plt
     plots = Path(out_dir) / "plots"
     plots.mkdir(parents=True, exist_ok=True)
-    governing_girder, _ = results.governing(MIDSPAN_MOMENT, BASIC, BIGGER_IS_WORSE)
+    governing_girder, _ = results.governing(MAX_MOMENT, BASIC, BIGGER_IS_WORSE)
     figures = {"design": plot_design(bridge, results)}
     for girder in range(bridge.girders.count):
         figures[f"critical_girder_{girder}"] = plot_critical(bridge, found, girder)
@@ -423,13 +457,13 @@ def main(argv=None):
     print_summary(bridge, loads)
     print("Analysing …", end=" ", flush=True)
     started = time.time()
-    found, wind, results, dead, dataset = analyse(bridge, loads)
+    found, wind, results, dataset = analyse(bridge, loads)
     print(f"done in {time.time() - started:.1f} s")
     print_results(bridge, found, results)
     out = Path(arguments.out)
     out.mkdir(parents=True, exist_ok=True)
     midas = midas_loads(bridge, results)
-    (out / "result.json").write_text(json.dumps(result_to_dict(bridge, loads, found, wind, results, dead, midas), indent=1, default=float))
+    (out / "result.json").write_text(json.dumps(result_to_dict(bridge, loads, found, wind, results, midas), indent=1, default=float))
     write_midas_csvs(out / "midas", midas)
     dataset.to_netcdf(out / "girder_results.nc")
     save_plots(bridge, found, results, out, arguments.plot)

@@ -60,6 +60,7 @@ def cell_containing(stations_m, positions_m):
 NODE_I_COMPONENTS = slice(0, 6)
 NODE_J_COMPONENTS = slice(6, 12)
 NO_LOADS = []
+UNIT_LOAD_DOWNWARDS = [0.0, -1.0, 0.0, 0.0, 0.0, 0.0]
 STILL_AT_REST_M = 1e-12
 
 class InfluenceSolver:
@@ -88,6 +89,18 @@ class InfluenceSolver:
         self.backend.solve_with_loads(adjoint_loads)
         return self.surface_from_solved_deck(name)
 
+    # influence surface of the downward deflection of a node: the deflections under a unit load at that node
+    def for_deflection(self, name, node):
+        self.check_nothing_else_is_loading_the_model()
+        self.backend.solve_with_loads([(node, UNIT_LOAD_DOWNWARDS)])
+        return self.surface_from_solved_deck(name)
+
+    # influence surface of a bearing's upward reaction: its spring stiffness times the deflections under a unit load on the bearing
+    def for_bearing_reaction(self, name, bearing_node, bearing_stiffness_kn_per_m):
+        self.check_nothing_else_is_loading_the_model()
+        self.backend.solve_with_loads([(bearing_node, UNIT_LOAD_DOWNWARDS)])
+        return self.surface_from_solved_deck(name, bearing_stiffness_kn_per_m)
+
     # the nodal loads whose deflections are the girder force's influence surface
     def adjoint_loads_for_girder_force(self, element, weighted_dofs):
         deck = self.deck
@@ -112,10 +125,10 @@ class InfluenceSolver:
             raise ModelAlreadyLoadedError(f'the deck moves by up to {moved_m:.3e} m with no load applied, so another load pattern is still acting on the model. An influence surface read from it would include that load and be wrong. Solve influence surfaces before applying any other load case, or remove the other load pattern first.')
         self._model_was_checked = True
 
-    # read the deck deflections off the solve as a surface, then clear the loads
-    def surface_from_solved_deck(self, name):
-        surface = InfluenceSurface(values=self.deck_deflections(), length_mesh_m=self.deck.length_mesh_m, width_mesh_m=self.deck.width_mesh_m, name=name, skew=self.deck.skew)
-        surface.every_node_displacement = self.backend.every_node_displacement()
+    # read the deck deflections off the solve as a surface (times a scale, for a bearing reaction), then clear the loads
+    def surface_from_solved_deck(self, name, scale=1.0):
+        surface = InfluenceSurface(values=scale * self.deck_deflections(), length_mesh_m=self.deck.length_mesh_m, width_mesh_m=self.deck.width_mesh_m, name=name, skew=self.deck.skew)
+        surface.every_node_displacement = {node: [scale * d for d in displacements] for node, displacements in self.backend.every_node_displacement().items()}
         self.surfaces[name] = surface
         self.backend.clear_loads()
         return surface

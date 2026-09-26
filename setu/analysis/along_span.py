@@ -101,7 +101,7 @@ def positions_across_width(responses, vehicles, z_from_m, z_to_m):
     an_even_spread = np.linspace(z_from_m, z_to_m, responses.sampling.positions_across_the_deck_to_try)
     worth_sampling = [an_even_spread]
     for vehicle in vehicles:
-        worth_sampling.append(bending_positions_across_width(responses.surface, vehicle, responses.wearing_course_thickness_m, responses.sampling, z_from_m, z_to_m))
+        worth_sampling.append(bending_positions_across_width(responses.surface, wheel_load_offsets(vehicle, responses.wearing_course_thickness_m, responses.sampling), z_from_m, z_to_m))
     everywhere_m = np.unique(np.round(np.concatenate(worth_sampling), ROUND_TO_DECIMALS))
     is_on_the_deck = (everywhere_m >= z_from_m - TOLERANCE_M) & (everywhere_m <= z_to_m + TOLERANCE_M)
     return everywhere_m[is_on_the_deck]
@@ -161,8 +161,7 @@ def under_one_wheel(surface, wheel_x_m, wheel_z_m):
     return np.where(on_the_deck, influence, OFF_THE_DECK)
 
 # z positions where a wheel crosses a mesh line and the curve bends
-def bending_positions_across_width(surface, vehicle, wearing_course_thickness_m, sampling, z_from_m, z_to_m):
-    wheel_offsets = wheel_load_offsets(vehicle, wearing_course_thickness_m, sampling)
+def bending_positions_across_width(surface, wheel_offsets, z_from_m, z_to_m):
     wheel_dz_m = np.asarray(wheel_offsets, float)[:, OFFSET_DZ_M]
     stations_m = surface.width_mesh_m
     puts_a_wheel_on_a_station_m = (stations_m[None, :] - wheel_dz_m[:, None]).ravel()

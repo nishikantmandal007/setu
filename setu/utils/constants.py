@@ -18,10 +18,11 @@ BIGGER_IS_WORSE = "maximum"
 SMALLER_IS_WORSE = "minimum"
 BOTH_WAYS = (1.0, -1.0)
 
-# ── Deck strips, recognised by the start of their name (dead_loads, lanes) ───────
+# ── Deck strips, recognised by the start of their name (dead_loads, bridge) ─────
 KERB_PREFIX = "kerb"
 MEDIAN_PREFIX = "median"
 CRASH_BARRIER_PREFIX = "crash_barrier"
+RAILING_PREFIX = "railing"
 
 # ── Lane blocks and wheel offset columns (lanes, across_carriageway, along_span, wheel_loads) ──
 CLASS_A_LANE = "class_a"
@@ -68,9 +69,11 @@ PLAIN_TERRAIN = "plain"
 OBSTRUCTED_TERRAIN = "obstructed"
 
 # ── Girder responses setu gives design values for (design_values, cli) ───────────
-MIDSPAN_MOMENT = "midspan composite moment"
+MAX_MOMENT = "maximum composite moment"
 SUPPORT_SHEAR = "support shear"
-RESPONSES = (MIDSPAN_MOMENT, SUPPORT_SHEAR)
+BEARING_REACTION = "bearing reaction"
+RESPONSES = (MAX_MOMENT, SUPPORT_SHEAR, BEARING_REACTION)
+MIDSPAN_DEFLECTION = "midspan deflection"
 SUPPORT = 0
 
 # ── Printing (results, cli) ──────────────────────────────────────────────────────

@@ -8,7 +8,7 @@ skew = 0.0                  # tan of the skew angle; 0 is a square deck
 wearing_course_unit_weight_kn_m3 = 22.0
 
 [cross_section]             # strips across the deck, left to right; names start with
-footpath_left = 1.50        # footpath, kerb, carriageway, median or crash_barrier
+footpath_left = 1.50        # footpath, kerb, carriageway, median, crash_barrier or railing
 kerb_left = 0.45
 carriageway_1 = 4.50
 median = 0.60
@@ -51,22 +51,13 @@ elastic_modulus_mpa = 32000
 poissons_ratio = 0.2
 unit_weight_kn_m3 = 25.0
 
-# Layers on the non-traffic strips
-[added_dead_loads.footpath]
-thickness_m = 0.15
-unit_weight_kn_m3 = 24.0
-
-[added_dead_loads.kerb]
-thickness_m = 0.3
-unit_weight_kn_m3 = 24.0
-
-[added_dead_loads.median]
-thickness_m = 0.25
-unit_weight_kn_m3 = 24.0
-
-[added_dead_loads.crash_barrier]
-thickness_m = 0.3
-unit_weight_kn_m3 = 24.0
+# SIDL as OsdagBridge gives it: footpath as an area load, the rest as line loads along each strip's centre
+[added_dead_loads]
+footpath_kpa = 3.6           # 0.15 m at 24 kN/m3
+kerb_kn_per_m = 3.24         # 0.45 m x 0.30 m at 24 kN/m3, on each kerb strip
+median_kn_per_m = 3.6        # 0.60 m x 0.25 m at 24 kN/m3
+crash_barrier_kn_per_m = 0.0
+railing_kn_per_m = 0.0
 
 # Optional site loads - delete a table to leave that load out.
 [wind]                      # IRC:6 clause 209

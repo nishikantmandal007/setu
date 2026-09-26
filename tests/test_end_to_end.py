@@ -18,7 +18,8 @@ from setu.models.bridge import Bracing, BridgeInput, DeckSlab, Girders, MeshSett
 from setu.models.sections import PlateGirderSection
 from test_design_forces import ADDED_DEAD_LOADS, CONCRETE, STEEL
 from setu.builder.assembly import build_bridge_model as build_model
-from setu.loads.dead_loads import construction_stage_load
+from setu.loads.dead_loads import steel_self_weight_load, wet_slab_load
+from setu.loads.load_cases import LoadCase
 from setu.loads.load_cases import apply_load_case
 
 ops = pytest.importorskip("openseespy.opensees", reason="needs a finite element solver")
@@ -101,7 +102,8 @@ def built(bridge):
 
     reciprocity = _check_against_real_unit_loads(deck, surface, element, model.composite_lever_arm_m())
 
-    dead_load = construction_stage_load(model)
+    steel, slab = steel_self_weight_load(model), wet_slab_load(model)
+    dead_load = LoadCase('steel and wet slab', nodal_loads=steel.nodal_loads + slab.nodal_loads, element_loads=steel.element_loads)
     apply_load_case(dead_load, ops, pattern_tag=DEAD_LOAD_PATTERN)
     _configure_a_static_analysis()
     ops.analyze(1)
@@ -296,14 +298,15 @@ def test_the_surface_looks_like_a_bridge_influence_surface(built):
     assert np.isfinite(surface.values).all()
     assert np.abs(surface.values).max() > 0
 
-    # A load standing directly over a girder support causes no moment at all.
+    # A load standing directly over a girder support causes no moment - bar the
+    # micro-settlement of the 1e10 kN/m bearing spring, about a millionth of the peak.
+    peak = np.abs(surface.values).max()
     for girder in range(model.bridge.girders.count):
         j = model.mesh.width_station_of_girder(girder)
-        assert surface.values[0, j] == pytest.approx(0.0, abs=1e-9)
-        assert surface.values[-1, j] == pytest.approx(0.0, abs=1e-9)
+        assert abs(surface.values[0, j]) < 1e-5 * peak
+        assert abs(surface.values[-1, j]) < 1e-5 * peak
 
     # Between the girders the deck spans transversely, so a load at the support
     # line still finds its way to a girder - but only barely.
-    peak = np.abs(surface.values).max()
     assert np.abs(surface.values[0, :]).max() < 0.01 * peak
     assert np.abs(surface.values[-1, :]).max() < 0.01 * peak

@@ -107,13 +107,15 @@ def test_the_girders_are_evenly_spaced_between_the_overhangs():
 
 def test_a_crash_barrier_strip_carries_its_own_dead_load():
     # It used to match none of the named prefixes and fall through to zero, so a deck with
-    # crash barriers silently lost their weight. OsdagBridge names strips this way.
-    from setu.loads.dead_loads import surfacing_pressure_at
+    # crash barriers silently lost their weight. OsdagBridge names strips this way and loads each as a line load.
+    from setu.builder.assembly import build_bridge_model
+    from setu.loads.dead_loads import superimposed_dead_load
+    from setu.models.bridge import AddedDeadLoads
 
-    with_barriers = BridgeInput(**{**BRIDGE.__dict__, "cross_section": DeckCrossSection.from_widths({"crash_barrier_left": 0.45, "carriageway": 7.5, "crash_barrier_right": 0.45})})
-    model = SimpleNamespace(bridge=with_barriers)
+    with_barriers = BridgeInput(**{**BRIDGE.__dict__, "cross_section": DeckCrossSection.from_widths({"crash_barrier_left": 0.45, "carriageway": 7.5, "crash_barrier_right": 0.45}),
+                                   "added_dead_loads": AddedDeadLoads(0.0, 0.0, 0.0, 6.54, 0.0)})
+    model = build_bridge_model(with_barriers)
 
-    on_the_barrier = surfacing_pressure_at(model, 0.2)
+    applied_kn = -sum(fy for _, _, fy, *_ in superimposed_dead_load(model).nodal_loads)
 
-    assert on_the_barrier == with_barriers.added_dead_loads.crash_barrier.pressure_kpa
-    assert on_the_barrier > 0.0
+    assert applied_kn == pytest.approx(2 * 6.54 * with_barriers.span_m, rel=1e-9)

@@ -1,4 +1,5 @@
 from setu.models.materials import SurfacingLayer
+from setu.utils.constants import CRASH_BARRIER_PREFIX, KERB_PREFIX, MEDIAN_PREFIX, RAILING_PREFIX
 
 X_BRACING = 'X'
 X_BRACING_WITH_TOP_CHORD = 'XT'
@@ -59,12 +60,13 @@ class MeshSettings:
 
 
 class AddedDeadLoads:
-    # the layers that sit on the footpath, kerb, median and crash barrier strips
-    def __init__(self, footpath, kerb, median, crash_barrier):
-        self.footpath = footpath
-        self.kerb = kerb
-        self.median = median
-        self.crash_barrier = crash_barrier
+    # SIDL as OsdagBridge gives it: footpath as an area load (kN/m2), kerb / median / crash barrier / railing as line loads (kN/m) along each strip
+    def __init__(self, footpath_kpa, kerb_kn_per_m, median_kn_per_m, crash_barrier_kn_per_m, railing_kn_per_m):
+        self.footpath_kpa = footpath_kpa
+        self.kerb_kn_per_m = kerb_kn_per_m
+        self.median_kn_per_m = median_kn_per_m
+        self.crash_barrier_kn_per_m = crash_barrier_kn_per_m
+        self.railing_kn_per_m = railing_kn_per_m
 
 
 class BridgeInput:
@@ -82,6 +84,7 @@ class BridgeInput:
         self.concrete = concrete
         self.wearing_course_unit_weight_kn_m3 = wearing_course_unit_weight_kn_m3
         self.added_dead_loads = added_dead_loads
+        refuse_a_load_with_nowhere_to_go(cross_section, added_dead_loads)
 
     # full deck width, edge to edge
     def width_m(self):
@@ -96,3 +99,14 @@ class BridgeInput:
     @property
     def wearing_course(self):
         return SurfacingLayer(self.deck.wearing_course_thickness_m, self.wearing_course_unit_weight_kn_m3)
+
+
+# a SIDL given for a strip the cross-section doesn't have would silently vanish, so refuse it
+def refuse_a_load_with_nowhere_to_go(cross_section, added):
+    given = {"footpath": added.footpath_kpa, KERB_PREFIX: added.kerb_kn_per_m, MEDIAN_PREFIX: added.median_kn_per_m,
+             CRASH_BARRIER_PREFIX: added.crash_barrier_kn_per_m, RAILING_PREFIX: added.railing_kn_per_m}
+    has = {prefix: any(strip.name.startswith(prefix) for strip in cross_section.strips) for prefix in given}
+    has["footpath"] = bool(cross_section.footways())
+    stranded = [prefix for prefix, load in given.items() if load and not has[prefix]]
+    if stranded:
+        raise ValueError(f"added dead load given for {stranded} but the cross-section has no such strip")

@@ -15,7 +15,7 @@ from setu.builder.assembly import build_bridge_model
 from setu.loads.load_builders import live_load
 from setu.loads.load_cases import apply_load_case
 from setu.models.bridge import AddedDeadLoads, Bracing, BridgeInput, DeckSlab, Girders, MeshSettings
-from setu.models.materials import Concrete, Steel, SurfacingLayer
+from setu.models.materials import Concrete, Steel
 from setu.models.sections import PlateGirderSection
 from setu.models.deck import DeckCrossSection
 
@@ -44,16 +44,13 @@ CROSS_SECTION = DeckCrossSection.from_widths(
 
 STEEL = Steel(elastic_modulus_mpa=200000.0, poissons_ratio=0.3, unit_weight_kn_m3=78.5)
 CONCRETE = Concrete(elastic_modulus_mpa=32000.0, poissons_ratio=0.2, unit_weight_kn_m3=25.0)
-ADDED_DEAD_LOADS = AddedDeadLoads(
-    footpath=SurfacingLayer(0.15, 24.0), kerb=SurfacingLayer(0.3, 24.0),
-    median=SurfacingLayer(0.25, 24.0), crash_barrier=SurfacingLayer(0.3, 24.0),
-)
+ADDED_DEAD_LOADS = AddedDeadLoads(footpath_kpa=3.6, kerb_kn_per_m=3.24, median_kn_per_m=3.6, crash_barrier_kn_per_m=0.0, railing_kn_per_m=0.0)
 
 BRIDGE = BridgeInput(
     span_m=SPAN_M,
     skew=0.0,
     cross_section=CROSS_SECTION,
-    deck=DeckSlab(thickness_m=0.23, overhang_m=1.25, wearing_course_thickness_m=0.0),
+    deck=DeckSlab(thickness_m=0.23, overhang_m=1.25, wearing_course_thickness_m=0.075),
     girders=Girders(
         count=5,
         section=PlateGirderSection(
@@ -196,7 +193,9 @@ def test_the_live_load_gives_back_the_searched_response(built, name, adverse):
     _configure_a_static_analysis()
     directly = _live_load_response(model, critical, surfaces[name], element, component, lever)
 
-    assert directly == pytest.approx(critical.response, rel=1e-6)
+    # an axle standing exactly on the bearing line reaches the girder only through the 1e10 kN/m bearing spring,
+    # whose give is solved to about 1e-6 kN per kN - hence the 1 N absolute allowance
+    assert directly == pytest.approx(critical.response, rel=1e-6, abs=1e-3)
 
 
 def test_each_girder_gets_its_own_critical_position(built):
