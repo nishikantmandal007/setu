@@ -77,7 +77,7 @@ results = girder_design_values(
 The same analysis runs in a local web page:
 
 ```bash
-uv run --with flask python web/app.py              # open http://localhost:5000
+uv run python web/main.py              # open http://localhost:5000
 ```
 
 See [Web app](guide/web-app.md).

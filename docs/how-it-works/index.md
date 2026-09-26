@@ -9,7 +9,7 @@ Setu goes from a bridge description to design forces in five steps.
 2. **Dead load.** Self weight, the wet slab, kerbs, barriers and surfacing are applied in the order they are built, because the section that carries them changes as the bridge is built. [Read more →](dead-load.md)
 3. **Influence surfaces.** For every result it needs (the moment near midspan of girder 2, the shear at its support, and so on), Setu works out a map of the deck showing how much a 1 kN load at each point contributes. [Read more →](influence-surfaces.md)
 4. **Worst traffic.** Code vehicles are rolled over each map, in every lane arrangement the code allows, to find the position that hurts most. [Read more →](worst-traffic.md)
-5. **Design values.** Dead, traffic, wind, earthquake and temperature effects are factored and added in every IRC:6 combination. The largest is the design value. [Read more →](design-values.md)
+5. **Design values.** Dead, traffic, wind and earthquake effects are factored and added in every IRC:6 combination. The largest is the design value. Temperature gives a simply supported girder no force; Setu reports its stresses and the bearing movement instead. [Read more →](design-values.md)
 
 ## The words used in these pages
 

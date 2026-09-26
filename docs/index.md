@@ -70,7 +70,7 @@ Find the worst legal traffic on a bridge deck,<br>and the IRC design forces for 
 
     ---
 
-    A plain Python API, and a local web app with animations, plots and a CSV export for MIDAS.
+    A plain Python API, and a local web app with animations, plots and a CSV export of the critical position's loads.
 
     [:octicons-arrow-right-24: Web app](guide/web-app.md)
 

@@ -1,10 +1,10 @@
 # From forces to design values
 
-By now Setu knows, for every girder, the effect of each dead stage, of the worst traffic, and of wind, earthquake and temperature. IRC:6 Annex B says how to combine them.
+By now Setu knows, for every girder, the effect of each dead stage, of the worst traffic, and of wind and earthquake. IRC:6 Annex B says how to combine them.
 
 ## One leading load at a time
 
-Loads that come and go (traffic, wind, temperature) are unlikely to be at their worst all together. So Annex B lets **one** of them *lead* with its full factor, while the others *accompany* with a smaller factor. Setu tries each one as the leader and keeps the worst.
+Loads that come and go (traffic, wind) are unlikely to be at their worst together. So Annex B lets **one** of them *lead* with its full factor, while the others *accompany* with a smaller factor. Setu tries each one as the leader and keeps the worst. (Temperature takes part in the combinations too, but on a simply supported span with a free bearing it adds no girder force; see below.)
 
 <div class="anim" data-anim="combination"></div>
 
@@ -29,6 +29,8 @@ A_h = \frac{Z}{2}\cdot\frac{S_a/g}{R/I}
 $$
 
 but never below the Table 5.2 minimum. 20 % of the traffic is included, and the three directions combine as 100 % + 30 % + 30 %.
+
+<div class="anim" data-anim="temperature"></div>
 
 **Temperature (IRC:6 cl. 215).** A simply supported span with a free bearing expands freely, so temperature gives the girders no force. What it does give is **stress through the depth** when the slab is hotter or colder than the steel (Fig. 17b / Table 15B). Setu reports these heating and cooling stresses for each girder, and the bearing movement.
 
