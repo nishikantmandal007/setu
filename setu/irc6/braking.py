@@ -20,7 +20,7 @@ def braking_force_kn(critical_position, span_m, skew):
     return one_lane_kn + BRAKING_LANES_BEYOND_TWO_FRACTION * beyond_two_lanes_kn
 
 
-# 20% of the first train plus 5% of the ones behind it
+# 20% of the first train plus 10% of the ones behind it
 def braking_in_one_lane_kn(trains_kn):
     heaviest_first = sorted(trains_kn, reverse=True)
     return BRAKING_FIRST_TRAIN_FRACTION * heaviest_first[0] + BRAKING_FOLLOWING_TRAINS_FRACTION * sum(heaviest_first[1:])

@@ -3,8 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>setu bridge check</title>
+<title>Setu bridge check</title>
 <script src="https://cdn.jsdelivr.net/npm/plotly.js-dist-min@2.35.2/plotly.min.js" defer></script>
+<script src="/vehicles.js"></script>
 <style>
   :root {
     --bg: #f6f5f2; --panel: #ffffff; --ink: #1d1b18; --muted: #7a746c; --line: #e6e2dc; --accent: #2458d3; --accent-ink: #fff;
@@ -18,6 +19,7 @@
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif; }
   header { padding: 20px 24px 8px; display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
+  header .logo img { height: 40px; width: auto; display: block; }
   header h1 { margin: 0; font-size: 20px; letter-spacing: -.01em; }
   header p { margin: 0; color: var(--muted); }
   main { display: grid; grid-template-columns: 360px minmax(0, 1fr); gap: 20px; padding: 12px 24px 40px; align-items: start; }
@@ -95,7 +97,10 @@
 </head>
 <body>
 <header>
-  <h1>setu</h1>
+  <picture class="logo">
+    <source media="(prefers-color-scheme: dark)" srcset="/assets/logo-dark.svg">
+    <img src="/assets/logo.svg" alt="Setu">
+  </picture>
   <p>Composite plate girder bridge · IRC:6-2017 · IRC:22-2015 · IRC:SP:114-2018</p>
 </header>
 <main>
@@ -183,7 +188,7 @@ function stripsGroup(box, t) {
 
 const tomlValue = v => typeof v === "string" ? JSON.stringify(v) : String(v);
 function toml() {
-  const out = ["# written by setu web"];
+  const out = ["# written by Setu web"];
   schema.tables.forEach(t => {
     if (t.optional && !state.on[t.table]) return;
     out.push("", `[${t.table}]`);
@@ -288,6 +293,16 @@ function describeTraffic(d) {
   return `${list}${d.patches.some(p => p.kind === "residual UDL") ? " plus the residual lane load" : ""}${d.patches.some(p => p.kind === "footway") ? " plus people on the footpath" : ""}`;
 }
 
+// the design places Setu checks on every girder; the page shows one at a time
+let place = "moment";
+function placeTabs(onPick) {
+  return el("div", { className: "tabs" }, ...Object.entries(result.places).map(([key, p]) => {
+    const b = el("button", { textContent: p.label, className: key === place ? "on" : "" });
+    b.onclick = () => { place = key; onPick(); }; return b;
+  }));
+}
+const placeInfo = () => result.places[place];
+
 function girderTabs(onPick) {
   return el("div", { className: "tabs" }, ...girders().map(k => {
     const b = el("button", { textContent: girderName(k), className: k === girder ? "on" : "" });
@@ -310,8 +325,8 @@ function deckSvg(extraXs = []) {
   const svg = sv("svg", { viewBox: `${x0} -2.2 ${x1 - x0} ${W + 3.6}`, role: "img", "aria-label": "top view of the deck" });
   svg.append(sv("defs", {},
     sv("clipPath", { id: "view" }, sv("rect", { x: x0, y: -0.5, width: x1 - x0, height: W + 1 })),
-    sv("filter", { id: "soft", x: "-20%", y: "-20%", width: "140%", height: "140%" }, sv("feGaussianBlur", { stdDeviation: 0.18 })),
-    sv("linearGradient", { id: "glass", x1: 0, x2: 1 }, sv("stop", { offset: 0, "stop-color": "#cfe8ff" }), sv("stop", { offset: 1, "stop-color": "#6fa8dc" }))));
+));
+  SetuVehicles.defs(svg);
   const at = (x, z) => `${x + s * z},${z}`;
   const band = (z0, z1, fill, extra = {}) => sv("polygon", { points: [at(0, z0), at(L, z0), at(L, z1), at(0, z1)].join(" "), fill, ...extra });
   d.strips.forEach(strip => [[x0, s * strip.from_m, s * strip.to_m, x0], [L + s * strip.from_m, x1, x1, L + s * strip.to_m]].forEach(([a, b, c, e]) =>
@@ -337,51 +352,10 @@ function deckSvg(extraXs = []) {
   return { svg, layer, loads };
 }
 
-const LOOK = {
-  "Class A": { cab: "#d9480f", body: "#f6c453", edge: "#8a5a00", width: 2.0, tyre: [0.25, 0.5] },
-  "Class 70R Wheeled": { cab: "#1f4fa3", body: "#a7b1bc", edge: "#39414a", width: 2.5, tyre: [0.86, 0.86] },
-  "Class 70R Tracked": { cab: "#55652a", body: "#71833a", edge: "#2d3516", width: 2.9, tyre: [0.84, 0.84] },
-};
-const across = (a, b) => ({ x: Math.min(a, b), width: Math.abs(b - a) });
-
-// one vehicle seen from above, in its own frame: x from its front axle, y across from its centre line
+// one vehicle seen from above, drawn by the shared docs/javascripts/vehicles.js
 function vehicleSvg(v) {
-  const look = LOOK[v.name] || LOOK["Class A"], [b0, b1] = v.body_m, w = look.width, y0 = -w / 2;
-  const nose = v.heading < 0 ? b0 : b1, back = v.heading < 0 ? 1 : -1;
-  const g = sv("g", { class: "vehicle" }, sv("title", {}, `${v.name}${v.heading > 0 ? " (turned round)" : ""}\n${v.tracked ? "tracked, " : ""}`
-    + `${v.tracked ? "total" : "axle loads"} ${v.axle_loads_t.join(", ")} t\nfront axle at x = ${fmt(v.x_m, 2)} m, centre z = ${fmt(v.z_m, 2)} m\nimpact factor ${fmt(v.impact_factor, 3)}`));
-  g.append(sv("rect", { x: b0 + 0.25, y: y0 + 0.3, width: b1 - b0, height: w, rx: 0.4, fill: "#000", opacity: 0.35, filter: "url(#soft)" }));
-  if (v.tracked) {
-    const [tl, tw] = v.track_m;
-    [-1, 1].forEach(side => {
-      const y = side * v.gauge_m / 2 - tw / 2;
-      g.append(sv("rect", { x: 0, y, width: tl, height: tw, rx: 0.2, fill: "#222" }));
-      for (let x = 0.15; x < tl; x += 0.3) g.append(sv("line", { x1: x, y1: y + 0.05, x2: x, y2: y + tw - 0.05, stroke: "#555", "stroke-width": 0.06 }));
-    });
-    const inner = v.gauge_m / 2 - tw / 2 + 0.1;
-    g.append(sv("rect", { x: 0.25, y: -inner, width: tl - 0.5, height: 2 * inner, rx: 0.3, fill: look.body, stroke: look.edge, "stroke-width": 0.05 }));
-    const cx = tl * 0.55;
-    g.append(sv("line", { x1: cx, y1: 0, x2: nose - back * 1.6, y2: 0, stroke: look.edge, "stroke-width": 0.22, "stroke-linecap": "round" }));
-    g.append(sv("circle", { cx, cy: 0, r: 0.95, fill: look.cab, stroke: look.edge, "stroke-width": 0.06 }), sv("circle", { cx: cx + 0.3, cy: -0.3, r: 0.22, fill: look.edge }));
-    return g;
-  }
-  v.axles_m.forEach((x, k) => [-1, 1].forEach(side => {
-    const tw = v.axle_loads_t[k] >= 10 ? look.tyre[1] : look.tyre[0];
-    g.append(sv("rect", { x: x - 0.45, y: side * v.gauge_m / 2 - tw / 2, width: 0.9, height: tw, rx: 0.14, fill: "#1b1b1d" }));
-    if (tw > 0.4) g.append(sv("line", { x1: x - 0.45, y1: side * v.gauge_m / 2, x2: x + 0.45, y2: side * v.gauge_m / 2, stroke: "#4a4a4d", "stroke-width": 0.05 }));
-  }));
-  const cabLength = v.name === "Class A" ? 2.1 : 2.6, cabEnd = nose + back * cabLength, bedStart = cabEnd + back * 0.18, tail = v.heading < 0 ? b1 : b0;
-  g.append(sv("rect", { ...across(bedStart, tail), y: y0, height: w, rx: 0.2, fill: look.body, stroke: look.edge, "stroke-width": 0.05, opacity: 0.94 }));
-  const [lo, hi] = [Math.min(bedStart, tail), Math.max(bedStart, tail)];
-  for (let x = lo + 0.7; x < hi - 0.3; x += 0.7) g.append(sv("line", { x1: x, y1: y0 + 0.08, x2: x, y2: -y0 - 0.08, stroke: look.edge, "stroke-width": 0.03, opacity: 0.35 }));
-  if (v.name !== "Class A") g.append(sv("line", { x1: lo + 0.3, y1: 0, x2: hi - 0.3, y2: 0, stroke: look.edge, "stroke-width": 0.05, opacity: 0.4 }));
-  g.append(sv("rect", { ...across(nose, cabEnd), y: y0 + 0.05, height: w - 0.1, rx: 0.45, fill: look.cab, stroke: look.edge, "stroke-width": 0.05 }));
-  g.append(sv("rect", { ...across(nose + back * 0.25, nose + back * 0.8), y: y0 + 0.22, height: w - 0.44, rx: 0.15, fill: "url(#glass)", opacity: 0.9 }));
-  g.append(sv("rect", { ...across(nose + back * 1.0, cabEnd - back * 0.2), y: y0 + 0.35, height: w - 0.7, rx: 0.2, fill: "#fff", opacity: 0.14 }));
-  [-1, 1].forEach(side => g.append(sv("rect", { ...across(nose + back * 0.45, nose + back * 0.7), y: side * (w / 2 + 0.05) - 0.08 + (side > 0 ? 0 : 0), height: 0.16, rx: 0.05, fill: look.edge })));
-  const mid = (lo + hi) / 2;
-  g.append(sv("text", { x: mid, y: 0.2, "font-size": 0.55, "text-anchor": "middle", fill: "#2b1d00", "font-weight": 650, opacity: 0.8 }, v.name.replace("Class ", "")));
-  return g;
+  return SetuVehicles.draw(v, { title: `${v.name}${v.heading > 0 ? " (turned round)" : ""}\n${v.tracked ? "tracked, " : ""}`
+    + `${v.tracked ? "total" : "axle loads"} ${v.axle_loads_t.join(", ")} t\nfront axle at x = ${fmt(v.x_m, 2)} m, centre z = ${fmt(v.z_m, 2)} m\nimpact factor ${fmt(v.impact_factor, 3)}` });
 }
 
 function placeVehicle(v, shift = 0) {
@@ -392,48 +366,52 @@ function placeVehicle(v, shift = 0) {
 
 function deckCard() {
   return el("div", { className: "card pad deck" },
-    el("h2", {}, "Where the traffic stands for the largest bending moment"),
-    el("p", { className: "sub", id: "deck-caption" }), el("div", { id: "girder-tabs" }), el("div", { id: "deck" }),
+    el("h2", { id: "deck-title" }),
+    el("p", { className: "sub", id: "deck-caption" }), el("div", { id: "place-tabs" }), el("div", { id: "girder-tabs" }), el("div", { id: "deck" }),
     el("div", { className: "legend" },
       el("span", {}, el("i", { style: "background:var(--asphalt)" }), "carriageway"), el("span", {}, el("i", { style: "background:var(--footpath)" }), "footpath"),
       el("span", {}, el("i", { style: "background:var(--kerb)" }), "kerb / median"),
       el("span", {}, el("i", { style: "background:var(--udl);outline:1px solid var(--accent)" }), "lane load"), el("span", {}, el("i", { style: "background:var(--foot);outline:1px solid var(--ok)" }), "footpath load"),
       el("span", {}, el("i", { style: "background:var(--bad)" }), "section checked")),
     el("div", { className: "row" },
-      el("button", { className: "primary", textContent: "Export CSV for MIDAS (this girder)", onclick: () => location.href = `/midas/${job}.csv?girder=${girder}` }),
-      el("button", { textContent: "Export CSV for MIDAS (all girders)", onclick: () => location.href = `/midas/${job}.csv?girder=all` }),
+      el("button", { className: "primary", textContent: "Export CSV for MIDAS (this girder, maximum moment)", onclick: () => location.href = `/midas/${job}.csv?girder=${girder}` }),
+      el("button", { textContent: "Export CSV for MIDAS (all girders, maximum moment)", onclick: () => location.href = `/midas/${job}.csv?girder=all` }),
       el("span", { className: "sub", style: "margin:0", textContent: "Wheels as point loads (impact and lane reduction included), lane and footpath loads as area loads." })));
 }
 
 function sectionMarker(svg, at_m) {
   const d = result.drawing, zg = d.girder_lines_m[girder], x = at_m + d.skew * zg;
+  const atBearing = at_m < 0.5;
   svg.append(sv("line", { x1: x, y1: zg - 1.1, x2: x, y2: zg + 1.1, stroke: "var(--bad)", "stroke-width": 0.14 }),
-    sv("text", { x, y: -1.2, "font-size": 0.6, fill: "var(--bad)", "text-anchor": "middle", "font-weight": 700 }, `x = ${fmt(at_m, 2)} m`));
+    sv("text", { x: atBearing ? x + 0.4 : x, y: atBearing ? d.width_m + 1.1 : -1.2, "font-size": 0.6, fill: "var(--bad)", "text-anchor": atBearing ? "start" : "middle", "font-weight": 700 },
+      atBearing ? "checked at the bearing" : `x = ${fmt(at_m, 2)} m`));
 }
 
 function drawDeck() {
   $("#girder-tabs").replaceChildren(girderTabs(drawDeck));
-  const c = result.drawing.max_moment[girder];
+  $("#place-tabs").replaceChildren(placeTabs(drawDeck));
+  const c = result.drawing.places[place][girder], p = placeInfo();
+  $("#deck-title").textContent = `Where the traffic stands for the worst ${p.label.toLowerCase()}`;
   const { svg, layer, loads } = deckSvg(c.vehicles.flatMap(v => [v.from_m, v.to_m]));
   c.patches.forEach(p => loads.append(sv("polygon", { points: p.corners.map(([x, z]) => `${x},${z}`).join(" "),
     fill: p.kind === "footway" ? "var(--foot)" : "var(--udl)" }, sv("title", {}, `${p.kind}: ${fmt(p.kpa, 2)} kN/m²`))));
   c.vehicles.forEach(v => layer.append(placeVehicle(v)));
   sectionMarker(svg, c.at_m);
   $("#deck").replaceChildren(svg);
-  $("#deck-caption").textContent = `${girderName(girder)}: ${describeTraffic(c)}. Live load moment at the checked section ${fmt(c.moment_kn_m)} kN·m`
-    + ` (impact included, lane reduction ${fmt(c.lane_reduction, 2)}). Hover a vehicle for its details.`;
+  $("#deck-caption").textContent = `${girderName(girder)}: ${describeTraffic(c)}. Live load ${p.label.toLowerCase()} ${fmt(c.value, place === "deflection" ? 2 : 0)} ${p.unit}`
+    + ` (impact included, lane reduction ${fmt(c.lane_reduction, 2)}${place === "deflection" ? ", footway left out as IRC:22 allows" : ""}). Hover a vehicle for its details.`;
 }
 
-// ── search replay: every vehicle rolled along every lane, then setu's best arrangements ──
+// ── search replay: every vehicle rolled along every lane, then Setu's best arrangements ──
 const HOLD = 18;
 let replay = null;
 
 function replayCard() {
   return el("div", { className: "card pad" },
-    el("h2", {}, "How setu finds the worst place for the traffic"),
-    el("p", { className: "sub" }, "↺ = vehicle turned round, c/w = carriageway. Each vehicle is rolled along each lane; the line shows the bending moment it makes in the chosen girder at every position (read off the girder's influence surface). "
-      + "Then setu's best lane arrangements are rolled together, and the worst one wins. The bars add the lane load and footpath load to the arrangements."),
-    el("div", { id: "girder-tabs" }),
+    el("h2", {}, "How Setu finds the worst place for the traffic"),
+    el("p", { className: "sub" }, "↺ = vehicle turned round, c/w = carriageway. Pick a result and a girder: Setu searches every one. Each vehicle is rolled along each lane; the line shows the effect it makes at that place at every position (read off the girder's influence surface). "
+      + "Then Setu's best lane arrangements are rolled together, and the worst one wins. Arrangement bars include the lane reduction and the lane and footpath loads."),
+    el("div", { id: "place-tabs" }), el("div", { id: "girder-tabs" }),
     el("div", { id: "replay-deck", className: "deck" }),
     el("div", { className: "player" },
       el("button", { id: "play", className: "primary", textContent: "❚❚ Pause" }),
@@ -445,11 +423,12 @@ function replayCard() {
 
 function startReplay() {
   $("#girder-tabs").replaceChildren(girderTabs(() => { stopReplay(); showTab(); }));
-  const r = result.replay[girder], trials = r.trials;
+  $("#place-tabs").replaceChildren(placeTabs(() => { stopReplay(); showTab(); }));
+  const r = result.replay[place][girder], trials = r.trials;
   const starts = [];
   let total = 0;
   trials.forEach(t => { starts.push(total); total += t.shifts.length + HOLD; });
-  const all = trials.flatMap(t => t.vehicles.flatMap(v => [v.from_m + Math.min(...t.shifts), v.to_m + Math.max(...t.shifts)]));
+  const all = trials.flatMap(t => t.vehicles.flatMap(v => [v.from_m - Math.max(...t.shifts), v.to_m + Math.max(...t.shifts)]));
   const { svg, layer } = deckSvg([Math.max(-8, Math.min(...all)), Math.min(result.bridge.span_m + 8, Math.max(...all))]);
   sectionMarker(svg, r.at_m);
   $("#replay-deck").replaceChildren(svg);
@@ -481,13 +460,14 @@ function tickReplay(now) {
 }
 
 function traceLayout() {
-  return plotLayout({ title: { text: `Moment in G${girder} as the vehicles roll`, font: { size: 13 } }, showlegend: false, margin: { l: 60, r: 16, t: 36, b: 44 },
-    xaxis: axis({ title: "front axle of the first vehicle, x (m)", range: [-10, result.bridge.span_m + 10] }), yaxis: axis({ title: "kN·m", rangemode: "tozero" }) });
+  const p = placeInfo();
+  return plotLayout({ title: { text: `${p.label} in G${girder} as the vehicles roll${place === "shear" ? " (magnitude)" : ""}`, font: { size: 13 } }, showlegend: false, margin: { l: 60, r: 16, t: 36, b: 44 },
+    xaxis: axis({ title: "front axle of the first vehicle, x (m)", range: [-10, result.bridge.span_m + 10] }), yaxis: axis({ title: p.unit, rangemode: "tozero" }) });
 }
 
 function raceLayout() {
-  return plotLayout({ title: { text: "What was tried (largest moment each)", font: { size: 13 } }, showlegend: false, margin: { l: 200, r: 60, t: 36, b: 40 },
-    xaxis: axis({ title: "kN·m", rangemode: "tozero" }), yaxis: axis({ autorange: "reversed", automargin: true, tickfont: { size: 11 } }), bargap: 0.25 });
+  return plotLayout({ title: { text: "What was tried (largest effect of each)", font: { size: 13 } }, showlegend: false, margin: { l: 200, r: 60, t: 36, b: 40 },
+    xaxis: axis({ title: placeInfo().unit, rangemode: "tozero" }), yaxis: axis({ autorange: "reversed", automargin: true, tickfont: { size: 11 } }), bargap: 0.25 });
 }
 
 function renderReplay() {
@@ -502,32 +482,32 @@ function renderReplay() {
     replay.layer.replaceChildren(...t.vehicles.map(v => vehicleSvg(v)));
     replay.shown = k;
   }
-  [...replay.layer.children].forEach((g, n) => g.setAttribute("transform", `translate(${t.vehicles[n].x_m + t.shifts[idx]},${t.vehicles[n].z_m})`));
-  const x0 = t.vehicles[0].x_m;
-  const done = trials.slice(0, k).map((p, n) => ({ x: p.shifts.map(s => s + p.vehicles[0].x_m), y: p.moments, mode: "lines", hoverinfo: "skip",
+  [...replay.layer.children].forEach((g, n) => g.setAttribute("transform", `translate(${t.vehicles[n].x_m + t.vehicles[n].heading * t.shifts[idx]},${t.vehicles[n].z_m})`));
+  const x0 = t.vehicles[0].x_m, h0 = t.vehicles[0].heading;
+  const done = trials.slice(0, k).map((p, n) => ({ x: p.shifts.map(s => p.vehicles[0].x_m + p.vehicles[0].heading * s), y: p.moments, mode: "lines", hoverinfo: "skip",
     line: { width: 1.2, color: p.kind === "arrangement" ? "rgba(36,88,211,.35)" : "rgba(128,128,128,.35)" } }));
   const upto = Math.min(idx + 1, t.shifts.length);
   const running = t.moments.slice(0, rolling ? upto : t.moments.length);
   const best = running.indexOf(Math.max(...running));
   const colour = t.winner ? css("--ok") : t.kind === "arrangement" ? css("--accent") : css("--truck-edge");
   Plotly.react("trace", [...done,
-    { x: t.shifts.slice(0, running.length).map(s => s + x0), y: running, mode: "lines", line: { width: 3, color: colour }, hovertemplate: "x %{x:.1f} m<br>%{y:,.0f} kN·m<extra></extra>" },
-    { x: [t.shifts[best] + x0], y: [running[best]], mode: "markers+text", marker: { size: 11, color: colour, line: { width: 2, color: "#fff" } },
+    { x: t.shifts.slice(0, running.length).map(s => x0 + h0 * s), y: running, mode: "lines", line: { width: 3, color: colour }, hovertemplate: `x %{x:.1f} m<br>%{y:,.2f} ${placeInfo().unit}<extra></extra>` },
+    { x: [x0 + h0 * t.shifts[best]], y: [running[best]], mode: "markers+text", marker: { size: 11, color: colour, line: { width: 2, color: "#fff" } },
       text: [`peak ${fmt(running[best])}`], textposition: "top center", textfont: { color: colour, size: 12 }, hoverinfo: "skip" },
-    { x: [t.shifts[idx] + x0], y: [t.moments[idx]], mode: "markers", marker: { size: 8, color: css("--ink") }, hoverinfo: "skip" }], traceLayout());
+    { x: [x0 + h0 * t.shifts[idx]], y: [t.moments[idx]], mode: "markers", marker: { size: 8, color: css("--ink") }, hoverinfo: "skip" }], traceLayout());
   const raced = finished ? k + 1 : rolling ? k : k + 1;
   if (replay.raceShown !== raced) {
     replay.raceShown = raced;
     const bars = trials.slice(0, raced);
     Plotly.react("race", [{ type: "bar", orientation: "h", y: bars.map(b => b.label), x: bars.map(b => b.total),
       marker: { color: bars.map(b => b.winner ? css("--ok") : b.kind === "arrangement" ? css("--accent") : css("--kerb")) },
-      text: bars.map(b => fmt(b.total)), textposition: "outside", cliponaxis: false,
-      hovertext: bars.map(b => b.kind === "arrangement" ? `vehicles ${fmt(b.peak)} kN·m (lane reduction ${fmt(b.lane_reduction, 2)}) + lane and footpath load = ${fmt(b.total)} kN·m` : `${fmt(b.total)} kN·m`),
+      text: bars.map(b => fmt(b.total, place === "deflection" ? 1 : 0)), textposition: "outside", cliponaxis: false,
+      hovertext: bars.map(b => b.kind === "arrangement" ? `vehicles ${fmt(b.peak, 2)} ${placeInfo().unit} (lane reduction ${fmt(b.lane_reduction, 2)}) + lane and footpath load = ${fmt(b.total, 2)} ${placeInfo().unit}` : `${fmt(b.total, 2)} ${placeInfo().unit}`),
       hoverinfo: "text" }], { ...raceLayout(), height: Math.max(260, 60 + 26 * trials.length) });
   }
   $("#trying").replaceChildren(finished
-    ? el("span", {}, el("b", { className: "pass", textContent: "Critical position found: " }), `${t.label.replace("Critical: ", "")} — ${fmt(t.total)} kN·m in G${girder} with lane and footpath load. This is the layout shown under Critical positions.`)
-    : el("span", {}, el("b", { textContent: `${k + 1} / ${trials.length} · ` }), `${t.label} — moment now ${fmt(t.moments[idx])} kN·m, best so far ${fmt(Math.max(...running))} kN·m`));
+    ? el("span", {}, el("b", { className: "pass", textContent: "Critical position found: " }), `${t.label.replace("Critical: ", "")} — ${fmt(t.total, place === "deflection" ? 2 : 0)} ${placeInfo().unit} (${placeInfo().label.toLowerCase()}) in G${girder}. This is the layout shown under Critical positions.`)
+    : el("span", {}, el("b", { textContent: `${k + 1} / ${trials.length} · ` }), `${t.label} — now ${fmt(t.moments[idx], place === "deflection" ? 2 : 0)} ${placeInfo().unit}, best so far ${fmt(Math.max(...running), place === "deflection" ? 2 : 0)} ${placeInfo().unit}`));
 }
 
 // ── girder diagrams (like OsdagBridge: one girder stacked, or every girder overlaid) ──
@@ -558,7 +538,7 @@ function plotControls(redraw, withQty) {
 
 function diagramCard() {
   return el("div", { className: "card pad" }, el("h2", {}, "Bending moment, shear and deflection along the girders"),
-    el("p", { className: "sub" }, "Unfactored forces from setu's model. Live cases are each girder's critical traffic, solved in OpenSees. Sagging moment is drawn below the axis, as on paper. Hover to read values at any point."),
+    el("p", { className: "sub" }, "Unfactored forces from Setu's model. Live cases are each girder's critical traffic, solved in OpenSees. Sagging moment is drawn below the axis, as on paper. Hover to read values at any point."),
     plotControls(drawDiagrams, false), el("div", { id: "readout", className: "readout" }), el("div", { id: "diagram", className: "plot tall" }));
 }
 
@@ -602,7 +582,7 @@ function drawDiagrams() {
 // ── 3D model: deck mesh, girders, braces and force ribbons (like OsdagBridge's 3D view) ──
 function modelCard() {
   return el("div", { className: "card pad" }, el("h2", {}, "3D model with force diagrams"),
-    el("p", { className: "sub" }, "The deck mesh setu analyses, the girders and braces under it, and the chosen force drawn as a ribbon on each girder. Drag to turn, scroll to zoom. Cones are the wheel loads of a live case."),
+    el("p", { className: "sub" }, "The deck mesh Setu analyses, the girders and braces under it, and the chosen force drawn as a ribbon on each girder. Drag to turn, scroll to zoom. Cones are the wheel loads of a live case."),
     plotControls(drawModel, true), el("div", { id: "model", className: "plot tall" }));
 }
 
@@ -668,7 +648,7 @@ function tableCard() {
       el("td", { textContent: fmt(1000 * df.live_m, 1) }), el("td", { textContent: fmt(1000 * df.total_m, 1) }), el("td", { textContent: fmt(result.fatigue_ranges[`girder ${k}`][M].range) }));
   });
   return el("div", { className: "card pad" }, el("h2", {}, "Design values, all girders"),
-    el("p", { className: "sub" }, "ULS = strength check with load factors; SLS rare = working loads. Shear is negative by setu's sign convention."),
+    el("p", { className: "sub" }, "ULS = strength check with load factors; SLS rare = working loads. Shear is negative by Setu's sign convention."),
     el("div", { className: "scroll" }, el("table", {}, el("tr", {}, ...head.map(t => el("th", { textContent: t }))), ...rows)));
 }
 
