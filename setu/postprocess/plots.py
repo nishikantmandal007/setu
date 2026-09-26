@@ -1,7 +1,10 @@
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
+MM_PER_M = 1000
 
+
+# bending moment along a girder
 def plot_bending_moment(forces):
     fig = go.Figure()
     fig.add_trace(go.Scatter(
@@ -17,6 +20,7 @@ def plot_bending_moment(forces):
     return fig
 
 
+# shear along a girder
 def plot_shear_force(forces):
     fig = go.Figure()
     fig.add_trace(go.Scatter(
@@ -31,6 +35,7 @@ def plot_shear_force(forces):
     return fig
 
 
+# torsion along a girder
 def plot_torsion(forces):
     fig = go.Figure()
     fig.add_trace(go.Scatter(
@@ -45,10 +50,11 @@ def plot_torsion(forces):
     return fig
 
 
+# deflection along a girder, in mm
 def plot_deflection(deflections):
     fig = go.Figure()
     fig.add_trace(go.Scatter(
-        x=deflections.stations_m, y=deflections.vertical_m * 1000,
+        x=deflections.stations_m, y=deflections.vertical_m * MM_PER_M,
         mode="lines", name="Deflection",
         fill="tozeroy",
     ))
@@ -59,6 +65,7 @@ def plot_deflection(deflections):
     return fig
 
 
+# moment, shear, torsion and deflection stacked
 def plot_girder_summary(forces, deflections):
     fig = make_subplots(
         rows=4, cols=1, shared_xaxes=True,
@@ -81,7 +88,7 @@ def plot_girder_summary(forces, deflections):
         mode="lines", name="Torsion (kN·m)", fill="tozeroy",
     ), row=3, col=1)
     fig.add_trace(go.Scatter(
-        x=deflections.stations_m, y=deflections.vertical_m * 1000,
+        x=deflections.stations_m, y=deflections.vertical_m * MM_PER_M,
         mode="lines", name="Deflection (mm)", fill="tozeroy",
     ), row=4, col=1)
     fig.update_yaxes(title_text="kN·m", autorange="reversed", row=1, col=1)
@@ -93,6 +100,7 @@ def plot_girder_summary(forces, deflections):
     return fig
 
 
+# envelope coloured by the governing case
 def plot_envelope(envelope):
     cases = list(set(envelope.governing_case))
     colors = _case_colors(cases)
@@ -115,6 +123,7 @@ def plot_envelope(envelope):
     return fig
 
 
+# a colour per load case
 def _case_colors(cases):
     palette = [
         "#1f77b4", "#ff7f0e", "#2ca02c", "#d62728",

@@ -2,7 +2,8 @@ import numpy as np
 from setu.errors import OtherLoadsStillActiveError
 from setu.solver.backend import configure_linear_static
 from setu.loads.load_cases import apply_load_case
-from setu.loads.dead_loads import construction_stage_load, superimposed_dead_load, surfacing_load, whole_dead_load
+from setu.helpers import import_opensees
+from setu.loads.dead_loads import construction_stage_load, superimposed_dead_load, surfacing_load
 from setu.utils.constants import (
     DEAD,
     SURFACING,
@@ -15,7 +16,6 @@ from setu.utils.constants import (
     N_J,
     T_I,
     T_J,
-    UNPROPPED,
     VY_I,
     VY_J,
 )
@@ -25,6 +25,7 @@ from setu.utils.constants import (
 
 class GirderForces:
 
+    # internal forces along one girder
     def __init__(self, stations_m, moment_kn_m, shear_kn, torsion_kn_m, axial_kn, composite_lever_arm_m=0.0):
         self.stations_m = np.asarray(stations_m, float)
         self.moment_kn_m = np.asarray(moment_kn_m, float)
@@ -33,6 +34,7 @@ class GirderForces:
         self.axial_kn = np.asarray(axial_kn, float)
         self.composite_lever_arm_m = composite_lever_arm_m
 
+    # steel moment plus the axial couple about the slab
     @property
     def composite_moment_kn_m(self):
         return self.moment_kn_m + self.composite_lever_arm_m * self.axial_kn
@@ -40,11 +42,13 @@ class GirderForces:
 
 class GirderDeflections:
 
+    # vertical deflection along one girder
     def __init__(self, stations_m, vertical_m):
         self.stations_m = np.asarray(stations_m, float)
         self.vertical_m = np.asarray(vertical_m, float)
 
 
+# read one girder's internal forces off the solved model
 def girder_forces(model, girder_index, ops):
     n_stations = model.mesh.stations_along_span
     n_elements = n_stations - 1
@@ -67,6 +71,7 @@ def girder_forces(model, girder_index, ops):
     return GirderForces(stations_m, moment, shear, torsion, axial, composite_lever_arm_m=model.composite_lever_arm_m())
 
 
+# read one girder's deflections off the solved model
 def girder_deflections(model, girder_index, ops):
     n_stations = model.mesh.stations_along_span
     stations_m = np.array(model.mesh.length_mesh_m, float)
@@ -77,6 +82,7 @@ def girder_deflections(model, girder_index, ops):
     return GirderDeflections(stations_m, vertical)
 
 
+# support reactions at both ends of every girder
 def reactions(model, ops):
     ops.reactions()
     n_stations = model.mesh.stations_along_span
@@ -88,6 +94,7 @@ def reactions(model, ops):
     return result
 
 
+# solve one load case and read every girder's forces
 def analyze_load_case(model, load_case, ops, pattern_tag=None):
     tag = pattern_tag if pattern_tag is not None else LOAD_CASE_PATTERN_BASE
     already_loading = ops.getPatterns()
@@ -108,23 +115,27 @@ def analyze_load_case(model, load_case, ops, pattern_tag=None):
     return results
 
 
-STAGE_IS_FACTORED_AS = {"construction": DEAD, "superimposed": DEAD, "dead": DEAD, "surfacing": SURFACING}
+STAGE_IS_FACTORED_AS = {"construction": DEAD, "superimposed": DEAD, "surfacing": SURFACING}
 
 
 class DeadLoadForces:
+    # girder forces from each dead load stage, and their total
     def __init__(self, stages):
         self.stages = stages
         self.total = self.factored({DEAD: 1.0, SURFACING: 1.0})
 
+    # stages added up, each with its dead or surfacing factor
     def factored(self, factors):
         girders = next(iter(self.stages.values())).keys()
         return {girder: sum_of(scaled(forces[girder], factors[STAGE_IS_FACTORED_AS[name]]) for name, forces in self.stages.items()) for girder in girders}
 
 
+# girder forces times a factor
 def scaled(forces, factor):
     return GirderForces(forces.stations_m, factor * forces.moment_kn_m, factor * forces.shear_kn, factor * forces.torsion_kn_m, factor * forces.axial_kn, composite_lever_arm_m=forces.composite_lever_arm_m)
 
 
+# girder forces added up
 def sum_of(girder_forces):
     girder_forces = list(girder_forces)
     first = girder_forces[0]
@@ -138,17 +149,13 @@ def sum_of(girder_forces):
     )
 
 
+# un-propped dead load: steel stage, then long term composite SIDL and surfacing
 def dead_load_forces(bridge, ops=None):
     from setu.builder.assembly import build_bridge_model
-    from setu.solver.backend import import_opensees
     ops = import_opensees() if ops is None else ops
-    if bridge.construction == UNPROPPED:
-        steel = build_bridge_model(bridge, ops, composite=False)
-        construction = analyze_load_case(steel, construction_stage_load(steel, ops=ops), ops)
-        composite = build_bridge_model(bridge, ops, load_duration=LONG_TERM)
-        superimposed = analyze_load_case(composite, superimposed_dead_load(composite), ops)
-        surfacing = analyze_load_case(composite, surfacing_load(composite), ops)
-        return DeadLoadForces({"construction": construction, "superimposed": superimposed, "surfacing": surfacing})
+    steel = build_bridge_model(bridge, ops, composite=False)
+    construction = analyze_load_case(steel, construction_stage_load(steel, ops), ops)
     composite = build_bridge_model(bridge, ops, load_duration=LONG_TERM)
-    dead = analyze_load_case(composite, whole_dead_load(composite, ops), ops)
-    return DeadLoadForces({"dead": dead, "surfacing": analyze_load_case(composite, surfacing_load(composite), ops)})
+    superimposed = analyze_load_case(composite, superimposed_dead_load(composite), ops)
+    surfacing = analyze_load_case(composite, surfacing_load(composite), ops)
+    return DeadLoadForces({"construction": construction, "superimposed": superimposed, "surfacing": surfacing})

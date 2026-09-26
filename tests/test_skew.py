@@ -26,7 +26,7 @@ LIVE_LOAD_PATTERN = 100
 
 @pytest.fixture(scope="module")
 def skewed():
-    bridge = BridgeInput(span_m=SPAN_M, skew=SKEW, cross_section=CROSS_SECTION, deck=BRIDGE.deck, girders=BRIDGE.girders, bracing=BRIDGE.bracing, mesh=BRIDGE.mesh)
+    bridge = BridgeInput(**{**BRIDGE.__dict__, "skew": SKEW})
     model = build_bridge_model(bridge)
     element = model.midspan_element_of_girder(1)
     surface = InfluenceSolver(model.as_deck_model()).for_girder_moment("skewed, girder 1 midspan", element)

@@ -1,7 +1,7 @@
 import itertools
 
 from setu.analysis.critical_position import find_critical_position
-from setu.helpers import adverse_sign
+from setu.helpers import adverse_sign, import_opensees
 from setu.analysis.influence_surface import InfluenceSolver, response_to_load_case
 from setu.builder.assembly import build_bridge_model
 from setu.irc6.combinations import design_value, irc6_combinations
@@ -14,51 +14,56 @@ from setu.loads.seismic_loads import seismic_load_cases
 from setu.loads.wind_loads import wind_load_cases
 from setu.postprocess.girder_response import analyze_load_case, dead_load_forces
 from setu.postprocess.thermal_stresses import free_bearing_movement_m, primary_thermal_stresses
-from setu.solver.backend import import_opensees
 from setu.utils.constants import (
     BIGGER_IS_WORSE,
+    BOTH_WAYS,
     DEAD,
     LIVE,
     MIDSPAN_MOMENT,
+    RESPONSES,
     SEISMIC,
     SMALLER_IS_WORSE,
+    SUPPORT,
     SUPPORT_SHEAR,
     SURFACING,
     WIND,
 )
 
-RESPONSES = (MIDSPAN_MOMENT, SUPPORT_SHEAR)
-SUPPORT = 0
-DEAD_STAGES = ("construction", "superimposed", "dead")
-BOTH_WAYS = (1.0, -1.0)
+DEAD_STAGES = ("construction", "superimposed")
 NO_EFFECT = 0.0
 
 
 class GoverningValue:
+    # the governing design value, the combination it came from and each group's share
     def __init__(self, value, combination, adverse, shares):
         self.value = value
         self.combination = combination
         self.adverse = adverse
         self.shares = shares
 
+    # plain dict for the JSON output
     def to_dict(self):
         return self.__dict__
 
 
 class DesignValues:
+    # design values for every girder, response and limit state, plus what went into them
     def __init__(self, girders, thermal=None, surfaces=None, criticals=None):
         self.girders = girders
         self.thermal = thermal
         self.surfaces = surfaces or {}
         self.criticals = criticals or {}
 
+    # the girder with the biggest value for this response and limit state
     def governing(self, response, limit_state, adverse=BIGGER_IS_WORSE):
         return max(((girder, by_response[response][limit_state][adverse]) for girder, by_response in self.girders.items()), key=lambda pair: abs(pair[1].value))
 
+    # plain dict for the JSON output
     def to_dict(self):
         return self.__dict__
 
 
+# every load on every girder, combined per IRC:6 Annex B
 def girder_design_values(bridge, wind=None, seismic=None, temperature=None, custom_loads=(), custom_combinations=(), ops=None):
     ops = import_opensees() if ops is None else ops
     dead = dead_load_forces(bridge, ops)
@@ -88,7 +93,7 @@ def girder_design_values(bridge, wind=None, seismic=None, temperature=None, cust
         results[girder] = {}
         for response in RESPONSES:
             effects = {
-                DEAD: sum(read(dead.stages[stage], girder, response) for stage in DEAD_STAGES if stage in dead.stages),
+                DEAD: sum(read(dead.stages[stage], girder, response) for stage in DEAD_STAGES),
                 SURFACING: read(dead.stages["surfacing"], girder, response),
                 LIVE: [live_with_braking(model, live[girder, response, adverse], read, girder, response, ops) for adverse in (BIGGER_IS_WORSE, SMALLER_IS_WORSE)],
             }
@@ -104,9 +109,11 @@ def girder_design_values(bridge, wind=None, seismic=None, temperature=None, cust
     return DesignValues(results, thermal_results(bridge, temperature), surfaces, live)
 
 
+# a function that reads a girder response off a load case or solved forces
 def reader(model, surfaces):
     midspan = model.mesh.stations_along_span // 2
 
+    # load case by reciprocity; solved forces at midspan or the support
     def read(forces, girder, response):
         if isinstance(forces, LoadCase):
             return response_to_load_case(surfaces[girder, response], forces)
@@ -116,12 +123,14 @@ def reader(model, surfaces):
     return read
 
 
+# live load response plus the worse of the two braking directions
 def live_with_braking(model, critical, read, girder, response, ops):
     braking = [read(case, girder, response) for case in braking_load_cases(model, critical).values()]
     adding = max(braking) if critical.adverse == BIGGER_IS_WORSE else min(braking)
     return critical.response + adding
 
 
+# every mix of wind sides and directions, with wind on the vehicles if asked
 def wind_alternatives(wind_forces, read, girder, response, with_the_live_load):
     alternatives = []
     for side, along, vertical in itertools.product(("from the left", "from the right"), BOTH_WAYS, ("upward", "downward")):
@@ -133,12 +142,14 @@ def wind_alternatives(wind_forces, read, girder, response, with_the_live_load):
     return alternatives
 
 
+# add a number to one effect or to each of its alternatives
 def add_to(effect, extra):
     if isinstance(effect, list):
         return [value + extra for value in effect]
     return effect + extra
 
 
+# worst combination in each limit state, both directions
 def governing_by_limit_state(effects, combinations, wind_forces, read, girder, response):
     governing = {}
     for combination in combinations:
@@ -154,15 +165,13 @@ def governing_by_limit_state(effects, combinations, wind_forces, read, girder, r
     return governing
 
 
+# Fig. 16b primary stresses and bearing movement, or None with no temperature input
 def thermal_results(bridge, temperature):
     if temperature is None:
         return None
     positive = temperature_difference_profile(bridge.deck.thickness_m)
     results = {"positive difference": primary_thermal_stresses(bridge, positive)}
-    if temperature.reverse_depths_m is not None:
-        reverse = temperature_difference_profile(bridge.deck.thickness_m, positive=False, reverse_depths_m=temperature.reverse_depths_m)
-        results["reverse difference"] = primary_thermal_stresses(bridge, reverse)
-    temperature_range_c = effective_temperature_range(temperature.shade_max_c, temperature.shade_min_c, temperature.metallic, temperature.snowbound)
+    temperature_range_c = effective_temperature_range(temperature.shade_max_c, temperature.shade_min_c)
     results["effective range c"] = temperature_range_c
     results["free bearing movement m"] = free_bearing_movement_m(bridge.span_m, temperature_range_c)
     return results

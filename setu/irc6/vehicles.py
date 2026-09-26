@@ -1,12 +1,14 @@
 from setu.errors import VehicleDefinitionError, VehicleNotFoundError
 from setu.utils.constants import GRAVITY_KN_PER_TONNE, REVERSED_SUFFIX
 
+# n axles need n - 1 spacings
 def check_axle_and_spacing_counts_match(vehicle):
     axles = len(vehicle.axle_loads_t)
     spacings = len(vehicle.axle_spacing_m)
     if axles != spacings + 1:
         raise VehicleDefinitionError(f"{vehicle.name}: {axles} axle loads need {axles - 1} spacings between them, but {spacings} were given")
 
+# every size and load of the vehicle, named, for checking
 def every_measurement_of(vehicle):
     measurements = [
         ("transverse_gauge_m", vehicle.transverse_gauge_m),
@@ -23,6 +25,7 @@ def every_measurement_of(vehicle):
         measurements.append(("track_width_m", vehicle.track_width_m))
     return measurements
 
+# refuse a vehicle with a zero or negative size or load
 def check_all_measurements_positive(vehicle):
     for description, value in every_measurement_of(vehicle):
         if value <= 0:
@@ -30,6 +33,7 @@ def check_all_measurements_positive(vehicle):
 
 
 class AxleVehicle:
+    # a wheeled vehicle: axle loads, spacings, gauge and clearances
     def __init__(self, name, axle_loads_t, axle_spacing_m, transverse_gauge_m, lead_clearance_m, trail_clearance_m, min_nose_to_tail_m, overall_width_m=None):
         self.name = name
         self.axle_loads_t = axle_loads_t
@@ -42,22 +46,27 @@ class AxleVehicle:
         check_axle_and_spacing_counts_match(self)
         check_all_measurements_positive(self)
 
+    # nose to tail length
     def length_m(self):
         return self.lead_clearance_m + sum(self.axle_spacing_m) + self.trail_clearance_m
 
+    # each axle's distance behind the first one
     def axle_positions_m(self):
         behind_the_first_axle_m = [0.0]
         for spacing_m in self.axle_spacing_m:
             behind_the_first_axle_m.append(behind_the_first_axle_m[-1] + spacing_m)
         return tuple(behind_the_first_axle_m)
 
+    # all the axles added up
     def total_load_t(self):
         return sum(self.axle_loads_t)
 
+    # plain dict for the JSON output
     def to_dict(self):
         return self.__dict__
 
 class TrackedVehicle:
+    # a tracked vehicle: load per track and the track size
     def __init__(self, name, load_per_track_t, track_length_m, track_width_m, transverse_gauge_m, min_nose_to_tail_m, lead_clearance_m=0.0, trail_clearance_m=0.0):
         self.name = name
         self.load_per_track_t = load_per_track_t
@@ -69,17 +78,21 @@ class TrackedVehicle:
         self.trail_clearance_m = trail_clearance_m
         check_all_measurements_positive(self)
 
+    # track length
     def length_m(self):
         return self.track_length_m
 
+    # track load spread over its contact area
     def contact_pressure_kpa(self):
         load_kn = self.load_per_track_t * GRAVITY_KN_PER_TONNE
         contact_area_m2 = self.track_length_m * self.track_width_m
         return load_kn / contact_area_m2
 
+    # both tracks
     def total_load_t(self):
         return 2.0 * self.load_per_track_t
 
+    # plain dict for the JSON output
     def to_dict(self):
         return self.__dict__
 
@@ -140,19 +153,23 @@ VEHICLES_ALLOWED_IN_BLOCK = {
     "zone_70r": ("Class_70R_Wheeled", "Class_70R_Tracked"),
 }
 
+# vehicle name without the reversed suffix
 def class_of(vehicle):
     return vehicle.name.removesuffix(REVERSED_SUFFIX)
 
+# vehicle by name, or an error listing the known ones
 def find_vehicle(name, vehicles=None):
     known = IRC_VEHICLES if vehicles is None else vehicles
     if name not in known:
         raise VehicleNotFoundError(f"no vehicle named {name!r}; known vehicles are {sorted(known)}")
     return known[name]
 
+# add a vehicle to the known list
 def register_vehicle(vehicle, vehicles=None):
     known = IRC_VEHICLES if vehicles is None else vehicles
     known[vehicle.name] = vehicle
 
+# the same vehicle driven the other way; a track is the same both ways
 def facing_backwards(vehicle):
     if isinstance(vehicle, TrackedVehicle):
         return vehicle
@@ -167,6 +184,7 @@ def facing_backwards(vehicle):
         overall_width_m=vehicle.overall_width_m,
     )
 
+# vehicle by name, reversed ones included
 def find_vehicle_or_its_reverse(name):
     if name in IRC_VEHICLES:
         return IRC_VEHICLES[name]
@@ -175,6 +193,7 @@ def find_vehicle_or_its_reverse(name):
         return facing_backwards(IRC_VEHICLES[facing_forwards])
     return find_vehicle(name)
 
+# the vehicle, and its reverse when that is allowed and different
 def both_directions_of(vehicle, allow_reversed_vehicles):
     if not allow_reversed_vehicles:
         return [vehicle]
@@ -183,6 +202,7 @@ def both_directions_of(vehicle, allow_reversed_vehicles):
         return [vehicle]
     return [vehicle, reversed_vehicle]
 
+# which vehicles may go in a Class A lane and in a 70R zone
 def vehicles_allowed_in_each_block(vehicles, allow_reversed_vehicles):
     known = IRC_VEHICLES if vehicles is None else vehicles
     permitted = {}
@@ -198,9 +218,11 @@ def vehicles_allowed_in_each_block(vehicles, allow_reversed_vehicles):
         permitted[block] = choices
     return permitted
 
+# front to front distance of two vehicles in a train
 def pitch_between_vehicles_m(vehicle):
     return vehicle.length_m() + vehicle.min_nose_to_tail_m
 
+# most vehicles of a train that fit between from and to
 def most_vehicles_that_fit(vehicle, from_m, to_m):
     pitch_m = pitch_between_vehicles_m(vehicle)
     return max(1, int((to_m - from_m) // pitch_m) + 1)

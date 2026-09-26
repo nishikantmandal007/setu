@@ -1,9 +1,8 @@
 """Temperature per IRC:6-2017 clause 215.
 
-215.2: metallic structures range from shade max + 15 C down to shade min - 10 C; Table 15 for
-restrained structures. 215.3 / Fig. 16b: temperature difference across a composite section -
+215.2: metallic structures range from shade max + 15 C down to shade min - 10 C.
+215.3 / Fig. 16b: temperature difference across a composite section -
 positive: T1 at the top (18 C at h = 0.2 m, 20.5 C at 0.3 m), 4 C at 0.6h, 0 a further 0.4 m down.
-The reverse profile's depths are not given by the code, so the user must give them.
 215.4: alpha = 12e-6 / C.
 
 A simply supported span with a free bearing takes no girder force from either effect; what
@@ -24,12 +23,6 @@ def test_metallic_range():
     assert effective_temperature_range(45.0, 2.0) == pytest.approx((-8.0, 60.0))
 
 
-def test_table_15_for_a_restrained_structure():
-    """Mean 23.5 C; shade range 43 C > 20 C so +/- 10 C. A 15 C shade range gives +/- 5 C."""
-    assert effective_temperature_range(45.0, 2.0, metallic=False) == pytest.approx((13.5, 33.5))
-    assert effective_temperature_range(30.0, 15.0, metallic=False) == pytest.approx((17.5, 27.5))
-
-
 def test_fig_16b_positive_profile():
     """h = 0.25 m: T1 halfway between 18 and 20.5 = 19.25 C; 4 C at 0.15 m; 0 at 0.55 m."""
     assert temperature_difference_profile(0.25) == pytest.approx([(0.0, 19.25), (0.15, 4.0), (0.55, 0.0)])
@@ -38,14 +31,6 @@ def test_fig_16b_positive_profile():
 def test_fig_16b_is_only_drawn_for_0_2_to_0_3_m():
     with pytest.raises(ValueError, match="0.2 to 0.3 m"):
         temperature_difference_profile(0.35)
-
-
-def test_the_reverse_profile_needs_the_depths_the_code_leaves_out():
-    with pytest.raises(ValueError, match="depths"):
-        temperature_difference_profile(0.25, positive=False)
-
-    profile = temperature_difference_profile(0.25, positive=False, reverse_depths_m=(0.1, 0.3))
-    assert profile == pytest.approx([(0.0, -5.6), (0.1, 0.0), (0.4, -8.0)])
 
 
 def _rectangle(depth_m, width_m, modulus_kpa, strips=400):

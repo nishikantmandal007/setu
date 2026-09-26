@@ -1,13 +1,11 @@
 # setu input - the 35 m composite plate girder bridge from examples/plate_girder_35m.py.
-# Run:  python cli.py critical examples/bridge.toml --plot
-#       python cli.py design   examples/bridge.toml --plot
-# Units are in every key name: _m metres, _kpa kN/m2, _mps m/s, _c degrees C.
+# Run:  python cli.py examples/bridge.toml --plot
+# Units are in every key name: _m metres, _mpa N/mm2, _kpa kN/m2, _kn_m3 kN/m3, _mps m/s, _c degrees C.
 
 [bridge]
 span_m = 35.0
 skew = 0.0                  # tan of the skew angle; 0 is a square deck
-construction = "unpropped"  # "unpropped" or "propped" (IRC:22 clause 604.1.1)
-shuttering_kpa = 0.0
+wearing_course_unit_weight_kn_m3 = 22.0
 
 [cross_section]             # strips across the deck, left to right; names start with
 footpath_left = 1.50        # footpath, kerb, carriageway, median or crash_barrier
@@ -43,8 +41,32 @@ arrangement = "XT"          # X, XT, XB, XTB, K or KT
 panels_between_braces = 25
 target_size_across_width_m = 0.25
 
-[concrete]
-characteristic_strength_mpa = 35   # cube strength; Ecm from IRC:22 Table III.1
+[steel]
+elastic_modulus_mpa = 200000
+poissons_ratio = 0.3
+unit_weight_kn_m3 = 78.5
+
+[concrete]                  # M35: Ecm 32000 MPa, IRC:22 Table III.1
+elastic_modulus_mpa = 32000
+poissons_ratio = 0.2
+unit_weight_kn_m3 = 25.0
+
+# Layers on the non-traffic strips
+[added_dead_loads.footpath]
+thickness_m = 0.15
+unit_weight_kn_m3 = 24.0
+
+[added_dead_loads.kerb]
+thickness_m = 0.3
+unit_weight_kn_m3 = 24.0
+
+[added_dead_loads.median]
+thickness_m = 0.25
+unit_weight_kn_m3 = 24.0
+
+[added_dead_loads.crash_barrier]
+thickness_m = 0.3
+unit_weight_kn_m3 = 24.0
 
 # Optional site loads - delete a table to leave that load out.
 [wind]                      # IRC:6 clause 209
@@ -52,11 +74,16 @@ basic_wind_speed_mps = 39.0
 terrain = "plain"           # "plain" or "obstructed"
 height_m = 12.0
 solid_barrier_height_m = 1.1
+funnelling = false          # true on a hill, ridge, escarpment or cliff
+# gust, drag, drag_on_live_load, lift, exposed_area_m2, plan_area_m2, live_load_exposed_area_m2:
+# leave out for "As per IRC 6", give a number for "Custom"
 
 [seismic]                   # IRC:SP:114-2018
 zone = "IV"                 # II, III, IV or V
 soil = "II"                 # I, II or III
-importance = "important"    # normal, important, large critical (or a number)
+importance_factor = 1.2     # I: 1.0 normal, 1.2 important, 1.5 large critical
+period_s = 0.5              # fundamental period T
+response_reduction = 1.0    # R
 
 [temperature]               # IRC:6 clause 215
 shade_max_c = 45.0

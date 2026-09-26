@@ -15,20 +15,25 @@ PACKED_HARD_LEFT = 0.0
 PACKED_HARD_RIGHT = 1.0
 
 class ResultantCentredPlacement:
-    def __init__(self, lane_pattern, design_lanes, vehicle_centres_m, response_before_reduction, lane_reduction, response=0.0, **kwargs):
+    # a lane layout slid so the load's resultant sits at mid-width
+    def __init__(self, lane_pattern, design_lanes, vehicle_centres_m, response_before_reduction, lane_reduction, response, is_exactly_centred):
         self.lane_pattern = lane_pattern
         self.design_lanes = design_lanes
         self.vehicle_centres_m = vehicle_centres_m
         self.response_before_reduction = response_before_reduction
         self.lane_reduction = lane_reduction
         self.response = response
+        self.is_exactly_centred = is_exactly_centred
 
+    # plain dict for the JSON output
     def to_dict(self):
         return self.__dict__
 
+# vehicle weight in kN
 def weight_of(vehicle):
     return vehicle.total_load_t() * GRAVITY_KN_PER_TONNE
 
+# worst layout on each carriageway with its resultant centred
 def centre_the_resultant(carriageways, response_curves, adverse='maximum', apply_lane_reduction=True, follow_combination_drawings=True):
     worst_on_each = []
     for carriageway, curves in zip(carriageways, response_curves, strict=True):
@@ -43,6 +48,7 @@ def centre_the_resultant(carriageways, response_curves, adverse='maximum', apply
             worst_on_each.append(worst)
     return worst_on_each
 
+# slide one lane pattern until its resultant is at mid-width, and read the response
 def centre_one_arrangement(carriageway, arrangement, curves, adverse, apply_lane_reduction):
     layout = fit_blocks_between(arrangement.lane_pattern, carriageway.left_m, carriageway.right_m)
     if layout is None:
@@ -56,6 +62,7 @@ def centre_one_arrangement(carriageway, arrangement, curves, adverse, apply_lane
     reduction = lane_reduction_factor(arrangement.design_lanes) if apply_lane_reduction else NO_LANE_REDUCTION
     return ResultantCentredPlacement(lane_pattern=list(arrangement.lane_pattern), design_lanes=arrangement.design_lanes, vehicle_centres_m=centres_m, response_before_reduction=before_reduction, lane_reduction=reduction, response=before_reduction * reduction, is_exactly_centred=is_exactly_centred)
 
+# leftmost and rightmost centre of each vehicle
 def how_far_each_vehicle_can_go(arrangement, layout):
     packed_left_m = []
     packed_right_m = []
@@ -66,6 +73,7 @@ def how_far_each_vehicle_can_go(arrangement, layout):
         packed_right_m.append(edge_m + layout.sliding_room_m + furthest_m)
     return (packed_left_m, packed_right_m)
 
+# how far across its room to slide so the resultant hits the target
 def fraction_that_centres_the_resultant(packed_left_m, packed_right_m, weights_kn, target_m):
     total_kn = float(sum(weights_kn))
     if total_kn <= 0:
@@ -81,9 +89,11 @@ def fraction_that_centres_the_resultant(packed_left_m, packed_right_m, weights_k
     clamped = min(max(fraction, PACKED_HARD_LEFT), PACKED_HARD_RIGHT)
     return (clamped, reaches_the_centreline)
 
+# weight-averaged position
 def weighted_average(positions_m, weights_kn, total_kn):
     moment = sum((weight_kn * position_m for weight_kn, position_m in zip(weights_kn, positions_m, strict=True)))
     return moment / total_kn
 
+# Class A for a Class A lane, 70R wheeled for a 70R zone
 def representative_vehicle(block):
     return CLASS_A if block == CLASS_A_LANE else CLASS_70R_WHEELED

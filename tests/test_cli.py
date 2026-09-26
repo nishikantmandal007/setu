@@ -79,8 +79,8 @@ def test_every_form_field_is_a_key_setu_accepts():
     for table in _form_schema()["tables"]:
         if table.get("strips"):
             continue
-        allowed = cli.BRIDGE_KEYS if table["table"] == "bridge" else cli.keys_of(cli.Girders) if table["table"] == "girders" else cli.keys_of(cli.TABLE_CLASSES[table["table"]])
-        assert {field["key"] for field in table["fields"]} <= set(allowed), table["table"]
+        allowed = cli.BRIDGE_KEYS if table["table"] == "bridge" else {"count"} if table["table"] == "girders" else cli.keys_of(cli.TABLE_CLASSES[table["table"]])[1]
+        assert {field["key"] for field in table["fields"]} <= allowed, table["table"]
 
 
 def test_the_form_defaults_make_a_valid_input(tmp_path):
@@ -103,3 +103,19 @@ def test_the_form_defaults_make_a_valid_input(tmp_path):
 
     assert bridge.span_m == 35.0 and bridge.girders.count == 5
     assert loads["wind"] is not None and loads["seismic"] is not None
+
+
+def test_a_misspelt_table_is_named(tmp_path, capsys):
+    no_concrete = tmp_path / "no_concrete.toml"
+    no_concrete.write_text(EXAMPLE.read_text().replace("[concrete]", "[concrete_gone]"))
+
+    assert cli.main([str(no_concrete), "--out", str(tmp_path / "out")]) == cli.BAD_INPUT
+    assert "unknown key(s) ['concrete_gone']" in capsys.readouterr().err
+
+
+def test_a_missing_key_is_named(tmp_path, capsys):
+    no_modulus = tmp_path / "no_modulus.toml"
+    no_modulus.write_text(EXAMPLE.read_text().replace("elastic_modulus_mpa = 200000\n", ""))
+
+    assert cli.main([str(no_modulus), "--out", str(tmp_path / "out")]) == cli.BAD_INPUT
+    assert "[steel] is missing ['elastic_modulus_mpa']" in capsys.readouterr().err

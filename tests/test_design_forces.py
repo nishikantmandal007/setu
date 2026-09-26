@@ -14,7 +14,9 @@ from setu.analysis.influence_surface import InfluenceSolver
 from setu.builder.assembly import build_bridge_model
 from setu.loads.load_builders import vehicle_load
 from setu.loads.load_cases import apply_load_case
-from setu.models.bridge import Bracing, BridgeInput, DeckSlab, Girders, MeshSettings, PlateGirderSection
+from setu.models.bridge import AddedDeadLoads, Bracing, BridgeInput, DeckSlab, Girders, MeshSettings
+from setu.models.materials import Concrete, Steel, SurfacingLayer
+from setu.models.sections import PlateGirderSection
 from setu.models.deck import DeckCrossSection
 
 ops = pytest.importorskip("openseespy.opensees", reason="needs a finite element solver")
@@ -41,10 +43,18 @@ CROSS_SECTION = DeckCrossSection.from_widths(
     }
 )
 
+STEEL = Steel(elastic_modulus_mpa=200000.0, poissons_ratio=0.3, unit_weight_kn_m3=78.5)
+CONCRETE = Concrete(elastic_modulus_mpa=32000.0, poissons_ratio=0.2, unit_weight_kn_m3=25.0)
+ADDED_DEAD_LOADS = AddedDeadLoads(
+    footpath=SurfacingLayer(0.15, 24.0), kerb=SurfacingLayer(0.3, 24.0),
+    median=SurfacingLayer(0.25, 24.0), crash_barrier=SurfacingLayer(0.3, 24.0),
+)
+
 BRIDGE = BridgeInput(
     span_m=SPAN_M,
+    skew=0.0,
     cross_section=CROSS_SECTION,
-    deck=DeckSlab(thickness_m=0.23, overhang_m=1.25),
+    deck=DeckSlab(thickness_m=0.23, overhang_m=1.25, wearing_course_thickness_m=0.0),
     girders=Girders(
         count=5,
         section=PlateGirderSection(
@@ -58,6 +68,10 @@ BRIDGE = BridgeInput(
     ),
     bracing=Bracing(station_count=7, area_m2=0.01, arrangement="XT"),
     mesh=MeshSettings(panels_between_braces=4, target_size_across_width_m=0.6),
+    steel=STEEL,
+    concrete=CONCRETE,
+    wearing_course_unit_weight_kn_m3=22.0,
+    added_dead_loads=ADDED_DEAD_LOADS,
 )
 
 
@@ -302,12 +316,7 @@ def test_long_term_concrete_leaves_more_to_the_steel():
 
 
 def test_a_k_braced_bridge_builds():
-    from setu.models.bridge import Bracing
-
-    k_braced = BridgeInput(
-        span_m=SPAN_M, cross_section=CROSS_SECTION, deck=BRIDGE.deck, girders=BRIDGE.girders,
-        bracing=Bracing(station_count=7, area_m2=0.01, arrangement="KT"), mesh=BRIDGE.mesh,
-    )
+    k_braced = BridgeInput(**{**BRIDGE.__dict__, "bracing": Bracing(station_count=7, area_m2=0.01, arrangement="KT")})
 
     model = build_bridge_model(k_braced)
 

@@ -2,7 +2,7 @@
 
 import pytest
 
-from setu.models.custom_load import POINT, CustomLoad
+from setu.models.custom_load import CustomLoad
 from setu.models.site import SeismicSite, TemperatureSite, WindSite
 from setu.irc6.combinations import custom_combination
 from setu.postprocess.design_values import girder_design_values
@@ -13,6 +13,7 @@ from setu.utils.constants import (
     LIVE,
     MIDSPAN_MOMENT,
     PLAIN_TERRAIN,
+    POINT,
     SEISMIC_COMBINATION,
     SMALLER_IS_WORSE,
     SUPPORT_SHEAR,
@@ -24,8 +25,8 @@ pytest.importorskip("openseespy.opensees", reason="needs a finite element solver
 
 from test_design_forces import BRIDGE  # noqa: E402
 
-WIND_SITE = WindSite(basic_wind_speed_mps=39.0, terrain=PLAIN_TERRAIN, height_m=12.0, solid_barrier_height_m=1.1)
-SEISMIC_SITE = SeismicSite(zone="IV", soil="II", importance="important", period_s=0.8, vertical_period_s=0.3)
+WIND_SITE = WindSite(basic_wind_speed_mps=39.0, terrain=PLAIN_TERRAIN, height_m=12.0, funnelling=False, solid_barrier_height_m=1.1)
+SEISMIC_SITE = SeismicSite(zone="IV", soil="II", importance_factor=1.2, period_s=0.8, response_reduction=1.0)
 HOARDING = CustomLoad("hoarding", POINT, 40.0, x_from_bearing_m=17.5, z_from_left_edge_m=3.0)
 
 
@@ -87,7 +88,7 @@ def test_temperature_comes_back_as_stresses_and_bearing_movement(results):
 
 def test_high_wind_keeps_live_load_off(results):
     """Vb 55 m/s at 30 m: hourly mean speed above 36 m/s, so wind and live load never act together."""
-    stormy = girder_design_values(BRIDGE, wind=WindSite(basic_wind_speed_mps=55.0, terrain=PLAIN_TERRAIN, height_m=30.0))
+    stormy = girder_design_values(BRIDGE, wind=WindSite(basic_wind_speed_mps=55.0, terrain=PLAIN_TERRAIN, height_m=30.0, funnelling=False, solid_barrier_height_m=0.0))
 
     for by_response in stormy.girders.values():
         for by_direction in by_response[MIDSPAN_MOMENT].values():

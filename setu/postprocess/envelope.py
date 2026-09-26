@@ -3,6 +3,7 @@ import numpy as np
 
 class Envelope:
 
+    # worst force at each station and which case gave it
     def __init__(self, stations_m, moment_kn_m, shear_kn, deflection_m, governing_case):
         self.stations_m = np.asarray(stations_m, float)
         self.moment_kn_m = np.asarray(moment_kn_m, float)
@@ -11,6 +12,7 @@ class Envelope:
         self.governing_case = list(governing_case)
 
 
+# envelope of several load cases' girder forces
 def envelope(case_results, adverse="maximum"):
     pick = np.argmax if adverse == "maximum" else np.argmin
     names = list(case_results.keys())
@@ -27,6 +29,7 @@ def envelope(case_results, adverse="maximum"):
     return Envelope(stations_m, moment_kn_m, shear_kn, deflection_m, governing_case)
 
 
+# envelope of forces and deflections together
 def envelope_with_deflections(case_results, deflection_results, adverse="maximum"):
     pick = np.argmax if adverse == "maximum" else np.argmin
     names = list(case_results.keys())

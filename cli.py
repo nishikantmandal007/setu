@@ -24,6 +24,7 @@ from pathlib import Path
 import openseespy.opensees as ops
 
 from setu import (
+    AddedDeadLoads,
     Bracing,
     BridgeInput,
     DeckCrossSection,
@@ -31,6 +32,7 @@ from setu import (
     Girders,
     MeshSettings,
     PlateGirderSection,
+    build_mesh,
     build_bridge_model,
     live_load,
 )
@@ -42,30 +44,33 @@ from setu.irc6.vehicles import find_vehicle_or_its_reverse
 from setu.irc6.wheel_loads import wheel_load_offsets
 from setu.loads.wind_loads import wind_load_cases
 from setu.models.custom_load import CustomLoad
-from setu.models.materials import Concrete, Steel
+from setu.models.materials import Concrete, Steel, SurfacingLayer
 from setu.models.site import SeismicSite, TemperatureSite, WindSite
 from setu.postprocess.design_values import girder_design_values
 from setu.postprocess.girder_response import analyze_load_case, dead_load_forces
 from setu.utils.constants import (
     BASIC,
     BIGGER_IS_WORSE,
+    KPA_PER_MPA,
     MIDSPAN_MOMENT,
     RARE,
+    RESPONSES,
+    RULE,
     SEISMIC_COMBINATION,
     SMALLER_IS_WORSE,
+    SUPPORT,
     SUPPORT_SHEAR,
 )
 
 BAD_INPUT = 2
-RULE = "─" * 86
-SUPPORT = 0
-RESPONSES = (MIDSPAN_MOMENT, SUPPORT_SHEAR)
 DIRECTIONS = (BIGGER_IS_WORSE, SMALLER_IS_WORSE)
-BRIDGE_KEYS = {"span_m", "skew", "construction", "shuttering_kpa", "wearing_course_unit_weight_kn_m3"}
-READ_FROM_KWARGS = {Bracing: {"area_m2"}}
+BRIDGE_KEYS = {"span_m", "skew", "wearing_course_unit_weight_kn_m3"}
+ADDED_DEAD_LOAD_STRIPS = ("footpath", "kerb", "median", "crash_barrier")
 TABLE_CLASSES = {"deck": DeckSlab, "girders.section": PlateGirderSection, "bracing": Bracing, "mesh": MeshSettings,
-                 "concrete": Concrete, "steel": Steel, "wind": WindSite, "seismic": SeismicSite, "temperature": TemperatureSite}
-TABLES = {"bridge", "cross_section", "deck", "girders", "bracing", "mesh", "concrete", "steel", "wind", "seismic", "temperature", "custom_loads", "combinations"}
+                 "concrete": Concrete, "steel": Steel, "wind": WindSite, "seismic": SeismicSite, "temperature": TemperatureSite,
+                 **{f"added_dead_loads.{strip}": SurfacingLayer for strip in ADDED_DEAD_LOAD_STRIPS}}
+TABLES = {"bridge", "cross_section", "deck", "girders", "bracing", "mesh", "concrete", "steel", "added_dead_loads",
+          "wind", "seismic", "temperature", "custom_loads", "combinations"}
 DESIGN_COLUMNS = (
     ("ULS sagging", MIDSPAN_MOMENT, BASIC, BIGGER_IS_WORSE),
     ("ULS seismic", MIDSPAN_MOMENT, SEISMIC_COMBINATION, BIGGER_IS_WORSE),
@@ -80,52 +85,66 @@ class BadInput(Exception):
 
 # ── reading the input ─────────────────────────────────────────────────────────
 
+# the parameter names a class takes, split into the ones it must get and all of them
 def keys_of(cls):
-    named = {name for name, parameter in inspect.signature(cls.__init__).parameters.items() if name != "self" and parameter.kind is not parameter.VAR_KEYWORD}
-    return named | READ_FROM_KWARGS.get(cls, set())
+    parameters = [p for name, p in inspect.signature(cls.__init__).parameters.items() if name != "self"]
+    return {p.name for p in parameters if p.default is p.empty}, {p.name for p in parameters}
 
 
-def checked(table, values, allowed):
-    unknown = set(values) - set(allowed)
+# refuse a table with a key we don't know or a key it must have missing
+def checked(table, values, required, allowed):
+    unknown = set(values) - allowed
     if unknown:
         raise BadInput(f"[{table}] has unknown key(s) {sorted(unknown)}; valid keys are {sorted(allowed)}")
+    missing = required - set(values)
+    if missing:
+        raise BadInput(f"[{table}] is missing {sorted(missing)}")
     return values
 
 
-def build(table, data, required=True):
-    if table not in data and not required:
-        return None
-    if table not in data:
-        raise BadInput(f"the input needs a [{table}] table")
+# the [table] out of the file, or a clear error when it isn't there
+def table_of(data, table):
+    node = data
+    for part in table.split("."):
+        if part not in node:
+            raise BadInput(f"the input needs a [{table}] table")
+        node = node[part]
+    return node
+
+
+# one model object from its table
+def build(table, data):
     cls = TABLE_CLASSES[table]
-    return cls(**checked(table, data[table], keys_of(cls)))
+    return cls(**checked(table, table_of(data, table), *keys_of(cls)))
 
 
+# wind, seismic and temperature are left out of the analysis when their table is not in the file
+def build_if_given(table, data):
+    return build(table, data) if table in data else None
+
+
+# the whole bridge file into a BridgeInput and the site loads
 def read_input(path):
     try:
         data = tomllib.loads(Path(path).read_text())
     except (OSError, tomllib.TOMLDecodeError) as error:
         raise BadInput(f"cannot read {path}: {error}") from error
-    checked("top level", data, TABLES)
-    girders = dict(data.get("girders", {}))
-    section_values = girders.pop("section", None)
-    if section_values is None:
-        raise BadInput("the input needs a [girders.section] table")
-    section = PlateGirderSection(**checked("girders.section", section_values, keys_of(PlateGirderSection)))
-    if "cross_section" not in data:
-        raise BadInput("the input needs a [cross_section] table of strip widths")
+    checked("top level", data, set(), TABLES)
+    girders = {key: value for key, value in table_of(data, "girders").items() if key != "section"}
     bridge = BridgeInput(
-        cross_section=DeckCrossSection.from_widths(data["cross_section"]),
-        deck=build("deck", data), girders=Girders(section=section, **checked("girders", girders, keys_of(Girders) - {"section"})),
+        cross_section=DeckCrossSection.from_widths(table_of(data, "cross_section")),
+        deck=build("deck", data),
+        girders=Girders(section=build("girders.section", data), **checked("girders", girders, {"count"}, {"count"})),
         bracing=build("bracing", data), mesh=build("mesh", data),
-        concrete=build("concrete", data, required=False), steel=build("steel", data, required=False),
-        **checked("bridge", data.get("bridge", {}), BRIDGE_KEYS),
+        steel=build("steel", data), concrete=build("concrete", data),
+        added_dead_loads=AddedDeadLoads(**{strip: build(f"added_dead_loads.{strip}", data) for strip in ADDED_DEAD_LOAD_STRIPS}),
+        **checked("bridge", table_of(data, "bridge"), BRIDGE_KEYS, BRIDGE_KEYS),
     )
     loads = {
-        "wind": build("wind", data, required=False),
-        "seismic": build("seismic", data, required=False),
-        "temperature": build("temperature", data, required=False),
-        "custom_loads": [CustomLoad(**checked("custom_loads", load, keys_of(CustomLoad))) for load in data.get("custom_loads", [])],
+        "wind": build_if_given("wind", data),
+        "seismic": build_if_given("seismic", data),
+        "temperature": build_if_given("temperature", data),
+        "custom_loads": [CustomLoad(**checked("custom_loads", load, *keys_of(CustomLoad))) for load in data.get("custom_loads", [])],
         "custom_combinations": [custom_combination(c["name"], c["factors"]) for c in data.get("combinations", [])],
     }
     return bridge, loads
@@ -133,6 +152,7 @@ def read_input(path):
 
 # ── the analysis ──────────────────────────────────────────────────────────────
 
+# solve every critical position's live load in OpenSees as a check
 def checked_in_opensees(bridge, results, model):
     midspan = model.mesh.stations_along_span // 2
     found = {}
@@ -144,6 +164,7 @@ def checked_in_opensees(bridge, results, model):
     return found
 
 
+# design values, the OpenSees check, wind and dead load for the bridge
 def analyse(bridge, loads):
     results = girder_design_values(bridge, ops=ops, **loads)
     model = build_bridge_model(bridge, ops)
@@ -155,6 +176,7 @@ def analyse(bridge, loads):
 
 # ── result.json ───────────────────────────────────────────────────────────────
 
+# every wheel of a critical position with its load, impact and lane reduction
 def wheels_of(bridge, critical):
     wheels = []
     for placed in critical.vehicles:
@@ -172,6 +194,7 @@ def wheels_of(bridge, critical):
 
 
 
+# one critical position for result.json
 def critical_to_dict(bridge, critical, solved):
     return {
         "live_load_response": critical.response,
@@ -191,6 +214,7 @@ def critical_to_dict(bridge, critical, solved):
     }
 
 
+# everything for result.json
 def result_to_dict(bridge, loads, found, wind, results, dead):
     midspan = len(dead.total[0].moment_kn_m) // 2
     critical = {f"girder {girder}": {response: {adverse: critical_to_dict(bridge, found[girder, response, adverse][1], found[girder, response, adverse][2])
@@ -210,7 +234,7 @@ def result_to_dict(bridge, loads, found, wind, results, dead):
                   for girder in range(bridge.girders.count)}
     result = {
         "bridge": {"span_m": bridge.span_m, "skew": bridge.skew, "girders": bridge.girders.count, "deck_width_m": bridge.width_m(),
-                   "construction": bridge.construction, "strips": [[s.name, s.width_m] for s in bridge.cross_section.strips]},
+                   "strips": [[s.name, s.width_m] for s in bridge.cross_section.strips]},
         "units": "moments kN·m, shears kN, distances m (x along the span from the first bearing, z across from the left edge)",
         "critical_positions": critical,
         "design_values": design,
@@ -233,9 +257,10 @@ def result_to_dict(bridge, loads, found, wind, results, dead):
 
 # ── what the screen shows ─────────────────────────────────────────────────────
 
+# one line on the bridge and the loads being run
 def print_summary(bridge, loads):
     print("setu · IRC:6-2017 · IRC:22-2015 · IRC:SP:114-2018")
-    print(f"Bridge   {bridge.span_m:g} m span · {bridge.girders.count} girders · {bridge.width_m():g} m deck · skew {bridge.skew:g} · {bridge.construction}")
+    print(f"Bridge   {bridge.span_m:g} m span · {bridge.girders.count} girders · {bridge.width_m():g} m deck · skew {bridge.skew:g}")
     site = ["dead", "live + braking"]
     if loads["wind"]:
         site.append(f"wind {loads['wind'].basic_wind_speed_mps:g} m/s {loads['wind'].terrain}")
@@ -248,6 +273,7 @@ def print_summary(bridge, loads):
     print(f"Loads    {' · '.join(site)}")
 
 
+# the critical positions and design values table
 def print_results(bridge, found, results):
     print(RULE)
     print(f" {'girder':<7}{'response':<27}{'live load':>11}{'OpenSees':>11}   lanes                     vehicles (centre z, front x)")
@@ -268,11 +294,12 @@ def print_results(bridge, found, results):
 
 # ── plots ─────────────────────────────────────────────────────────────────────
 
+# where the girders sit across the deck
 def girder_lines_m(bridge):
-    import numpy as np
-    return list(np.linspace(bridge.deck.overhang_m, bridge.width_m() - bridge.deck.overhang_m, bridge.girders.count))
+    return list(build_mesh(bridge).girder_lines_m)
 
 
+# influence surface and critical vehicles for one girder
 def plot_critical(bridge, found, girder):
     import matplotlib.pyplot as plt
     import numpy as np
@@ -307,6 +334,7 @@ def plot_critical(bridge, found, girder):
 
 
 
+# design values, dead load and temperature dashboard
 def plot_design(bridge, results):
     import matplotlib.pyplot as plt
     import numpy as np
@@ -341,7 +369,7 @@ def plot_design(bridge, results):
     if results.thermal:
         stresses = results.thermal["positive difference"]
         depths = [depth for depth, _, _ in stresses.layers]
-        axes[1, 1].plot([s / 1000 for s in stresses.stresses], depths, "tab:red", label="primary stress (MPa)")
+        axes[1, 1].plot([s / KPA_PER_MPA for s in stresses.stresses], depths, "tab:red", label="primary stress (MPa)")
         profile = temperature_difference_profile(bridge.deck.thickness_m)
         axes[1, 1].plot([t for _, t in profile], [d for d, _ in profile], "tab:orange", ls="--", label="temperature difference (°C)")
         axes[1, 1].axhline(bridge.deck.thickness_m, color="0.5", lw=0.6)
@@ -355,6 +383,7 @@ def plot_design(bridge, results):
     return figure
 
 
+# write every plot, and pop up the main ones if asked
 def save_plots(bridge, found, results, out_dir, pop_up):
     import matplotlib
     if not pop_up:
@@ -376,6 +405,7 @@ def save_plots(bridge, found, results, out_dir, pop_up):
 
 # ── the one command ───────────────────────────────────────────────────────────
 
+# read the bridge file, run everything, write analysis_results/
 def main(argv=None):
     arguments = argparse.ArgumentParser(prog="cli.py", description="setu end to end: critical positions and IRC:6 design values for every girder.")
     arguments.add_argument("input", help="bridge file (TOML); write one with examples/form.html")

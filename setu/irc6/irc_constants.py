@@ -100,7 +100,6 @@ TABLE_12_WIND_PRESSURE_PA = {
 }
 TABLE_12_BASIC_WIND_SPEED_MPS = 33.0
 FUNNELLING_TOPOGRAPHY_INCREASE = 1.2
-CONSTRUCTION_STAGE_WIND_FRACTION = 0.7
 
 # Clause 209.3.3 - transverse wind on the superstructure
 GUST_FACTOR = 2.0
@@ -151,9 +150,8 @@ BRAKING_LANES_COUNTED_AS_ONE = 2
 BRAKING_ACTS_ABOVE_ROAD_M = 1.2
 
 # IRC:SP:114-2018 - seismic design of road bridges (replaces IRC:6-2017 clause 218)
-# Table 4.2 zone factors, Table 4.3 importance factors, Table 5.2 minimum design horizontal coefficient
+# Table 4.2 zone factors, Table 5.2 minimum design horizontal coefficient
 ZONE_FACTORS = {"II": 0.10, "III": 0.16, "IV": 0.24, "V": 0.36}
-IMPORTANCE_FACTORS = {"normal": 1.0, "important": 1.2, "large critical": 1.5}
 MINIMUM_HORIZONTAL_SEISMIC_COEFFICIENT = {"II": 0.011, "III": 0.017, "IV": 0.025, "V": 0.038}
 # Clause 5.2.1 - Ah = (Z / 2) (I / R) (Sa / g)
 ZONE_FACTOR_DIVISOR = 2.0
@@ -162,7 +160,7 @@ ZONE_FACTOR_DIVISOR = 2.0
 SPECTRUM_PLATEAU = 2.5
 SPECTRUM_BY_SOIL = {"I": (0.40, 1.00, 0.25), "II": (0.55, 1.36, 0.34), "III": (0.67, 1.67, 0.42)}
 SPECTRUM_TAIL_STARTS_S = 4.0
-# Note under Fig. 5.1 - small bridge without a worked out period
+# Note under Fig. 5.1 - Sa/g when the period is not worked out
 SA_OVER_G_WITHOUT_A_PERIOD = 2.5
 # Clause 4.2.1 and 4.2.3 - vertical motion
 VERTICAL_ZONE_FACTOR_FRACTION = 2.0 / 3.0
@@ -171,16 +169,10 @@ VERTICAL_ALWAYS_IN_ZONES = ("IV", "V")
 OTHER_DIRECTIONS_FRACTION = 0.3
 # Clause 4.6 - live load in the seismic mass (impact excluded)
 LIVE_LOAD_SEISMIC_FRACTION = 0.2
-# Table 4.1 has no superstructure row; a simply supported superstructure is taken to stay elastic
-SUPERSTRUCTURE_RESPONSE_REDUCTION = 1.0
 
-# Clause 215.2 and Table 15 - effective bridge temperature
+# Clause 215.2 - effective temperature of a metallic bridge
 METALLIC_ABOVE_SHADE_MAX_C = 15.0
 METALLIC_BELOW_SHADE_MIN_C = 10.0
-SNOWBOUND_METALLIC_RANGE_C = (-35.0, 50.0)
-TABLE_15_WIDE_SHADE_RANGE_C = 20.0
-TABLE_15_SWING_WIDE_C = 10.0
-TABLE_15_SWING_NARROW_C = 5.0
 
 # Clause 215.3, Fig. 16b - temperature difference across a steel/concrete composite section (50 mm surfacing)
 FIG_16B_SLAB_DEPTHS_M = (0.2, 0.3)
@@ -188,8 +180,6 @@ FIG_16B_POSITIVE_TOP_C = (18.0, 20.5)
 FIG_16B_POSITIVE_KINK_C = 4.0
 FIG_16B_POSITIVE_KINK_DEPTH_FRACTION = 0.6
 FIG_16B_POSITIVE_FADES_OVER_M = 0.4
-FIG_16B_REVERSE_TOP_C = (4.4, 6.8)
-FIG_16B_REVERSE_BOTTOM_C = 8.0
 
 # Clause 215.4 - coefficient of thermal expansion for RCC, PSC and steel
 THERMAL_EXPANSION_PER_C = 12.0e-6

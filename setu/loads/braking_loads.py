@@ -9,11 +9,13 @@ BACKWARDS = -1.0
 
 
 class BrakingLoadCases(dict):
+    # braking load cases, and the total braking force
     def __init__(self, cases, force_kn):
         super().__init__(cases)
         self.force_kn = force_kn
 
 
+# braking force spread over the wheels of the critical position, both directions
 def braking_load_cases(model, critical_position):
     bridge = model.bridge
     force_kn = braking_force_kn(critical_position, bridge.span_m, bridge.skew)
@@ -32,6 +34,7 @@ def braking_load_cases(model, critical_position):
     return BrakingLoadCases(cases, force_kn)
 
 
+# a braking force along the span at road level above the deck nodes
 def along_the_road(model, shares, total_kn, above_deck_nodes_m, name):
     nodal_loads = []
     for (i, j), share in shares.items():

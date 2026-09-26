@@ -11,6 +11,7 @@ FORCE_COMPONENTS = [
 DISPLACEMENT_COMPONENTS = ["x", "y", "z", "theta_x", "theta_y", "theta_z"]
 
 
+# girder element forces as an xarray dataset
 def forces_dataset(model, ops, load_case_name):
     n_girders = model.bridge.girders.count
     n_elements = model.mesh.stations_along_span - 1
@@ -32,6 +33,7 @@ def forces_dataset(model, ops, load_case_name):
     )
 
 
+# girder node displacements as an xarray dataset
 def displacements_dataset(model, ops, load_case_name):
     nodes = []
     data = []
@@ -51,11 +53,13 @@ def displacements_dataset(model, ops, load_case_name):
     )
 
 
+# forces and displacements of one load case in one dataset
 def build_result_dataset(model, ops, load_case_name):
     forces = forces_dataset(model, ops, load_case_name)
     displacements = displacements_dataset(model, ops, load_case_name)
     return xr.merge([forces, displacements])
 
 
+# stack load case datasets
 def merge_datasets(datasets):
     return xr.concat(datasets, dim="Loadcase")

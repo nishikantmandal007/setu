@@ -1,23 +1,29 @@
-from setu.errors import BackendError
+from setu.helpers import import_opensees
 
 
 class FEBackend:
 
+    # solve with these nodal loads
     def solve_with_loads(self, loads, pattern=None):
         raise NotImplementedError
 
+    # displacement of one node in one dof
     def node_displacement(self, node, dof):
         raise NotImplementedError
 
+    # the nodes of an element
     def element_nodes(self, element):
         raise NotImplementedError
 
+    # where a node is
     def node_coordinates(self, node):
         raise NotImplementedError
 
+    # take the loads off
     def clear_loads(self):
         raise NotImplementedError
 
+    # displacements of every node
     def every_node_displacement(self):
         raise NotImplementedError
 
@@ -26,10 +32,12 @@ class OpenSeesBackend(FEBackend):
     ADJOINT_PATTERN = 7
     ADJOINT_TIME_SERIES = 7
 
+    # the backend on top of openseespy
     def __init__(self):
         self.ops = import_opensees()
         self._analysis_configured = False
 
+    # put the loads on one pattern and solve once
     def solve_with_loads(self, loads, pattern=None):
         tag = pattern if pattern is not None else self.ADJOINT_PATTERN
         ts = self.ADJOINT_TIME_SERIES
@@ -46,30 +54,38 @@ class OpenSeesBackend(FEBackend):
         self.ops.setTime(0.0)
         self.ops.analyze(1)
 
+    # displacement of one node in one dof
     def node_displacement(self, node, dof):
         return self.ops.nodeDisp(node, dof)
 
+    # the nodes of an element
     def element_nodes(self, element):
         return tuple(self.ops.eleNodes(element))
 
+    # where a node is
     def node_coordinates(self, node):
         return self.ops.nodeCoord(node)
 
+    # displacements of every node
     def every_node_displacement(self):
         return {node: self.ops.nodeDisp(node) for node in self.ops.getNodeTags()}
 
+    # element end forces in local axes
     def element_forces(self, element):
         return self.ops.eleResponse(element, "localForce")
 
+    # support reaction at a node
     def node_reaction(self, node):
         return self.ops.nodeReaction(node)
 
+    # remove the load pattern and reset
     def clear_loads(self):
         self.ops.remove("loadPattern", self.ADJOINT_PATTERN)
         self.ops.remove("timeSeries", self.ADJOINT_TIME_SERIES)
         self.ops.reset()
         self.ops.setTime(0.0)
 
+# one linear static step, stiffness factored once
 def configure_linear_static(ops):
     ops.wipeAnalysis()
     ops.system("UmfPack")
@@ -78,10 +94,3 @@ def configure_linear_static(ops):
     ops.integrator("LoadControl", 1.0)
     ops.algorithm("Linear", "-factorOnce")
     ops.analysis("Static")
-
-def import_opensees():
-    try:
-        import openseespy.opensees as ops
-        return ops
-    except ImportError as e:
-        raise BackendError("openseespy is not installed") from e

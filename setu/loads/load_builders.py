@@ -9,6 +9,7 @@ from setu.builder.mesh import tributary_length_m
 from setu.utils.constants import NOTHING_THERE_M, TOLERANCE_M
 
 
+# a pressure between two z lines as nodal loads
 def pressure_load(model, z_from_m, z_to_m, pressure_kpa, name):
     mesh = model.mesh
     nodal_loads = []
@@ -24,6 +25,7 @@ def pressure_load(model, z_from_m, z_to_m, pressure_kpa, name):
     return LoadCase(name=name, nodal_loads=nodal_loads)
 
 
+# a line load along the span at the nearest width station
 def line_load(model, z_m, intensity_kn_m, name):
     mesh = model.mesh
     j = _nearest_width_station(mesh.width_mesh_m, z_m)
@@ -35,11 +37,13 @@ def line_load(model, z_m, intensity_kn_m, name):
     return LoadCase(name=name, nodal_loads=nodal_loads)
 
 
+# one downward point load on a node
 def point_load(model, node_tag, force_kn, name):
     nodal_loads = [(node_tag, 0.0, -force_kn, 0.0, 0.0, 0.0, 0.0)]
     return LoadCase(name=name, nodal_loads=nodal_loads)
 
 
+# a fatigue vehicle rolled along a path, one load case per position
 def fatigue_moving_load(model, vehicle, path_z_m, span_m, n_positions=50, name="fatigue"):
     from setu.irc6.irc_constants import GRAVITY_KN_PER_TONNE
     mesh = model.mesh
@@ -61,6 +65,7 @@ def fatigue_moving_load(model, vehicle, path_z_m, span_m, n_positions=50, name="
     return cases
 
 
+# vehicles, residual UDL and footway load of a critical position as one load case
 def live_load(model, critical_position, surface, sampling=DEFAULT_SAMPLING, name="live"):
     forces_kn = vehicle_forces(model, critical_position, critical_position.wearing_course_thickness_m, sampling)
     area_loads = [(RESIDUAL_UDL_KPA, critical_position.residual_udl_strips)]
@@ -72,6 +77,7 @@ def live_load(model, critical_position, surface, sampling=DEFAULT_SAMPLING, name
     return as_a_load_case(model, forces_kn, name)
 
 
+# pressure over the cells of a strip where the influence makes it worse
 def where_it_hurts(model, surface, from_m, to_m, pressure_kpa, adverse, sampling, forces_kn):
     if to_m - from_m <= NOTHING_THERE_M:
         return
@@ -85,17 +91,20 @@ def where_it_hurts(model, surface, from_m, to_m, pressure_kpa, adverse, sampling
         share_between_nodes(model, along_m + model.bridge.skew * z_m, z_m, pressure_kpa * x_widths_m[i] * z_widths_m[j], forces_kn)
 
 
+# just the vehicles of a critical position as a load case
 def vehicle_load(model, critical_position, wearing_course_thickness_m=None, sampling=DEFAULT_SAMPLING, name="vehicles"):
     if wearing_course_thickness_m is None:
         wearing_course_thickness_m = critical_position.wearing_course_thickness_m
     return as_a_load_case(model, vehicle_forces(model, critical_position, wearing_course_thickness_m, sampling), name)
 
 
+# nodal forces dict to a LoadCase
 def as_a_load_case(model, forces_kn, name):
     nodal_loads = [(model.deck_nodes[i, j], 0.0, -force_kn, 0.0, 0.0, 0.0, 0.0) for (i, j), force_kn in forces_kn.items()]
     return LoadCase(name=name, nodal_loads=nodal_loads)
 
 
+# every wheel of every placed vehicle shared onto the deck nodes
 def vehicle_forces(model, critical_position, wearing_course_thickness_m, sampling):
     forces_kn = {}
     for placed in critical_position.vehicles:
@@ -108,6 +117,7 @@ def vehicle_forces(model, critical_position, wearing_course_thickness_m, samplin
     return forces_kn
 
 
+# split a point load onto the four corners of its mesh cell
 def share_between_nodes(model, x_m, z_m, load_kn, forces_kn):
     length_mesh_m = model.mesh.length_mesh_m
     width_mesh_m = model.mesh.width_mesh_m
@@ -131,14 +141,17 @@ def share_between_nodes(model, x_m, z_m, load_kn, forces_kn):
         forces_kn[node] = forces_kn.get(node, 0.0) + weight * load_kn
 
 
+# index of the mesh cell a position falls in
 def _cell_containing(stations_m, position_m):
     last_cell = len(stations_m) - 2
     return int(np.clip(np.searchsorted(stations_m, position_m) - 1, 0, last_cell))
 
 
+# nearest station across
 def _nearest_width_station(width_mesh_m, z_m):
     return int(np.argmin(np.abs(np.asarray(width_mesh_m) - z_m)))
 
 
+# nearest station along
 def _nearest_span_station(length_mesh_m, x_m):
     return int(np.argmin(np.abs(np.asarray(length_mesh_m) - x_m)))

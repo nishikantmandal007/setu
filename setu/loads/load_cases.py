@@ -7,12 +7,14 @@ LOAD_CASE_TIME_SERIES_BASE = 100
 
 class LoadCase:
 
+    # a named set of nodal and element loads
     def __init__(self, name, nodal_loads=None, element_loads=None):
         self.name = name
         self.nodal_loads = nodal_loads or []
         self.element_loads = element_loads or []
 
 
+# put a load case on the model as one pattern
 def apply_load_case(load_case, ops, pattern_tag=None):
     tag = pattern_tag if pattern_tag is not None else LOAD_CASE_PATTERN_BASE
     ops.timeSeries("Constant", tag)
@@ -23,6 +25,7 @@ def apply_load_case(load_case, ops, pattern_tag=None):
         ops.eleLoad("-ele", element, "-type", load_type, *parameters)
 
 
+# factored sum of load cases as one load case
 def combine(cases, factors):
     merged_nodal = {}
     for case, factor in zip(cases, factors):

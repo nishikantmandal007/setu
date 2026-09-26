@@ -51,8 +51,7 @@
     {"table": "bridge", "title": "Bridge", "fields": [
       {"key": "span_m", "label": "Span (m)", "value": 35.0, "min": 5, "max": 150},
       {"key": "skew", "label": "Skew (tan of angle)", "value": 0.0, "min": 0, "max": 1},
-      {"key": "construction", "label": "Construction", "value": "unpropped", "choices": ["unpropped", "propped"]},
-      {"key": "shuttering_kpa", "label": "Shuttering (kPa)", "value": 0.0, "min": 0}
+      {"key": "wearing_course_unit_weight_kn_m3", "label": "Wearing course unit weight (kN/m3)", "value": 22.0, "min": 0}
     ]},
     {"table": "cross_section", "title": "Cross-section, left to right (m)", "strips": [
       ["footpath_left", 1.5], ["kerb_left", 0.45], ["carriageway_1", 4.5], ["median", 0.6], ["carriageway_2", 4.5], ["kerb_right", 0.45], ["footpath_right", 1.5]
@@ -82,8 +81,31 @@
       {"key": "panels_between_braces", "label": "Panels between braces", "value": 25, "min": 1, "integer": true},
       {"key": "target_size_across_width_m", "label": "Target size across (m)", "value": 0.25, "min": 0.05}
     ]},
-    {"table": "concrete", "title": "Concrete", "fields": [
-      {"key": "characteristic_strength_mpa", "label": "Cube strength fck (MPa)", "value": 35, "min": 15, "max": 90}
+    {"table": "steel", "title": "Steel", "fields": [
+      {"key": "elastic_modulus_mpa", "label": "E (MPa)", "value": 200000, "min": 1},
+      {"key": "poissons_ratio", "label": "Poisson's ratio", "value": 0.3, "min": 0, "max": 0.5},
+      {"key": "unit_weight_kn_m3", "label": "Unit weight (kN/m3)", "value": 78.5, "min": 0}
+    ]},
+    {"table": "concrete", "title": "Deck concrete", "fields": [
+      {"key": "elastic_modulus_mpa", "label": "Ecm (MPa)", "value": 32000, "min": 1},
+      {"key": "poissons_ratio", "label": "Poisson's ratio", "value": 0.2, "min": 0, "max": 0.5},
+      {"key": "unit_weight_kn_m3", "label": "Unit weight (kN/m3)", "value": 25.0, "min": 0}
+    ]},
+    {"table": "added_dead_loads.footpath", "title": "Footpath layer", "fields": [
+      {"key": "thickness_m", "label": "Thickness (m)", "value": 0.15, "min": 0},
+      {"key": "unit_weight_kn_m3", "label": "Unit weight (kN/m3)", "value": 24.0, "min": 0}
+    ]},
+    {"table": "added_dead_loads.kerb", "title": "Kerb layer", "fields": [
+      {"key": "thickness_m", "label": "Thickness (m)", "value": 0.3, "min": 0},
+      {"key": "unit_weight_kn_m3", "label": "Unit weight (kN/m3)", "value": 24.0, "min": 0}
+    ]},
+    {"table": "added_dead_loads.median", "title": "Median layer", "fields": [
+      {"key": "thickness_m", "label": "Thickness (m)", "value": 0.25, "min": 0},
+      {"key": "unit_weight_kn_m3", "label": "Unit weight (kN/m3)", "value": 24.0, "min": 0}
+    ]},
+    {"table": "added_dead_loads.crash_barrier", "title": "Crash barrier layer", "fields": [
+      {"key": "thickness_m", "label": "Thickness (m)", "value": 0.3, "min": 0},
+      {"key": "unit_weight_kn_m3", "label": "Unit weight (kN/m3)", "value": 24.0, "min": 0}
     ]},
     {"table": "wind", "title": "Wind (IRC:6 209)", "optional": true, "fields": [
       {"key": "basic_wind_speed_mps", "label": "Basic wind speed (m/s)", "value": 39.0, "min": 20, "max": 60},
@@ -95,8 +117,9 @@
     {"table": "seismic", "title": "Seismic (IRC:SP:114)", "optional": true, "fields": [
       {"key": "zone", "label": "Zone", "value": "IV", "choices": ["II", "III", "IV", "V"]},
       {"key": "soil", "label": "Soil type", "value": "II", "choices": ["I", "II", "III"]},
-      {"key": "importance", "label": "Importance", "value": "important", "choices": ["normal", "important", "large critical"]},
-      {"key": "period_s", "label": "Period T (s), blank = Sa/g 2.5", "value": "", "min": 0, "max": 4, "blank": true}
+      {"key": "importance_factor", "label": "Importance factor I", "value": 1.2, "min": 1},
+      {"key": "period_s", "label": "Fundamental period T (s)", "value": 0.5, "min": 0},
+      {"key": "response_reduction", "label": "Response reduction R", "value": 1.0, "choices": [1.0, 2.0, 3.0, 4.0, 5.0]}
     ]},
     {"table": "temperature", "title": "Temperature (IRC:6 215)", "optional": true, "fields": [
       {"key": "shade_max_c", "label": "Max shade temperature (C)", "value": 45.0},

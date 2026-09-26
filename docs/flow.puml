@@ -12,16 +12,11 @@ start
 :Bridge input + site (wind, seismic, temperature, custom loads)
 <size:11><color:#777>models</color></size>;
 
-partition "1  Dead load  (IRC:22 stages)" {
-  if (construction?) then (un-propped)
-    :Steel alone: girders, bracing, wet slab
-    <size:11><color:#777>loads.construction_stage_load</color></size>;
-    :Composite, long term: kerbs, footpaths
-    <size:11><color:#777>loads.superimposed_dead_load</color></size>;
-  else (propped)
-    :Composite, long term: all dead load
-    <size:11><color:#777>loads.whole_dead_load</color></size>;
-  endif
+partition "1  Dead load  (IRC:22 stages, un-propped)" {
+  :Steel alone: girders, bracing, wet slab
+  <size:11><color:#777>loads.construction_stage_load</color></size>;
+  :Composite, long term: kerbs, footpaths
+  <size:11><color:#777>loads.superimposed_dead_load</color></size>;
   :Surfacing, kept apart
   <size:11><color:#777>loads.surfacing_load</color></size>;
 }

@@ -14,13 +14,17 @@ bridge stands up under its own weight.
 import openseespy.opensees as ops
 
 from setu import (
+    AddedDeadLoads,
     Bracing,
     BridgeInput,
     DeckCrossSection,
     DeckSlab,
+    Concrete,
     Girders,
     MeshSettings,
     PlateGirderSection,
+    Steel,
+    SurfacingLayer,
     apply_dead_loads,
     build_bridge_model,
 )
@@ -56,6 +60,7 @@ CROSS_SECTION = DeckCrossSection.from_widths(
 
 BRIDGE = BridgeInput(
     span_m=35.0,
+    skew=0.0,
     cross_section=CROSS_SECTION,
     deck=DeckSlab(thickness_m=0.23, overhang_m=1.25, wearing_course_thickness_m=0.075),
     girders=Girders(
@@ -71,6 +76,13 @@ BRIDGE = BridgeInput(
     ),
     bracing=Bracing(station_count=7, area_m2=0.01, arrangement="XT"),
     mesh=MeshSettings(panels_between_braces=25, target_size_across_width_m=0.25),
+    steel=Steel(elastic_modulus_mpa=200000.0, poissons_ratio=0.3, unit_weight_kn_m3=78.5),
+    concrete=Concrete(elastic_modulus_mpa=32000.0, poissons_ratio=0.2, unit_weight_kn_m3=25.0),
+    wearing_course_unit_weight_kn_m3=22.0,
+    added_dead_loads=AddedDeadLoads(
+        footpath=SurfacingLayer(0.15, 24.0), kerb=SurfacingLayer(0.3, 24.0),
+        median=SurfacingLayer(0.25, 24.0), crash_barrier=SurfacingLayer(0.3, 24.0),
+    ),
 )
 
 
@@ -99,8 +111,8 @@ def check_it_stands_up(applied_kn: float) -> None:
     print(f"  Out of balance         = {out_of_balance:12.4f} %")
 
 
-WIND = WindSite(basic_wind_speed_mps=39.0, terrain=PLAIN_TERRAIN, height_m=12.0, solid_barrier_height_m=1.1)
-SEISMIC = SeismicSite(zone="IV", soil="II", importance="important")
+WIND = WindSite(basic_wind_speed_mps=39.0, terrain=PLAIN_TERRAIN, height_m=12.0, funnelling=False, solid_barrier_height_m=1.1)
+SEISMIC = SeismicSite(zone="IV", soil="II", importance_factor=1.2, period_s=0.5, response_reduction=1.0)
 TEMPERATURE = TemperatureSite(shade_max_c=45.0, shade_min_c=2.0)
 COLUMNS = (
     ("ULS sagging", MIDSPAN_MOMENT, BASIC, BIGGER_IS_WORSE),

@@ -8,6 +8,7 @@ NOTHING_BEYOND_THE_PROFILE_C = 0.0
 
 
 class ThermalStresses:
+    # primary stress through the depth, with slab and steel top and bottom picked out
     def __init__(self, layers, stresses, slab_thickness_m):
         self.layers = layers
         self.stresses = stresses
@@ -18,15 +19,18 @@ class ThermalStresses:
         self.steel_bottom_kpa = stresses[-1]
         self.girder_forces_note = "simply supported with a free bearing: no girder force from temperature, only these primary stresses"
 
+    # plain dict for the JSON output
     def to_dict(self):
         return self.__dict__
 
 
+# self-balancing stresses from a temperature difference profile
 def primary_thermal_stresses(bridge, profile, slab_width_m=None, alpha_per_c=THERMAL_EXPANSION_PER_C):
     layers = composite_layers(bridge, slab_width_m)
     return ThermalStresses(layers, primary_stresses(layers, profile, alpha_per_c), bridge.deck.thickness_m)
 
 
+# slab and girder plates cut into thin layers with their moduli
 def composite_layers(bridge, slab_width_m=None):
     if slab_width_m is None:
         slab_width_m = (bridge.width_m() - 2 * bridge.deck.overhang_m) / (bridge.girders.count - 1)
@@ -48,6 +52,7 @@ def composite_layers(bridge, slab_width_m=None):
     return layers
 
 
+# free strain minus the plane that balances it, times E
 def primary_stresses(layers, profile, alpha_per_c=THERMAL_EXPANSION_PER_C):
     depths_m = np.array([depth_m for depth_m, _, _ in layers])
     stiffness = np.array([area_m2 * modulus_kpa for _, area_m2, modulus_kpa in layers])
@@ -60,6 +65,7 @@ def primary_stresses(layers, profile, alpha_per_c=THERMAL_EXPANSION_PER_C):
     return list(moduli * (at_top + per_metre * depths_m - free_strain))
 
 
+# alpha L delta T at the free bearing
 def free_bearing_movement_m(span_m, temperature_range_c, alpha_per_c=THERMAL_EXPANSION_PER_C):
     low_c, high_c = temperature_range_c
     return alpha_per_c * span_m * (high_c - low_c)

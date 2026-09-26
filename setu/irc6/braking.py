@@ -9,6 +9,7 @@ from setu.irc6.wheel_loads import wheel_load_offsets
 from setu.utils.constants import TOLERANCE_M
 
 
+# clause 211 braking force for the whole critical position
 def braking_force_kn(critical_position, span_m, skew=0.0):
     lanes = sorted((trains_on_the_span_kn(placed, span_m, skew) for placed in critical_position.vehicles), key=sum, reverse=True)
     if not lanes:
@@ -18,16 +19,19 @@ def braking_force_kn(critical_position, span_m, skew=0.0):
     return one_lane_kn + BRAKING_LANES_BEYOND_TWO_FRACTION * beyond_two_lanes_kn
 
 
+# 20% of the first train plus 5% of the ones behind it
 def braking_in_one_lane_kn(trains_kn):
     heaviest_first = sorted(trains_kn, reverse=True)
     return BRAKING_FIRST_TRAIN_FRACTION * heaviest_first[0] + BRAKING_FOLLOWING_TRAINS_FRACTION * sum(heaviest_first[1:])
 
 
+# weight of each vehicle of a train that is actually on the span
 def trains_on_the_span_kn(placed, span_m, skew):
     vehicle = find_vehicle_or_its_reverse(placed.vehicle_name)
     return [sum(load_kn for _, _, load_kn in wheels_on_the_span(vehicle, x_front_m, placed.z_centre_m, span_m, skew)) for x_front_m in placed.train_x_front_m]
 
 
+# the wheels of a vehicle that land on the span, as (x, z, load)
 def wheels_on_the_span(vehicle, x_front_m, z_centre_m, span_m, skew=0.0):
     wheels = []
     for dx_m, dz_m, load_kn in wheel_load_offsets(vehicle):

@@ -1,8 +1,8 @@
 """Seismic forces per IRC:SP:114-2018, which replaced IRC:6-2017 clause 218.
 
 5.2.1: Ah = (Z/2) (I/R) (Sa/g), at 5 % damping for every material. Table 4.2 zone factors,
-Table 4.3 importance factors, Table 5.2 minimum Ah. Sa/g from Fig. 5.1(a) (IS 1893:2016).
-4.2.1/4.2.3: vertical in zones IV and V, with the zone factor taken as two thirds.
+Table 5.2 minimum Ah; I, T and R come from OsdagBridge. Sa/g from Fig. 5.1(a) (IS 1893:2016).
+4.2.1/4.2.3: vertical in zones IV and V, with the zone factor taken as two thirds and Sa/g 2.5.
 4.2.2: directions combined r1 + 0.3 r2 (+ 0.3 r3) and its turns. 4.6: 20 % live load
 (no impact) across the traffic and vertically, none along it.
 """
@@ -14,7 +14,6 @@ from setu.builder.assembly import build_bridge_model
 from setu.irc6.seismic import (
     combine_directions,
     horizontal_seismic_coefficient,
-    importance_factor,
     minimum_horizontal_coefficient,
     spectral_acceleration,
     vertical_seismic_coefficient,
@@ -34,10 +33,6 @@ def test_table_4_2_zone_factors():
     assert [zone_factor(zone) for zone in ("II", "III", "IV", "V")] == [0.10, 0.16, 0.24, 0.36]
 
 
-def test_table_4_3_importance_factors():
-    assert [importance_factor(kind) for kind in ("normal", "important", "large critical")] == [1.0, 1.2, 1.5]
-
-
 def test_fig_5_1a_spectrum():
     """Plateau 2.5 to 0.40 / 0.55 / 0.67 s, then 1.00/T, 1.36/T, 1.67/T to 4 s, then 0.25 / 0.34 / 0.42."""
     assert spectral_acceleration(0.05, "I") == pytest.approx(2.5)
@@ -50,37 +45,31 @@ def test_fig_5_1a_spectrum():
     assert spectral_acceleration(5.0, "III") == pytest.approx(0.42)
 
 
-def test_no_period_worked_out_takes_2_5():
-    """SP:114 note under Fig. 5.1: without a fundamental period for a small bridge, Sa/g may be 2.5."""
-    assert spectral_acceleration(None, "II") == pytest.approx(2.5)
-
-
 def test_horizontal_coefficient():
     """Zone IV, important, soil II, T = 0.8 s, R = 1: (0.24 / 2) x (1.2 / 1) x (1.36 / 0.8) = 0.2448."""
-    site = SeismicSite(zone="IV", soil="II", importance="important", period_s=0.8)
+    site = SeismicSite(zone="IV", soil="II", importance_factor=1.2, period_s=0.8, response_reduction=1.0)
 
     assert horizontal_seismic_coefficient(site) == pytest.approx(0.12 * 1.2 * 1.36 / 0.8)
 
 
 def test_table_5_2_minimum_governs():
     """Zone II, soil I, T = 4 s, R = 3: (0.10 / 2) x (1 / 3) x 0.25 = 0.0042, below the 0.011 minimum."""
-    site = SeismicSite(zone="II", soil="I", period_s=4.0, response_reduction=3.0)
+    site = SeismicSite(zone="II", soil="I", importance_factor=1.0, period_s=4.0, response_reduction=3.0)
 
     assert minimum_horizontal_coefficient("II") == 0.011
     assert horizontal_seismic_coefficient(site) == pytest.approx(0.011)
 
 
 def test_vertical_coefficient_uses_two_thirds_of_the_zone_factor():
-    """Zone V, normal, soil I, vertical period 0.3 s: (2/3) x (0.36 / 2) x 1 x 2.5 = 0.30."""
-    site = SeismicSite(zone="V", soil="I", vertical_period_s=0.3)
+    """Zone V, normal, soil I, R = 1: (2/3) x (0.36 / 2) x 1 x 2.5 = 0.30, whatever the horizontal period."""
+    site = SeismicSite(zone="V", soil="I", importance_factor=1.0, period_s=2.0, response_reduction=1.0)
 
     assert vertical_seismic_coefficient(site) == pytest.approx(2.0 / 3.0 * 0.18 * 2.5)
 
 
 def test_vertical_only_where_the_code_asks():
-    assert SeismicSite(zone="III").include_vertical is False
-    assert SeismicSite(zone="IV").include_vertical is True
-    assert SeismicSite(zone="III", include_vertical=True).include_vertical is True
+    assert SeismicSite("III", "II", 1.0, 0.5, 1.0).include_vertical is False
+    assert SeismicSite("IV", "II", 1.0, 0.5, 1.0).include_vertical is True
 
 
 def test_combining_the_three_directions():
@@ -92,7 +81,7 @@ def test_combining_the_three_directions():
     assert max(combine_directions(10.0, 4.0)) == pytest.approx(11.2)
 
 
-SITE = SeismicSite(zone="IV", soil="II", importance="important", period_s=0.8, vertical_period_s=0.3)
+SITE = SeismicSite(zone="IV", soil="II", importance_factor=1.2, period_s=0.8, response_reduction=1.0)
 ONE_CLASS_A = CriticalPosition("t", "maximum", 0.0, 0.0, 1.0, 1, "", "separate",
                                vehicles=[VehiclePlacement("Class_A", 5.0, 5.0, 1.3, (5.0,))])
 CLASS_A_KN = 55.4 * 9.81
@@ -141,10 +130,11 @@ def test_vertical_seismic_force(seismic):
 
 def test_the_seismic_weight_is_the_whole_dead_load(seismic):
     """Slab, surfacing, footpaths and kerbs, girders and bracing: the same total the dead load puts down."""
-    from setu.loads.dead_loads import whole_dead_load, surfacing_load
+    from setu.loads.dead_loads import construction_stage_load, superimposed_dead_load, surfacing_load
 
     model, cases = seismic
-    element_kn = -sum(p[0] for _, _, p in whole_dead_load(model).element_loads) * BRIDGE.span_m / (model.mesh.stations_along_span - 1)
-    nodal_kn = -sum(fy for _, _, fy, *_ in whole_dead_load(model).nodal_loads + surfacing_load(model).nodal_loads)
+    steel_stage = construction_stage_load(model)
+    element_kn = -sum(p[0] for _, _, p in steel_stage.element_loads) * BRIDGE.span_m / (model.mesh.stations_along_span - 1)
+    nodal_kn = -sum(fy for _, _, fy, *_ in steel_stage.nodal_loads + superimposed_dead_load(model).nodal_loads + surfacing_load(model).nodal_loads)
 
     assert cases.dead_weight_kn == pytest.approx(element_kn + nodal_kn, rel=1e-9)

@@ -7,14 +7,9 @@ import numpy as np
 import pytest
 
 from setu.models.deck import DeckCrossSection
-from setu.models.bridge import (
-    Bracing,
-    BridgeInput,
-    DeckSlab,
-    Girders,
-    MeshSettings,
-    PlateGirderSection,
-)
+from setu.models.bridge import Bracing, BridgeInput, DeckSlab, Girders, MeshSettings
+from setu.models.sections import PlateGirderSection
+from test_design_forces import ADDED_DEAD_LOADS, CONCRETE, STEEL
 from setu.builder.mesh import build_mesh
 
 CROSS_SECTION = DeckCrossSection.from_widths(
@@ -31,6 +26,7 @@ CROSS_SECTION = DeckCrossSection.from_widths(
 
 BRIDGE = BridgeInput(
     span_m=35.0,
+    skew=0.0,
     cross_section=CROSS_SECTION,
     deck=DeckSlab(thickness_m=0.23, overhang_m=1.25, wearing_course_thickness_m=0.075),
     girders=Girders(
@@ -46,6 +42,10 @@ BRIDGE = BridgeInput(
     ),
     bracing=Bracing(station_count=7, area_m2=0.01, arrangement="XT"),
     mesh=MeshSettings(panels_between_braces=4, target_size_across_width_m=0.6),
+    steel=STEEL,
+    concrete=CONCRETE,
+    wearing_course_unit_weight_kn_m3=22.0,
+    added_dead_loads=ADDED_DEAD_LOADS,
 )
 
 

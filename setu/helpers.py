@@ -1,8 +1,10 @@
 import logging
 import numpy as np
+from setu.errors import BackendError
 from setu.utils.constants import BIGGER_IS_WORSE, SMALLER_IS_WORSE
 
 
+# +1 when bigger is worse, -1 when smaller is worse
 def adverse_sign(adverse):
     if adverse == BIGGER_IS_WORSE:
         return 1.0
@@ -10,23 +12,28 @@ def adverse_sign(adverse):
         return -1.0
     raise ValueError(f"adverse must be 'maximum' or 'minimum', got {adverse!r}")
 
+# is this candidate worse than the best so far
 def is_worse(candidate, best, adverse):
     if adverse == BIGGER_IS_WORSE:
         return candidate > best
     return candidate < best
 
+# index of the worst value, argmax or argmin
 def index_of_worst(values, adverse, axis=None):
     if adverse == BIGGER_IS_WORSE:
         return np.asarray(np.argmax(values, axis=axis))
     return np.asarray(np.argmin(values, axis=axis))
 
+# sort worst first means sort biggest first
 def is_worst_first(adverse):
     return adverse == BIGGER_IS_WORSE
 
+# mask of the ordinates where a downward load makes it worse
 def where_a_load_hurts(ordinates, adverse):
     return np.asarray(ordinates) * adverse_sign(adverse) > 0.0
 
 class SamplingSettings:
+    # how finely the search samples positions and spreads loads
     def __init__(self, sliding_offsets_to_try=41, positions_inside_a_70r_zone_to_try=41,
                  positions_across_the_deck_to_try=241, span_positions_evaluated_at_once=192,
                  point_loads_along_a_track=4, point_loads_across_a_track=2,
@@ -46,12 +53,14 @@ DEFAULT_SAMPLING = SamplingSettings()
 log = logging.getLogger("setu")
 log.addHandler(logging.NullHandler())
 
+# turn on setu's step by step printout
 def enable_reports(level=logging.INFO):
     handler = logging.StreamHandler()
     handler.setFormatter(logging.Formatter("%(message)s"))
     log.handlers = [handler]
     log.setLevel(level)
 
+# log a titled block of label = value rows
 def report(title, rows):
     rule = "-" * 40
     label_width = max((len(label) for label in rows), default=0)
@@ -62,3 +71,11 @@ def report(title, rows):
     for label, value in rows.items():
         log.info(f"{label:<{label_width}} = {value}")
     log.info(rule)
+
+# openseespy, or a clear error if it isn't installed
+def import_opensees():
+    try:
+        import openseespy.opensees as ops
+        return ops
+    except ImportError as e:
+        raise BackendError("openseespy is not installed") from e

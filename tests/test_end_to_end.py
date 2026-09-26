@@ -17,22 +17,9 @@ from setu.analysis.influence_surface import InfluenceSolver
 from setu.analysis.critical_position import CriticalPositionService
 find_critical_position = CriticalPositionService.find_critical_position
 rank_all_positions = CriticalPositionService.rank_all_positions
-from setu.models.bridge import (
-    Bracing,
-    BridgeInput,
-    DeckSlab,
-    Girders,
-    MeshSettings,
-    PlateGirderSection,
-)
-from setu.models.bridge import (
-    Bracing,
-    BridgeInput,
-    DeckSlab,
-    Girders,
-    MeshSettings,
-    PlateGirderSection,
-)
+from setu.models.bridge import Bracing, BridgeInput, DeckSlab, Girders, MeshSettings
+from setu.models.sections import PlateGirderSection
+from test_design_forces import ADDED_DEAD_LOADS, CONCRETE, STEEL
 from setu.builder.assembly import build_bridge_model as build_model
 from setu.loads.dead_loads import apply_dead_loads
 
@@ -61,6 +48,7 @@ def deck_cross_section() -> DeckCrossSection:
 def bridge(deck_cross_section) -> BridgeInput:
     return BridgeInput(
         span_m=SPAN_M,
+        skew=0.0,
         cross_section=deck_cross_section,
         deck=DeckSlab(thickness_m=0.23, overhang_m=1.25, wearing_course_thickness_m=0.075),
         girders=Girders(
@@ -76,6 +64,10 @@ def bridge(deck_cross_section) -> BridgeInput:
         ),
         bracing=Bracing(station_count=7, area_m2=0.01, arrangement="XT"),
         mesh=MeshSettings(panels_between_braces=4, target_size_across_width_m=0.6),
+        steel=STEEL,
+        concrete=CONCRETE,
+        wearing_course_unit_weight_kn_m3=22.0,
+        added_dead_loads=ADDED_DEAD_LOADS,
     )
 
 

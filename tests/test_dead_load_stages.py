@@ -1,16 +1,14 @@
-"""Dead load in the stages IRC:22-2015 clauses 601.1 and 604.1.1 ask for.
+"""Dead load in the stages IRC:22-2015 clauses 601.1 and 604.1.1 ask for, un-propped as OsdagBridge builds it.
 
-Un-propped: the bare steel carries its own weight and the wet slab; the composite
-section, with long-term concrete, carries the surfacing that goes on afterwards.
-Propped: the composite section carries all of it.
+The bare steel carries its own weight and the wet slab; the composite section, with
+long-term concrete, carries the surfacing that goes on afterwards.
 """
 
 import pytest
 
 from setu.builder.assembly import build_bridge_model
 from setu.loads.dead_loads import construction_stage_load, superimposed_dead_load
-from setu.models.bridge import Bracing, BridgeInput
-from setu.utils.constants import PROPPED, UNPROPPED
+from setu.models.bridge import Bracing, BridgeInput, DeckSlab
 from setu.postprocess.girder_response import analyze_load_case, dead_load_forces
 
 pytest.importorskip("openseespy.opensees", reason="needs a finite element solver")
@@ -22,17 +20,14 @@ SLAB_UNIT_WEIGHT_KN_M3 = 25.0
 NEARLY_WEIGHTLESS_BRACING_M2 = 1e-4
 
 
-def _bridge(construction):
-    return BridgeInput(
-        span_m=SPAN_M, cross_section=CROSS_SECTION, deck=BRIDGE.deck, girders=BRIDGE.girders,
-        bracing=Bracing(station_count=7, area_m2=NEARLY_WEIGHTLESS_BRACING_M2, arrangement="XT"), mesh=BRIDGE.mesh,
-        construction=construction, wearing_course_thickness_m=0.075,
-    )
+def _bridge():
+    return BridgeInput(**{**BRIDGE.__dict__, "deck": DeckSlab(thickness_m=0.23, overhang_m=1.25, wearing_course_thickness_m=0.075),
+                          "bracing": Bracing(station_count=7, area_m2=NEARLY_WEIGHTLESS_BRACING_M2, arrangement="XT")})
 
 
 def test_the_steel_alone_carries_the_wet_slab():
     """An inner girder of the bare steel frame is a simple beam: M = w L^2 / 8 at midspan."""
-    bridge = _bridge(UNPROPPED)
+    bridge = _bridge()
     model = build_bridge_model(bridge, composite=False)
     midspan = model.mesh.stations_along_span // 2
     girder = 2
@@ -45,7 +40,7 @@ def test_the_steel_alone_carries_the_wet_slab():
 
 
 def test_the_construction_stage_puts_down_the_whole_slab():
-    bridge = _bridge(UNPROPPED)
+    bridge = _bridge()
     model = build_bridge_model(bridge, composite=False)
     slab_kn = SLAB_UNIT_WEIGHT_KN_M3 * bridge.deck.thickness_m * bridge.width_m() * SPAN_M
     steel_kn = bridge.steel.unit_weight_kn_m3 * model.girder.area_m2 * SPAN_M * bridge.girders.count
@@ -57,18 +52,8 @@ def test_the_construction_stage_puts_down_the_whole_slab():
     assert on_the_nodes_kn + on_the_elements_kn == pytest.approx(slab_kn + steel_kn, rel=0.01)
 
 
-def test_shuttering_adds_to_the_construction_stage():
-    bridge = _bridge(UNPROPPED)
-    model = build_bridge_model(bridge, composite=False)
-
-    bare = -sum(fy for _, _, fy, *_ in construction_stage_load(model).nodal_loads)
-    with_shuttering = -sum(fy for _, _, fy, *_ in construction_stage_load(model, shuttering_kpa=1.0).nodal_loads)
-
-    assert with_shuttering - bare == pytest.approx(1.0 * bridge.width_m() * SPAN_M, rel=1e-6)
-
-
 def test_surfacing_goes_on_the_composite_deck():
-    bridge = _bridge(UNPROPPED)
+    bridge = _bridge()
     model = build_bridge_model(bridge)
 
     case = superimposed_dead_load(model)
@@ -77,35 +62,13 @@ def test_surfacing_goes_on_the_composite_deck():
     assert {node for node, *_ in case.nodal_loads} <= set(model.deck_nodes.values())
 
 
-def test_unpropped_puts_more_on_the_steel_than_propped():
-    unpropped = dead_load_forces(_bridge(UNPROPPED))
-    propped = dead_load_forces(_bridge(PROPPED))
-    midspan = len(unpropped.total[2].moment_kn_m) // 2
-
-    assert unpropped.total[2].moment_kn_m[midspan] > propped.total[2].moment_kn_m[midspan]
-    assert set(unpropped.stages) == {"construction", "superimposed", "surfacing"}
-    assert set(propped.stages) == {"dead", "surfacing"}
-
-
-def test_both_methods_carry_the_same_total_moment():
-    """Staging moves moment between steel and slab, never adds or removes any."""
-    unpropped = dead_load_forces(_bridge(UNPROPPED))
-    propped = dead_load_forces(_bridge(PROPPED))
-    midspan = len(unpropped.total[2].moment_kn_m) // 2
-
-    def across_the_deck(result):
-        return sum(result.total[g].composite_moment_kn_m[midspan] for g in result.total)
-
-    assert across_the_deck(unpropped) == pytest.approx(across_the_deck(propped), rel=0.01)
-
-
-def test_the_default_is_unpropped():
-    assert BridgeInput(span_m=SPAN_M).construction == UNPROPPED
+def test_three_stages():
+    assert set(dead_load_forces(_bridge()).stages) == {"construction", "superimposed", "surfacing"}
 
 
 def test_surfacing_is_kept_apart_for_its_own_factor():
     """Table B.2 factors surfacing at 1.75 and the rest of the dead load at 1.35, so they cannot be lumped."""
-    result = dead_load_forces(_bridge(UNPROPPED))
+    result = dead_load_forces(_bridge())
     midspan = len(result.total[2].moment_kn_m) // 2
     surfacing = result.stages["surfacing"][2].composite_moment_kn_m[midspan]
     everything_else = sum(result.stages[stage][2].composite_moment_kn_m[midspan] for stage in ("construction", "superimposed"))
@@ -118,7 +81,7 @@ def test_surfacing_is_kept_apart_for_its_own_factor():
 
 def test_superimposed_load_puts_down_exactly_what_the_strips_carry():
     """A node on a strip boundary takes each strip's pressure over its own share of the node's width."""
-    bridge = _bridge(UNPROPPED)
+    bridge = _bridge()
     model = build_bridge_model(bridge)
     added = bridge.added_dead_loads
     pressures = {"footpath": added.footpath.pressure_kpa, "kerb": added.kerb.pressure_kpa, "median": added.median.pressure_kpa}
@@ -130,7 +93,7 @@ def test_superimposed_load_puts_down_exactly_what_the_strips_carry():
 
 
 def test_a_symmetric_deck_loads_its_girders_symmetrically():
-    result = dead_load_forces(_bridge(UNPROPPED))
+    result = dead_load_forces(_bridge())
     midspan = len(result.total[0].moment_kn_m) // 2
     last = len(result.total) - 1
 
@@ -138,23 +101,11 @@ def test_a_symmetric_deck_loads_its_girders_symmetrically():
         assert result.total[girder].composite_moment_kn_m[midspan] == pytest.approx(result.total[last - girder].composite_moment_kn_m[midspan], rel=1e-6)
 
 
-def test_a_wearing_course_given_on_the_deck_is_loaded():
-    """DeckSlab(wearing_course_thickness_m=...) is where the example sets it; it must reach the dead load."""
-    from setu.models.bridge import DeckSlab
-
-    bridge = BridgeInput(span_m=SPAN_M, cross_section=CROSS_SECTION, deck=DeckSlab(thickness_m=0.23, overhang_m=1.25, wearing_course_thickness_m=0.075),
-                         girders=BRIDGE.girders, bracing=BRIDGE.bracing, mesh=BRIDGE.mesh)
-    model = build_bridge_model(bridge)
+def test_the_wearing_course_on_the_deck_is_loaded():
+    model = build_bridge_model(_bridge())
     from setu.loads.dead_loads import surfacing_load
     carriageway_m = sum(strip.width_m for strip in CROSS_SECTION.strips if strip.carries_traffic())
 
     applied_kn = -sum(fy for _, _, fy, *_ in surfacing_load(model).nodal_loads)
 
     assert applied_kn == pytest.approx(0.075 * 22.0 * carriageway_m * SPAN_M, rel=1e-9)
-
-
-def test_two_different_wearing_courses_are_refused():
-    from setu.models.bridge import DeckSlab
-
-    with pytest.raises(ValueError, match="wearing course"):
-        BridgeInput(span_m=SPAN_M, deck=DeckSlab(thickness_m=0.23, wearing_course_thickness_m=0.075), wearing_course_thickness_m=0.05)

@@ -1,4 +1,5 @@
 class GirderSection:
+    # the girder numbers the solver needs: area, inertias, J, E and G
     def __init__(self, area_m2, torsion_constant_m4, weak_axis_inertia_m4,
                  strong_axis_inertia_m4, elastic_modulus_kpa, shear_modulus_kpa):
         self.area_m2 = area_m2
@@ -8,28 +9,30 @@ class GirderSection:
         self.elastic_modulus_kpa = elastic_modulus_kpa
         self.shear_modulus_kpa = shear_modulus_kpa
 
+    # plain dict for the JSON output
     def to_dict(self):
         return self.__dict__
 
 
 class PlateGirderSection:
-    def __init__(self, top_flange_width_m, top_flange_thickness_m, bottom_flange_width_m, bottom_flange_thickness_m, web_height_m, web_thickness_m, effective_deck_width_m=0.0, deck_thickness_m=0.0, **kwargs):
+    # an I girder by its plates, as OsdagBridge sizes it
+    def __init__(self, top_flange_width_m, top_flange_thickness_m, bottom_flange_width_m, bottom_flange_thickness_m, web_height_m, web_thickness_m):
         self.top_flange_width_m = top_flange_width_m
         self.top_flange_thickness_m = top_flange_thickness_m
         self.bottom_flange_width_m = bottom_flange_width_m
         self.bottom_flange_thickness_m = bottom_flange_thickness_m
         self.web_height_m = web_height_m
         self.web_thickness_m = web_thickness_m
-        self.effective_deck_width_m = effective_deck_width_m
-        self.deck_thickness_m = deck_thickness_m
 
+    # overall depth, flange to flange
     @property
     def depth_m(self):
         return self.top_flange_thickness_m + self.web_height_m + self.bottom_flange_thickness_m
 
 
 class ExtendedGirderSection(GirderSection):
-    def __init__(self, area_m2, neutral_axis_from_bottom_m, strong_axis_inertia_m4, weak_axis_inertia_m4, torsion_constant_m4, depth_m, **kwargs):
+    # section properties worked out from the plates
+    def __init__(self, area_m2, neutral_axis_from_bottom_m, strong_axis_inertia_m4, weak_axis_inertia_m4, torsion_constant_m4, depth_m):
         self.area_m2 = area_m2
         self.neutral_axis_from_bottom_m = neutral_axis_from_bottom_m
         self.strong_axis_inertia_m4 = strong_axis_inertia_m4
@@ -37,6 +40,7 @@ class ExtendedGirderSection(GirderSection):
         self.torsion_constant_m4 = torsion_constant_m4
         self.depth_m = depth_m
 
+    # same section with the steel's E and G, ready for the solver
     def for_solver(self, steel):
         return GirderSection(
             area_m2=self.area_m2,
@@ -48,10 +52,12 @@ class ExtendedGirderSection(GirderSection):
         )
 
 
+# b d^3 / 12 of a rectangle
 def inertia_about_its_own_centre_m4(width_m, depth_m):
     return width_m * depth_m ** 3 / 12
 
 
+# area, neutral axis, both inertias and J of the plate girder
 def girder_properties(section):
     top_flange_area_m2 = section.top_flange_width_m * section.top_flange_thickness_m
     bottom_flange_area_m2 = section.bottom_flange_width_m * section.bottom_flange_thickness_m

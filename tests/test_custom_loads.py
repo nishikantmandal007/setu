@@ -11,7 +11,8 @@ from setu.analysis.influence_surface import InfluenceSolver
 from setu.builder.assembly import build_bridge_model
 from setu.loads.custom_loads import custom_load_cases
 from setu.models.bridge import BridgeInput
-from setu.models.custom_load import AREA, LINE, POINT, CustomLoad
+from setu.models.custom_load import CustomLoad
+from setu.utils.constants import AREA, LINE, POINT
 from setu.postprocess.girder_response import analyze_load_case
 from setu.utils.constants import DEAD, SURFACING, WIND
 
@@ -71,7 +72,7 @@ def test_a_load_off_the_deck_is_refused(model):
 @pytest.mark.parametrize("skew", [0.0, 0.2])
 def test_a_point_load_gives_back_the_influence_surface(skew):
     """Reciprocity: the girder's moment under P at a point equals P times the surface there."""
-    bridge = BridgeInput(span_m=SPAN_M, skew=skew, cross_section=CROSS_SECTION, deck=BRIDGE.deck, girders=BRIDGE.girders, bracing=BRIDGE.bracing, mesh=BRIDGE.mesh)
+    bridge = BridgeInput(**{**BRIDGE.__dict__, "skew": skew})
     model = build_bridge_model(bridge)
     midspan = model.mesh.stations_along_span // 2
     surface = InfluenceSolver(model.as_deck_model()).for_girder_composite_moment("m", model.midspan_element_of_girder(1))

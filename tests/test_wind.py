@@ -31,39 +31,38 @@ PA_PER_KPA = 1000.0
 
 
 def test_table_12_up_to_10_m():
-    speed_mps, pressure_pa = hourly_mean_wind(height_m=6.0, terrain=PLAIN_TERRAIN)
+    speed_mps, pressure_pa = hourly_mean_wind(height_m=6.0, terrain=PLAIN_TERRAIN, basic_wind_speed_mps=33.0, funnelling=False)
 
     assert speed_mps == pytest.approx(27.80)
     assert pressure_pa == pytest.approx(463.70)
 
 
 def test_table_12_the_90_m_row():
-    assert hourly_mean_wind(90.0, PLAIN_TERRAIN)[1] == pytest.approx(729.00)
-    assert hourly_mean_wind(90.0, OBSTRUCTED_TERRAIN)[1] == pytest.approx(454.20)
+    assert hourly_mean_wind(90.0, PLAIN_TERRAIN, 33.0, False)[1] == pytest.approx(729.00)
+    assert hourly_mean_wind(90.0, OBSTRUCTED_TERRAIN, 33.0, False)[1] == pytest.approx(454.20)
 
 
 def test_table_12_note_1_interpolates():
     """25 m sits halfway between 20 m (550.6) and 30 m (590.2): 570.4."""
-    assert hourly_mean_wind(25.0, PLAIN_TERRAIN)[1] == pytest.approx(570.4)
+    assert hourly_mean_wind(25.0, PLAIN_TERRAIN, 33.0, False)[1] == pytest.approx(570.4)
 
 
 def test_table_12_notes_3_and_4_scale_with_basic_wind_speed():
     """Vb = 39 m/s: speed x 39/33, pressure x (39/33)^2."""
-    speed_mps, pressure_pa = hourly_mean_wind(10.0, PLAIN_TERRAIN, basic_wind_speed_mps=39.0)
+    speed_mps, pressure_pa = hourly_mean_wind(10.0, PLAIN_TERRAIN, basic_wind_speed_mps=39.0, funnelling=False)
 
     assert speed_mps == pytest.approx(27.80 * 39.0 / 33.0)
     assert pressure_pa == pytest.approx(463.70 * (39.0 / 33.0) ** 2)
 
 
 def test_table_12_notes_5_and_6():
-    """Funnelling topography: +20 %. Construction stage: 70 %."""
-    assert hourly_mean_wind(10.0, PLAIN_TERRAIN, funnelling=True)[1] == pytest.approx(463.70 * 1.2)
-    assert hourly_mean_wind(10.0, PLAIN_TERRAIN, construction=True)[1] == pytest.approx(463.70 * 0.7)
+    """Funnelling topography: +20 %."""
+    assert hourly_mean_wind(10.0, PLAIN_TERRAIN, 33.0, funnelling=True)[1] == pytest.approx(463.70 * 1.2)
 
 
 def test_clause_209_1_limits():
     with pytest.raises(ValueError, match="100 m"):
-        hourly_mean_wind(120.0, PLAIN_TERRAIN)
+        hourly_mean_wind(120.0, PLAIN_TERRAIN, 33.0, False)
     with pytest.raises(ValueError, match="150 m"):
         transverse_wind_force_kn(0.4637, exposed_area_m2=10.0, drag=2.0, span_m=160.0)
 
@@ -104,7 +103,7 @@ def test_user_values_replace_the_code_values():
     assert vertical_wind_force_kn(pz_kpa, 100.0, span_m=35.0, lift=1.0) == pytest.approx(0.5 * 100.0 * 2.0 * 1.0)
 
 
-SITE = WindSite(basic_wind_speed_mps=39.0, terrain=PLAIN_TERRAIN, height_m=12.0, solid_barrier_height_m=1.1)
+SITE = WindSite(basic_wind_speed_mps=39.0, terrain=PLAIN_TERRAIN, height_m=12.0, funnelling=False, solid_barrier_height_m=1.1)
 
 
 def _reactions_under(model, case):
@@ -213,7 +212,7 @@ def test_the_wind_site_works_out_the_areas(wind_cases):
     """A1 = span x (girder depth + slab + solid barrier); A3 = span x deck width."""
     model, cases = wind_cases
     depth_m = model.girder.depth_m + BRIDGE.deck.thickness_m + SITE.solid_barrier_height_m
-    _, pressure_pa = hourly_mean_wind(12.0, PLAIN_TERRAIN, basic_wind_speed_mps=39.0)
+    _, pressure_pa = hourly_mean_wind(12.0, PLAIN_TERRAIN, basic_wind_speed_mps=39.0, funnelling=False)
     drag = drag_coefficient(BRIDGE.girders.count, model.mesh.girder_spacing_m, model.girder.depth_m)
 
     assert cases.forces_kn["transverse"] == pytest.approx(pressure_pa / PA_PER_KPA * SPAN_M * depth_m * 2.0 * drag)

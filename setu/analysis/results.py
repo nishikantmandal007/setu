@@ -1,8 +1,7 @@
-from setu.utils.constants import REVERSED_SUFFIX
-
-RULE = "-" * 72
+from setu.utils.constants import REVERSED_SUFFIX, RULE
 
 class VehiclePlacement:
+    # a vehicle (or train) placed on the deck with its impact factor
     def __init__(self, vehicle_name, z_centre_m, x_front_m, impact_factor, train_x_front_m=()):
         self.vehicle_name = vehicle_name
         self.z_centre_m = z_centre_m
@@ -10,12 +9,15 @@ class VehiclePlacement:
         self.impact_factor = impact_factor
         self.train_x_front_m = train_x_front_m
 
+    # how many vehicles in the train
     def vehicles_in_train(self):
         return max(len(self.train_x_front_m), 1)
 
+    # is it the reversed vehicle
     def is_facing_backwards(self):
         return self.vehicle_name.endswith(REVERSED_SUFFIX)
 
+    # one printed row for the vehicle
     def as_a_row(self):
         where = ", ".join(f"{x:.3f}" for x in self.train_x_front_m)
         return (
@@ -24,10 +26,12 @@ class VehiclePlacement:
             f"  {self.vehicles_in_train()} at [{where}]"
         )
 
+    # plain dict for the JSON output
     def to_dict(self):
         return self.__dict__
 
 class CriticalPosition:
+    # the worst legal traffic for one response: vehicles, lanes, UDL and footway
     def __init__(self, response_name, adverse, response, response_before_reduction,
                  lane_reduction, design_lanes, lane_pattern, carriageways_read_as,
                  vehicles=None, footway_response=0.0, residual_udl_applied=False,
@@ -49,12 +53,14 @@ class CriticalPosition:
         self.footway_strips = footway_strips or []
         self.wearing_course_thickness_m = wearing_course_thickness_m
 
+    # how much smaller, in %, the resultant-centred layout is
     def resultant_centred_shortfall(self):
 
         if self.resultant_centred_response is None or self.response == 0:
             return None
         return 100.0 * (abs(self.response) - abs(self.resultant_centred_response)) / abs(self.response)
 
+    # printed line for the resultant-centred check
     def resultant_centred_line(self):
         if self.resultant_centred_response is None:
             return None
@@ -64,6 +70,7 @@ class CriticalPosition:
             return line
         return f"{line}   {shortfall:.1f}% lower"
 
+    # printed summary of the critical position
     def describe(self):
         lines = [
             f"{self.response_name}  [{self.adverse}]",
@@ -88,5 +95,6 @@ class CriticalPosition:
         lines.append(RULE)
         return "\n".join(lines)
 
+    # plain dict for the JSON output
     def to_dict(self):
         return self.__dict__

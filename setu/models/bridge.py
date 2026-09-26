@@ -1,6 +1,4 @@
-from setu.models.materials import Steel, Concrete, SurfacingLayer
-from setu.models.sections import GirderSection, PlateGirderSection, ExtendedGirderSection, girder_properties
-from setu.utils.constants import UNPROPPED
+from setu.models.materials import SurfacingLayer
 
 X_BRACING = 'X'
 X_BRACING_WITH_TOP_CHORD = 'XT'
@@ -10,91 +8,91 @@ K_BRACING = 'K'
 K_BRACING_WITH_TOP_CHORD = 'KT'
 
 
-
 class DeckSlab:
-    def __init__(self, thickness_m, overhang_m=0.0, wearing_course_thickness_m=0.0, **kwargs):
+    # the RC slab: its thickness, how far it hangs past the outer girder, and the wearing course on it
+    def __init__(self, thickness_m, overhang_m, wearing_course_thickness_m):
         self.thickness_m = thickness_m
         self.overhang_m = overhang_m
         self.wearing_course_thickness_m = wearing_course_thickness_m
 
 
 class Girders:
-    def __init__(self, spacing_m=0.0, count=0, **kwargs):
-        self.spacing_m = spacing_m
+    # how many main girders and their plate girder section
+    def __init__(self, count, section):
         self.count = count
-        self.section = kwargs.get("section")
+        self.section = section
 
 
 class Bracing:
-    def __init__(self, arrangement=X_BRACING_WITH_TOP_CHORD, distance_from_bottom_m=0.0, station_count=0, **kwargs):
+    # cross bracing: its arrangement, how many stations along the span, and the member area
+    def __init__(self, arrangement, station_count, area_m2):
         self.arrangement = arrangement
-        self.distance_from_bottom_m = distance_from_bottom_m
         self.station_count = station_count
-        self.area_m2 = kwargs.get("area_m2", 0.0)
+        self.area_m2 = area_m2
 
+    # K, KT
     @property
     def is_k_braced(self):
         return self.arrangement.upper().startswith(K_BRACING)
 
+    # X, XT, XB, XTB
     @property
     def is_x_braced(self):
         return self.arrangement.upper().startswith(X_BRACING)
 
+    # XT, XTB, KT
     @property
     def has_top_chord(self):
         return self.arrangement.upper() in (X_BRACING_WITH_TOP_CHORD, X_BRACING_WITH_BOTH_CHORDS, K_BRACING_WITH_TOP_CHORD)
 
+    # XB, XTB
     @property
     def has_bottom_chord(self):
         return self.arrangement.upper() in (X_BRACING_WITH_BOTTOM_CHORD, X_BRACING_WITH_BOTH_CHORDS)
 
 
 class MeshSettings:
-    def __init__(self, max_length_m=0.0, max_width_m=0.0, panels_between_braces=0, target_size_across_width_m=0.0, **kwargs):
-        self.max_length_m = max_length_m
-        self.max_width_m = max_width_m
+    # how fine the grillage is: panels between two brace stations, and the element size across the deck
+    def __init__(self, panels_between_braces, target_size_across_width_m):
         self.panels_between_braces = panels_between_braces
         self.target_size_across_width_m = target_size_across_width_m
 
 
 class AddedDeadLoads:
-    def __init__(self, **kwargs):
-        self.footpath = SurfacingLayer(0.15, 24.0)
-        self.kerb = SurfacingLayer(0.3, 24.0)
-        self.median = SurfacingLayer(0.25, 24.0)
-        self.crash_barrier = SurfacingLayer(0.3, 24.0)
-
-
-def one_wearing_course_m(given_on_the_bridge_m, deck):
-    given_on_the_deck_m = deck.wearing_course_thickness_m if deck is not None else 0.0
-    if given_on_the_bridge_m and given_on_the_deck_m and given_on_the_bridge_m != given_on_the_deck_m:
-        raise ValueError(f"the wearing course is {given_on_the_bridge_m} m on the bridge but {given_on_the_deck_m} m on the deck slab; give it once")
-    return given_on_the_bridge_m or given_on_the_deck_m
+    # the layers that sit on the footpath, kerb, median and crash barrier strips
+    def __init__(self, footpath, kerb, median, crash_barrier):
+        self.footpath = footpath
+        self.kerb = kerb
+        self.median = median
+        self.crash_barrier = crash_barrier
 
 
 class BridgeInput:
-    def __init__(self, span_m=0.0, skew=0.0, cross_section=None, deck=None, girders=None, bracing=None, cross_girders=None, section=None, wearing_course_thickness_m=0.0, mesh=None, steel=None, concrete=None, wearing_course_unit_weight_kn_m3=22.0, added_dead_loads=None, construction=UNPROPPED, shuttering_kpa=0.0, **kwargs):
+    # everything setu needs about the bridge, straight from OsdagBridge; skew is the tan of the skew angle
+    def __init__(self, span_m, skew, cross_section, deck, girders, bracing, mesh, steel, concrete,
+                 wearing_course_unit_weight_kn_m3, added_dead_loads):
         self.span_m = span_m
         self.skew = skew
         self.cross_section = cross_section
         self.deck = deck
         self.girders = girders
         self.bracing = bracing
-        self.bracings = bracing
-        self.cross_girders = cross_girders
-        self.section = section
-        self.wearing_course_thickness_m = one_wearing_course_m(wearing_course_thickness_m, deck)
         self.mesh = mesh
-        self.steel = steel or Steel()
-        self.concrete = concrete or Concrete()
+        self.steel = steel
+        self.concrete = concrete
         self.wearing_course_unit_weight_kn_m3 = wearing_course_unit_weight_kn_m3
-        self.added_dead_loads = added_dead_loads or AddedDeadLoads()
-        self.construction = construction
-        self.shuttering_kpa = shuttering_kpa
+        self.added_dead_loads = added_dead_loads
 
+    # full deck width, edge to edge
     def width_m(self):
         return self.cross_section.total_width_m()
 
+    # wearing course thickness, read off the deck slab
+    @property
+    def wearing_course_thickness_m(self):
+        return self.deck.wearing_course_thickness_m
+
+    # the wearing course as a layer, for its weight
     @property
     def wearing_course(self):
-        return SurfacingLayer(self.wearing_course_thickness_m, self.wearing_course_unit_weight_kn_m3)
+        return SurfacingLayer(self.deck.wearing_course_thickness_m, self.wearing_course_unit_weight_kn_m3)

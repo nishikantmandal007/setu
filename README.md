@@ -18,8 +18,8 @@ uv sync
 
 ```python
 from setu import (
-    BridgeInput, DeckCrossSection, DeckSlab, Girders, Bracing,
-    MeshSettings, PlateGirderSection,
+    AddedDeadLoads, BridgeInput, Concrete, DeckCrossSection, DeckSlab, Girders, Bracing,
+    MeshSettings, PlateGirderSection, Steel, SurfacingLayer,
 )
 from setu.models.site import SeismicSite, TemperatureSite, WindSite
 from setu.postprocess.design_values import girder_design_values
@@ -27,6 +27,7 @@ from setu.utils.constants import BASIC, BIGGER_IS_WORSE, MIDSPAN_MOMENT, PLAIN_T
 
 bridge = BridgeInput(
     span_m=35.0,
+    skew=0.0,
     cross_section=DeckCrossSection.from_widths({
         "footpath_left": 1.5,
         "carriageway": 7.5,
@@ -40,18 +41,29 @@ bridge = BridgeInput(
     )),
     bracing=Bracing(station_count=7, area_m2=0.01, arrangement="XT"),
     mesh=MeshSettings(panels_between_braces=4, target_size_across_width_m=0.6),
-)  # un-propped construction by default; pass construction="propped" to change it
+    steel=Steel(elastic_modulus_mpa=200000.0, poissons_ratio=0.3, unit_weight_kn_m3=78.5),
+    concrete=Concrete(elastic_modulus_mpa=32000.0, poissons_ratio=0.2, unit_weight_kn_m3=25.0),
+    wearing_course_unit_weight_kn_m3=22.0,
+    added_dead_loads=AddedDeadLoads(
+        footpath=SurfacingLayer(0.15, 24.0), kerb=SurfacingLayer(0.3, 24.0),
+        median=SurfacingLayer(0.25, 24.0), crash_barrier=SurfacingLayer(0.3, 24.0),
+    ),
+)  # every input is required: nothing is assumed, a missing one raises
 
 results = girder_design_values(
     bridge,
-    wind=WindSite(basic_wind_speed_mps=39.0, terrain=PLAIN_TERRAIN, height_m=12.0, solid_barrier_height_m=1.1),
-    seismic=SeismicSite(zone="IV", soil="II"),
+    wind=WindSite(basic_wind_speed_mps=39.0, terrain=PLAIN_TERRAIN, height_m=12.0, funnelling=False, solid_barrier_height_m=1.1),
+    seismic=SeismicSite(zone="IV", soil="II", importance_factor=1.2, period_s=0.5, response_reduction=1.0),
     temperature=TemperatureSite(shade_max_c=45.0, shade_min_c=2.0),
 )
 for girder, by_response in results.girders.items():
     governing = by_response[MIDSPAN_MOMENT][BASIC][BIGGER_IS_WORSE]
     print(f"girder {girder}: {governing.value:.1f} kNm ({governing.combination})")
 ```
+
+## Units
+
+Every input name carries its unit: `_m` metres, `_mpa` N/mm² (elastic moduli, as OsdagBridge gives them), `_kn_m3` kN/m³, `_kpa` kN/m², `_mps` m/s, `_c` °C. `skew` is the tan of the skew angle. Inside, the solver works in kN and m; E is turned from MPa to kN/m² in one place (`Steel` / `Concrete.elastic_modulus_kpa`).
 
 ## Command line
 
@@ -87,18 +99,18 @@ setu/
 ├── solver/       OpenSees FE backend and stiffness matrices
 ├── analysis/     influence surfaces, along-span and across-carriageway search, critical position
 ├── postprocess/  girder response, dead load by stage, envelopes, result datasets, plots
-└── utils/        constants.py: constants more than one module uses
+└── utils/        constants.py: constants more than one module uses, one section per topic
 ```
 
 ## Flow
 
 ![setu end-to-end flow](docs/flow.svg)
 
-- **Dead load** is solved in the IRC:22 construction stages: bare steel for the wet slab when un-propped, then the long-term composite deck (m ≥ 15) for everything laid on it. Surfacing is kept apart, because IRC:6 Table B.2 factors it at 1.75 rather than 1.35.
+- **Dead load** is solved in the IRC:22 un-propped construction stages (the only method OsdagBridge uses): bare steel for the wet slab, then the long-term composite deck (m ≥ 15) for everything laid on it. Surfacing is kept apart, because IRC:6 Table B.2 factors it at 1.75 rather than 1.35.
 - **Live load** uses the short-term composite deck (m ≥ 7.5). Each girder gets its own influence surfaces (composite moment and shear) and its own critical-position search, including the residual UDL and the clause 206.3 footway load. Braking (211) goes with the traffic it comes from.
 - **Wind** follows IRC:6 clause 209: Table 12 pressure, F_T at the centroid of its area, F_L, F_V, and wind on the live load.
-- **Seismic** follows IRC:SP:114-2018, which replaced IRC:6 clause 218: Ah = (Z/2)(I/R)(Sa/g) with the Table 5.2 minimum, 20 % live load, and the 100/30/30 combination.
-- **Temperature** (215) gives no girder force on a simply supported span with a free bearing. It is reported as the Fig. 16b primary stresses and the bearing movement instead. Fig. 16b does not give the reverse profile's depths, so pass them yourself if you need it.
+- **Seismic** follows IRC:SP:114-2018, which replaced IRC:6 clause 218: Ah = (Z/2)(I/R)(Sa/g) with the Table 5.2 minimum, 20 % live load, and the 100/30/30 combination. I, T and R come from the input.
+- **Temperature** (215) gives no girder force on a simply supported span with a free bearing. It is reported as the Fig. 16b positive-difference primary stresses and the bearing movement instead.
 - **Custom loads**: point, line or area loads filed under DL / SIDL / DW / LL / EL / WL / TL, or a group of your own that only a custom combination picks up.
 - **Combinations** follow IRC:6 Annex B. One variable load leads at a time; a variable load that relieves the effect is left out; permanent loads take their adding or relieving factor; no live load in winds over 36 m/s.
 - Every force is an internal force, sagging positive.

@@ -9,8 +9,8 @@ from setu.irc6.wind import (
     wind_on_live_load_kn,
 )
 from setu.loads.load_cases import LoadCase
+from setu.utils.constants import KPA_PER_PA
 
-KPA_PER_PA = 1e-3
 BLOWING_TOWARDS_PLUS_Z = 1.0
 BLOWING_TOWARDS_MINUS_Z = -1.0
 UPWARD = 1.0
@@ -18,16 +18,18 @@ DOWNWARD = -1.0
 
 
 class WindLoadCases(dict):
+    # wind load cases plus the forces and deck wind speed
     def __init__(self, cases, forces_kn, speed_at_deck_mps):
         super().__init__(cases)
         self.forces_kn = forces_kn
         self.speed_at_deck_mps = speed_at_deck_mps
 
 
+# clause 209 wind: across, along, up, down and on the vehicles
 def wind_load_cases(model, site):
     bridge = model.bridge
     span_m = bridge.span_m
-    speed_mps, pressure_pa = hourly_mean_wind(site.height_m, site.terrain, site.basic_wind_speed_mps, site.funnelling, site.construction)
+    speed_mps, pressure_pa = hourly_mean_wind(site.height_m, site.terrain, site.basic_wind_speed_mps, site.funnelling)
     pressure_kpa = pressure_pa * KPA_PER_PA
     girder_depth_m = model.girder.depth_m
     exposed_area_m2 = site.exposed_area_m2
@@ -61,6 +63,7 @@ def wind_load_cases(model, site):
     return WindLoadCases(cases, forces_kn, speed_mps)
 
 
+# a sideways wind force along one deck edge, at the centroid of the exposed area
 def edge_line_load(model, edge_station, total_kn, above_deck_nodes_m, name):
     mesh = model.mesh
     kn_per_m = total_kn / model.bridge.span_m
@@ -71,14 +74,17 @@ def edge_line_load(model, edge_station, total_kn, above_deck_nodes_m, name):
     return LoadCase(name=name, nodal_loads=nodal_loads)
 
 
+# every deck node counts
 def everywhere(model, z_m):
     return True
 
 
+# only nodes on the road count
 def on_the_carriageway(model, z_m):
     return any(strip.carries_traffic() and strip.z_from_m <= z_m <= strip.z_to_m for strip in model.bridge.cross_section.strips)
 
 
+# each counted node's share of the counted area
 def shares_of_the_area(model, counts):
     mesh = model.mesh
     areas = {}
@@ -90,6 +96,7 @@ def shares_of_the_area(model, counts):
     return {node: area_m2 / total_m2 for node, area_m2 in areas.items()}
 
 
+# a force along the span spread by area, at a height above the deck nodes
 def spread_along(model, total_kn, above_deck_nodes_m, counts, name):
     nodal_loads = []
     for (i, j), share in shares_of_the_area(model, counts).items():
@@ -98,6 +105,7 @@ def spread_along(model, total_kn, above_deck_nodes_m, counts, name):
     return LoadCase(name=name, nodal_loads=nodal_loads)
 
 
+# a sideways force spread over the carriageway, at a height above the deck nodes
 def spread_across(model, total_kn, above_deck_nodes_m, name):
     nodal_loads = []
     for (i, j), share in shares_of_the_area(model, on_the_carriageway).items():
@@ -106,6 +114,7 @@ def spread_across(model, total_kn, above_deck_nodes_m, name):
     return LoadCase(name=name, nodal_loads=nodal_loads)
 
 
+# a vertical force spread over the whole deck
 def spread_up(model, total_kn, name):
     nodal_loads = [(model.deck_nodes[i, j], 0.0, share * total_kn, 0.0, 0.0, 0.0, 0.0) for (i, j), share in shares_of_the_area(model, everywhere).items()]
     return LoadCase(name=name, nodal_loads=nodal_loads)

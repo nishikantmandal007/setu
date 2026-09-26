@@ -12,6 +12,7 @@ NO_FOOTWAY_LOAD = 0.0
 READ_EACH_CARRIAGEWAY_ON_ITS_OWN = "separate"
 
 class SearchOptions:
+    # every switch of the critical position search
     def __init__(self, adverse, vehicles, carriageways_read_as, material, member_span_m, wearing_course_thickness_m, apply_impact, apply_lane_reduction, apply_residual_udl, apply_footway_load, allow_trains, allow_reversed_vehicles, follow_combination_drawings, sampling, crowd_on_footways=False):
         self.adverse = adverse
         self.vehicles = vehicles
@@ -29,20 +30,24 @@ class SearchOptions:
         self.follow_combination_drawings = follow_combination_drawings
         self.sampling = sampling
 
+    # plain dict for the JSON output
     def to_dict(self):
         return self.__dict__
 
 class EnvelopedCurves:
+    # vehicle responses and the block envelopes built from them
     def __init__(self, responses, permitted, per_carriageway, z_positions_m):
         self.responses = responses
         self.permitted = permitted
         self.per_carriageway = per_carriageway
         self.z_positions_m = z_positions_m
 
+    # plain dict for the JSON output
     def to_dict(self):
         return self.__dict__
 
 class WorstAcrossTheWidth:
+    # ranked placements plus the footway load and resultant-centred check
     def __init__(self, placements, footway, udl_applied, centred_response, footway_strips=()):
         self.placements = placements
         self.footway = footway
@@ -50,10 +55,12 @@ class WorstAcrossTheWidth:
         self.udl_applied = udl_applied
         self.centred_response = centred_response
 
+    # plain dict for the JSON output
     def to_dict(self):
         return self.__dict__
 
 class PlacementContext:
+    # what describe() needs to turn a placement into a CriticalPosition
     def __init__(self, curves_per_carriageway, responses, permitted, surface, adverse, carriageways_read_as, footway, udl_applied, centred_response, carriageways=(), footway_strips=(), apply_residual_udl=False, wearing_course_thickness_m=0.0):
         self.curves_per_carriageway = curves_per_carriageway
         self.carriageways = list(carriageways)
@@ -69,15 +76,18 @@ class PlacementContext:
         self.udl_applied = udl_applied
         self.centred_response = centred_response
 
+    # plain dict for the JSON output
     def to_dict(self):
         return self.__dict__
 
 class CriticalPositionService:
 
+    # the worst legal traffic position for this surface
     @staticmethod
     def find_critical_position(surface, cross_section, span_m, **options):
         return CriticalPositionService.rank_all_positions(surface, cross_section, span_m, **options)[0]
 
+    # every legal traffic position for this surface, worst first
     @staticmethod
     def rank_all_positions(surface, cross_section, span_m, *, adverse=BIGGER_IS_WORSE, vehicles=None, carriageways_read_as=READ_EACH_CARRIAGEWAY_ON_ITS_OWN, material='steel', member_span_m=None, wearing_course_thickness_m=0.0, apply_impact=True, apply_lane_reduction=True, apply_residual_udl=True, apply_footway_load=True, crowd_on_footways=False, allow_trains=True, allow_reversed_vehicles=True, follow_combination_drawings=True, sampling=DEFAULT_SAMPLING):
         options = SearchOptions(adverse=adverse, vehicles=vehicles, carriageways_read_as=carriageways_read_as, material=material, member_span_m=member_span_m, wearing_course_thickness_m=wearing_course_thickness_m, apply_impact=apply_impact, apply_lane_reduction=apply_lane_reduction, apply_residual_udl=apply_residual_udl, apply_footway_load=apply_footway_load, crowd_on_footways=crowd_on_footways, allow_trains=allow_trains, allow_reversed_vehicles=allow_reversed_vehicles, follow_combination_drawings=follow_combination_drawings, sampling=sampling)
@@ -89,6 +99,7 @@ class CriticalPositionService:
         context = PlacementContext(curves_per_carriageway=curves.per_carriageway, responses=curves.responses, permitted=curves.permitted, surface=surface, adverse=adverse, carriageways_read_as=carriageways_read_as, footway=worst.footway, udl_applied=worst.udl_applied, centred_response=worst.centred_response, carriageways=carriageways, footway_strips=worst.footway_strips, apply_residual_udl=options.apply_residual_udl, wearing_course_thickness_m=options.wearing_course_thickness_m)
         return [CriticalPositionService.describe(placement, context) for placement in worst.placements]
 
+    # response curves of every allowed vehicle and the block envelopes
     @staticmethod
     def response_curve_for_every_vehicle(surface, carriageways, span_m, options, skew=0.0):
         permitted = vehicles_allowed_in_each_block(options.vehicles, options.allow_reversed_vehicles)
@@ -98,6 +109,7 @@ class CriticalPositionService:
         per_carriageway = [envelope_every_block(responses, permitted, z_positions_m, options.adverse, carriageway, surface, options.apply_residual_udl, options.sampling) for carriageway in carriageways]
         return EnvelopedCurves(responses=responses, permitted=permitted, per_carriageway=per_carriageway, z_positions_m=z_positions_m)
 
+    # worst lane layouts plus the footway load and the resultant-centred check
     @staticmethod
     def worst_placement_across_the_width(surface, cross_section, carriageways, curves, options, span_m):
         placements = find_worst_placement(carriageways, curves.per_carriageway, adverse=options.adverse, apply_lane_reduction=options.apply_lane_reduction, curve_breakpoints_m=curves.z_positions_m, sampling=options.sampling, follow_combination_drawings=options.follow_combination_drawings)
@@ -113,12 +125,14 @@ class CriticalPositionService:
         udl_applied = options.apply_residual_udl and any((needs_residual_udl(carriageway.width_m()) for carriageway in carriageways))
         return WorstAcrossTheWidth(placements=placements, footway=footway, udl_applied=udl_applied, centred_response=centred_response, footway_strips=footway_strips)
 
+    # response with the resultant centred on the deck, plus footway
     @staticmethod
     def total_with_the_resultant_centred(centred, footway):
         if not centred:
             return None
         return sum((placed.response for placed in centred)) + footway
 
+    # turn one placement into a CriticalPosition with its vehicles and strips
     @staticmethod
     def describe(placement, context):
         placed_vehicles = []
@@ -135,15 +149,18 @@ class CriticalPositionService:
                     residual_udl_strips += strips_beside_class_a(float(z_centre_m), on.left_m, on.right_m)
         return CriticalPosition(response_name=context.surface.name or 'response', adverse=context.adverse, response=placement.response + context.footway * placement.lane_reduction, response_before_reduction=placement.response_before_reduction + context.footway, lane_reduction=placement.lane_reduction, design_lanes=placement.design_lanes, lane_pattern=' | '.join(pattern), carriageways_read_as=context.carriageways_read_as, vehicles=placed_vehicles, footway_response=context.footway, residual_udl_applied=context.udl_applied, resultant_centred_response=context.centred_response, residual_udl_strips=residual_udl_strips, footway_strips=context.footway_strips, wearing_course_thickness_m=context.wearing_course_thickness_m)
 
+    # re-solve the winning vehicle exactly at its centre for x and impact
     @staticmethod
     def place_exactly(responses, choices, winner, z_centre_m, adverse):
         vehicle = next((choice for choice in choices if choice.name == winner))
         exactly_here = responses.for_vehicle(vehicle, np.array([z_centre_m]), adverse)
         return VehiclePlacement(vehicle_name=vehicle.name, z_centre_m=float(z_centre_m), x_front_m=float(exactly_here.x_positions_m[0]), impact_factor=exactly_here.impact_factor, train_x_front_m=exactly_here.train_x_front_m[0])
 
+# the worst legal traffic position for this surface
 def find_critical_position(surface, cross_section, span_m, **options):
     return rank_all_positions(surface, cross_section, span_m, **options)[0]
 
 
+# every legal traffic position for this surface, worst first
 def rank_all_positions(surface, cross_section, span_m, **options):
     return CriticalPositionService.rank_all_positions(surface, cross_section, span_m, **options)

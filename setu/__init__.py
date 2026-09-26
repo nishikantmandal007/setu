@@ -1,4 +1,4 @@
-from setu.models.bridge import BridgeInput, DeckSlab, Girders, Bracing, MeshSettings
+from setu.models.bridge import AddedDeadLoads, BridgeInput, DeckSlab, Girders, Bracing, MeshSettings
 from setu.models.deck import DeckCrossSection
 from setu.models.materials import Steel, Concrete, SurfacingLayer
 from setu.models.sections import PlateGirderSection, GirderSection, girder_properties
@@ -22,6 +22,7 @@ from setu.loads.load_cases import LoadCase, apply_load_case, combine
 from setu.loads.load_builders import live_load, vehicle_load, pressure_load, line_load, point_load, fatigue_moving_load
 
 
+# result dataset builder, imported only when asked for
 def build_result_dataset(*args, **kwargs):
     from setu.postprocess.result_dataset import build_result_dataset as _build
     return _build(*args, **kwargs)

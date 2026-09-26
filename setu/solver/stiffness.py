@@ -13,6 +13,7 @@ BENDING_MOMENT_ABOUT_STRONG_AXIS = STRONG_AXIS_ROTATION_DOFS[0]
 BENDING_MOMENT_ABOUT_WEAK_AXIS = WEAK_AXIS_ROTATION_DOFS[0]
 GIRDER_LOCAL_AXIS_ALONG_Z = (0.0, 0.0, 1.0)
 
+# 12x12 local stiffness of a 3D Euler beam
 def beam_stiffness_matrix(length_m, section):
     length = float(length_m)
     modulus = section.elastic_modulus_kpa
@@ -29,6 +30,7 @@ def beam_stiffness_matrix(length_m, section):
     add_bending_terms(stiffness, modulus, section.weak_axis_inertia_m4, length, shear_dofs=WEAK_AXIS_SHEAR_DOFS, rotation_dofs=WEAK_AXIS_ROTATION_DOFS, coupling_sign=-1)
     return stiffness
 
+# the bending terms for one axis into the stiffness matrix
 def add_bending_terms(stiffness, modulus, inertia_m4, length, *, shear_dofs, rotation_dofs, coupling_sign):
     shear = 12 * modulus * inertia_m4 / length ** 3
     coupling = coupling_sign * 6 * modulus * inertia_m4 / length ** 2
@@ -45,6 +47,7 @@ def add_bending_terms(stiffness, modulus, inertia_m4, length, *, shear_dofs, rot
     stiffness[rotation_i, rotation_i] = stiffness[rotation_j, rotation_j] = near_rotation
     stiffness[rotation_i, rotation_j] = stiffness[rotation_j, rotation_i] = far_rotation
 
+# 12x12 rotation from global to the beam's local axes
 def element_rotation_matrix(local_axis, along=(1.0, 0.0, 0.0)):
     x_axis = np.array(along, float)
     x_axis = x_axis / np.linalg.norm(x_axis)
@@ -58,11 +61,13 @@ def element_rotation_matrix(local_axis, along=(1.0, 0.0, 0.0)):
         rotation[starts_at:starts_at + 3, starts_at:starts_at + 3] = axes
     return rotation
 
+# which local dof is the girder's bending moment
 def moment_dof_for(local_axis):
     if tuple(local_axis) == GIRDER_LOCAL_AXIS_ALONG_Z:
         return BENDING_MOMENT_ABOUT_STRONG_AXIS
     return BENDING_MOMENT_ABOUT_WEAK_AXIS
 
+# which local dof is the girder's shear
 def shear_dof_for(local_axis):
     if tuple(local_axis) == GIRDER_LOCAL_AXIS_ALONG_Z:
         return STRONG_AXIS_SHEAR_DOFS[0]
