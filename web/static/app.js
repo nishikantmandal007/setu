@@ -1,130 +1,3 @@
-<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Setu bridge check</title>
-<script src="https://cdn.jsdelivr.net/npm/plotly.js-dist-min@2.35.2/plotly.min.js" defer></script>
-<script src="/vehicles.js"></script>
-<style>
-  :root {
-    --bg: #f6f5f2; --panel: #ffffff; --ink: #1d1b18; --muted: #7a746c; --line: #e6e2dc; --accent: #2458d3; --accent-ink: #fff;
-    --ok: #1f8a4c; --bad: #c2352b; --asphalt: #3b3f45; --footpath: #e9dcc3; --kerb: #b9b4ab; --udl: rgba(36, 88, 211, .22); --foot: rgba(31, 138, 76, .25);
-    --truck: #f3b33d; --truck-edge: #8a5a00; --shadow: 0 1px 2px rgba(0,0,0,.05), 0 4px 16px rgba(0,0,0,.04);
-  }
-  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
-    --bg: #111214; --panel: #1a1c1f; --ink: #ecebe8; --muted: #9a958d; --line: #2a2d31; --accent: #6d97ff; --accent-ink: #0b0c0e;
-    --ok: #4cc27f; --bad: #ff6b5e; --asphalt: #2c3036; --footpath: #5a5140; --kerb: #6b675f; --shadow: none;
-  } }
-  * { box-sizing: border-box; }
-  body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif; }
-  header { padding: 20px 24px 8px; display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
-  header .logo img { height: 40px; width: auto; display: block; }
-  header h1 { margin: 0; font-size: 20px; letter-spacing: -.01em; }
-  header p { margin: 0; color: var(--muted); }
-  main { display: grid; grid-template-columns: 360px minmax(0, 1fr); gap: 20px; padding: 12px 24px 40px; align-items: start; }
-  @media (max-width: 900px) { main { grid-template-columns: 1fr; padding: 12px 16px 32px; } }
-  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow); }
-  #inputs { position: sticky; top: 12px; max-height: calc(100vh - 24px); display: flex; flex-direction: column; }
-  @media (max-width: 900px) { #inputs { position: static; max-height: none; } }
-  #fields { overflow: auto; padding: 6px 14px; }
-  details { border-bottom: 1px solid var(--line); padding: 8px 0; }
-  details:last-child { border-bottom: 0; }
-  summary { cursor: pointer; font-weight: 600; font-size: 13px; display: flex; justify-content: space-between; align-items: center; list-style: none; }
-  summary::-webkit-details-marker { display: none; }
-  summary::after { content: "›"; color: var(--muted); transition: transform .15s; }
-  details[open] summary::after { transform: rotate(90deg); }
-  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 10px; margin-top: 8px; }
-  label { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--muted); }
-  input, select { font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 7px; padding: 6px 8px; width: 100%; }
-  input:invalid { border-color: var(--bad); }
-  .strip { display: grid; grid-template-columns: 1fr 80px 28px; gap: 6px; margin-top: 6px; }
-  .toggle { flex-direction: row; align-items: center; gap: 6px; font-weight: 400; color: var(--muted); }
-  .toggle input { width: auto; }
-  .off .grid { opacity: .35; pointer-events: none; }
-  button { font: inherit; border: 1px solid var(--line); background: var(--bg); color: var(--ink); border-radius: 8px; padding: 6px 12px; cursor: pointer; }
-  button:hover { border-color: var(--muted); }
-  button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
-  button:disabled { opacity: .5; cursor: default; }
-  .go { padding: 12px 14px; border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 8px; }
-  .go button.primary { padding: 11px; font-size: 15px; }
-  .error { color: var(--bad); font-size: 13px; white-space: pre-wrap; }
-  #out > * + * { margin-top: 16px; }
-  .empty { padding: 48px 28px; text-align: center; color: var(--muted); }
-  .empty svg { width: 100%; max-width: 520px; opacity: .9; }
-  .pad { padding: 16px 18px; }
-  h2 { margin: 0 0 4px; font-size: 15px; }
-  .sub { color: var(--muted); font-size: 13px; margin: 0 0 12px; }
-  .bar { height: 8px; border-radius: 99px; background: var(--line); overflow: hidden; margin: 12px 0; }
-  .bar > div { height: 100%; width: 0; background: var(--accent); transition: width .3s; }
-  .steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; font-size: 13px; }
-  .steps li { color: var(--muted); } .steps li.now { color: var(--ink); font-weight: 600; } .steps li.done { color: var(--ok); }
-  .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; }
-  .stat { padding: 14px 16px; }
-  .stat .k { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
-  .stat .v { font-size: 24px; font-weight: 650; margin: 2px 0; font-variant-numeric: tabular-nums; }
-  .stat .v small { font-size: 13px; font-weight: 500; color: var(--muted); }
-  .stat p { margin: 0; font-size: 13px; color: var(--muted); }
-  .pass { color: var(--ok); font-weight: 600; } .fail { color: var(--bad); font-weight: 600; }
-  .tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
-  .tabs button.on { background: var(--ink); color: var(--bg); border-color: var(--ink); }
-  .deck svg { width: 100%; height: auto; display: block; }
-  .legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12px; color: var(--muted); margin-top: 8px; }
-  .legend i { display: inline-block; width: 12px; height: 12px; border-radius: 3px; vertical-align: -2px; margin-right: 5px; }
-  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 12px; }
-  table { border-collapse: collapse; width: 100%; font-size: 13px; font-variant-numeric: tabular-nums; }
-  th, td { padding: 7px 8px; border-bottom: 1px solid var(--line); text-align: right; white-space: nowrap; }
-  th:first-child, td:first-child { text-align: left; }
-  th { color: var(--muted); font-weight: 500; font-size: 12px; }
-  .scroll { overflow-x: auto; }
-  .charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; }
-  .big-tabs { display: flex; gap: 4px; padding: 4px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; width: fit-content; max-width: 100%; overflow-x: auto; }
-  .big-tabs button { border: 0; background: transparent; padding: 8px 14px; font-weight: 600; color: var(--muted); white-space: nowrap; }
-  .big-tabs button.on { background: var(--accent); color: var(--accent-ink); }
-  .player { display: flex; gap: 10px; align-items: center; margin-top: 10px; }
-  .player input[type=range] { flex: 1; accent-color: var(--accent); padding: 0; border: 0; background: none; }
-  .player select { width: auto; }
-  .now-trying { font-size: 13px; margin: 8px 0 4px; min-height: 20px; }
-  .charts2 { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 12px; }
-  @media (max-width: 1100px) { .charts2 { grid-template-columns: 1fr; } }
-  .plot { min-height: 320px; }
-  .plot.tall { min-height: 640px; }
-  .controls { display: flex; gap: 12px; flex-wrap: wrap; align-items: end; margin-bottom: 8px; }
-  .controls label { min-width: 180px; } .controls label.toggle { min-width: 0; }
-  .readout { font-size: 13px; color: var(--muted); min-height: 20px; font-variant-numeric: tabular-nums; }
-  .vehicle { transition: none; }
-</style>
-</head>
-<body>
-<header>
-  <picture class="logo">
-    <source media="(prefers-color-scheme: dark)" srcset="/assets/logo-dark.svg">
-    <img src="/assets/logo.svg" alt="Setu">
-  </picture>
-  <p>Composite plate girder bridge · IRC:6-2017 · IRC:22-2015 · IRC:SP:114-2018</p>
-</header>
-<main>
-  <section id="inputs" class="card">
-    <div id="fields"></div>
-    <div class="go">
-      <button class="primary" id="analyse">Analyse</button>
-      <div class="error" id="input-error"></div>
-    </div>
-  </section>
-  <div id="out">
-    <div class="card empty">
-      <svg viewBox="0 0 520 150" aria-hidden="true">
-        <rect x="10" y="60" width="500" height="18" rx="3" fill="var(--kerb)"/>
-        <rect x="10" y="78" width="500" height="10" fill="var(--line)"/>
-        <rect x="30" y="88" width="14" height="50" fill="var(--line)"/><rect x="476" y="88" width="14" height="50" fill="var(--line)"/>
-        <rect x="150" y="30" width="120" height="30" rx="5" fill="var(--truck)"/><rect x="270" y="38" width="30" height="22" rx="4" fill="var(--truck-edge)"/>
-      </svg>
-      <p>Fill in the bridge on the left and press <b>Analyse</b>.<br>You will see the worst place for every vehicle, the design forces for each girder, and the deflection checks, in plain words.</p>
-    </div>
-  </div>
-</main>
-
-<script>
 const $ = s => document.querySelector(s);
 const el = (tag, attrs = {}, ...kids) => { const n = Object.assign(document.createElement(tag), attrs); n.append(...kids); return n; };
 const svgNS = "http://www.w3.org/2000/svg";
@@ -186,22 +59,15 @@ function stripsGroup(box, t) {
   return box;
 }
 
-const tomlValue = v => typeof v === "string" ? JSON.stringify(v) : String(v);
-function toml() {
-  const out = ["# written by Setu web"];
-  schema.tables.forEach(t => {
-    if (t.optional && !state.on[t.table]) return;
-    out.push("", `[${t.table}]`);
-    if (t.strips) return state.strips.forEach(([name, width]) => out.push(`${name} = ${width}`));
-    Object.entries(state.tables[t.table]).forEach(([k, v]) => { if (v !== "") out.push(`${k} = ${tomlValue(v)}`); });
-  });
-  return out.join("\n") + "\n";
+// what the page sends: every table's values, the strips left to right, and which site loads are ticked
+function formData() {
+  return { tables: state.tables, strips: state.strips, include: state.on };
 }
 
 // ── running ─────────────────────────────────────────────────────────────────
 async function analyse() {
   $("#input-error").textContent = "";
-  const response = await fetch("/analyse", { method: "POST", body: toml() });
+  const response = await fetch("/analyse", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(formData()) });
   const reply = await response.json();
   if (!response.ok) { $("#input-error").textContent = reply.error; return; }
   job = reply.id;
@@ -266,11 +132,17 @@ function showResults() {
     stat("Total deflection", fmt(totalMm, 1), "mm",
       [`Dead load, surfacing and traffic, ${girderName(total)}. Limit span/600 = ${fmt(1000 * L / 600, 1)} mm before camber. `, check(totalMm, 1000 * L / 600)]),
     stat("Fatigue moment range", fmt(result.fatigue_ranges[`girder ${fatigue}`][M].range), "kN·m", `One 40 t fatigue truck passing over, ${girderName(fatigue)} (IRC:6 204.6).`));
-  if (g["ULS seismic"] && result.seismic)
-    cards.append(stat("Seismic case moment", fmt(g["ULS seismic"].value), "kN·m", `Ah = ${fmt(result.seismic.horizontal_coefficient, 3)}, ${girderName(g["ULS seismic"].girder)}.`));
+  const site = result.site;
+  if (site.seismic)
+    cards.append(stat("Seismic case moment", fmt(g["ULS seismic"].value), "kN·m", `Ah = ${fmt(site.seismic.horizontal_coefficient, 3)}, ${girderName(g["ULS seismic"].girder)}.`));
+  if (site.temperature)
+    cards.append(stat("Bearing movement", fmt(1000 * site.temperature.free_bearing_movement_m, 1), "mm",
+      `Free bearing, effective temperature ${fmt(site.temperature.effective_range_c[0])} to ${fmt(site.temperature.effective_range_c[1])} °C (IRC:6 215). No girder force.`));
+  if (site.wind)
+    cards.append(stat("Wind at deck level", fmt(site.wind.speed_at_deck_mps, 1), "m/s", `Transverse force ${fmt(site.wind.forces_kn.transverse)} kN on the deck (IRC:6 209).`));
   girder = g["ULS sagging"].girder;
   plotCase = `Live · largest moment in G${girder}`;
-  const tabs = el("div", { className: "big-tabs", id: "big-tabs" }, ...[["positions", "Critical positions"], ["replay", "Search replay"], ["diagrams", "Girder diagrams"], ["model", "3D model"]]
+  const tabs = el("div", { className: "big-tabs", id: "big-tabs" }, ...[["positions", "Critical positions"], ["replay", "Search replay"], ["diagrams", "Girder diagrams"], ["model", "3D model"], ["site", "Site loads"]]
     .map(([key, label]) => { const b = el("button", { textContent: label }); b.dataset.tab = key; b.onclick = () => { tab = key; showTab(); }; return b; }));
   $("#out").replaceChildren(cards, tabs, el("div", { id: "panel" }), tableCard());
   showTab();
@@ -284,6 +156,7 @@ function showTab() {
   if (tab === "replay") { panel.replaceChildren(replayCard()); startReplay(); }
   if (tab === "diagrams") { panel.replaceChildren(diagramCard()); drawDiagrams(); }
   if (tab === "model") { panel.replaceChildren(modelCard()); drawModel(); }
+  if (tab === "site") { panel.replaceChildren(siteCard()); drawSite(); }
 }
 
 function describeTraffic(d) {
@@ -374,8 +247,8 @@ function deckCard() {
       el("span", {}, el("i", { style: "background:var(--udl);outline:1px solid var(--accent)" }), "lane load"), el("span", {}, el("i", { style: "background:var(--foot);outline:1px solid var(--ok)" }), "footpath load"),
       el("span", {}, el("i", { style: "background:var(--bad)" }), "section checked")),
     el("div", { className: "row" },
-      el("button", { className: "primary", textContent: "Export CSV for MIDAS (this girder, maximum moment)", onclick: () => location.href = `/midas/${job}.csv?girder=${girder}` }),
-      el("button", { textContent: "Export CSV for MIDAS (all girders, maximum moment)", onclick: () => location.href = `/midas/${job}.csv?girder=all` }),
+      el("button", { className: "primary", textContent: "Export critical loads CSV (this girder, maximum moment)", onclick: () => location.href = `/critical-loads/${job}.csv?girder=${girder}` }),
+      el("button", { textContent: "Export critical loads CSV (all girders, maximum moment)", onclick: () => location.href = `/critical-loads/${job}.csv?girder=all` }),
       el("span", { className: "sub", style: "margin:0", textContent: "Wheels as point loads (impact and lane reduction included), lane and footpath loads as area loads." })));
 }
 
@@ -639,6 +512,57 @@ function plotLayout(extra) {
     hoverlabel: { bgcolor: css("--panel"), bordercolor: css("--line"), font: { color: css("--ink") } }, ...extra };
 }
 
+// ── site loads: what each load group adds, wind, seismic and temperature ─────
+const GROUP_COLOURS = { dead: "#4a6d91", surfacing: "#3b3f45", live: "#e8792b", wind: "#00a6a6", seismic: "#c2352b", thermal: "#9b5de5" };
+
+function siteCard() {
+  const site = result.site;
+  const off = name => el("p", { className: "sub", textContent: `${name} was not included. Tick "include this load" in its section of the form to add it.` });
+  const kv = rows => el("table", { className: "kv" }, ...rows.map(([k, v]) => el("tr", {}, el("td", { textContent: k }), el("td", { textContent: v }))));
+  const wind = site.wind ? [kv([["Basic wind speed", `${fmt(site.wind.basic_speed_mps, 1)} m/s`], ["Hourly mean speed at deck level", `${fmt(site.wind.speed_at_deck_mps, 1)} m/s`],
+    ...Object.entries(site.wind.forces_kn).map(([k, v]) => [`Force, ${k}`, `${fmt(v, 1)} kN`])])] : [off("Wind")];
+  const s = site.seismic;
+  const seismic = s ? [kv([["Zone / soil", `${s.zone} / ${s.soil}`], ["Importance factor I", fmt(s.importance_factor, 2)], ["Response reduction R", fmt(s.response_reduction, 1)],
+    ["Period T", `${fmt(s.period_s, 2)} s`], ["Horizontal coefficient Ah", fmt(s.horizontal_coefficient, 3)], ["Vertical coefficient Av", fmt(s.vertical_coefficient, 3)],
+    ["Vertical motion included", s.vertical_included ? "yes (zones IV and V)" : "no"]])] : [off("Seismic")];
+  const t = site.temperature;
+  const temperature = t ? [kv([["Shade air temperature", `${fmt(t.shade_min_c)} to ${fmt(t.shade_max_c)} °C`], ["Effective bridge temperature", `${fmt(t.effective_range_c[0])} to ${fmt(t.effective_range_c[1])} °C`],
+    ["Free bearing movement", `${fmt(1000 * t.free_bearing_movement_m, 1)} mm`], ["Girder force", "none: simply supported with a free bearing"]]),
+    el("div", { id: "profile", className: "plot" }), el("div", { className: "scroll" }, stressTable(t))] : [off("Temperature")];
+  return el("div", { className: "card pad" },
+    el("h2", {}, "What makes up each design value"),
+    el("p", { className: "sub" }, "Each load group's factored share of the governing design values, from the IRC:6 Annex B combination that governs. Temperature adds nothing to the girder forces here; its effect is the stress through the depth below."),
+    el("div", { id: "shares", className: "plot" }),
+    el("div", { className: "site-grid" },
+      el("div", {}, el("h2", {}, "Wind (IRC:6 209)"), ...wind),
+      el("div", {}, el("h2", {}, "Seismic (IRC:SP:114)"), ...seismic)),
+    el("h2", { style: "margin-top:18px" }, "Temperature (IRC:6 215)"), ...temperature);
+}
+
+function stressTable(t) {
+  const levels = [["slab_top", "slab top"], ["slab_bottom", "slab bottom"], ["steel_top", "steel top"], ["steel_bottom", "steel bottom"]];
+  const kinds = Object.keys(Object.values(t.stresses_kpa)[0]);
+  const head = el("tr", {}, el("th", { textContent: "Girder" }), ...kinds.flatMap(k => levels.map(([, name]) => el("th", { textContent: `${k === "positive difference" ? "Heating" : "Cooling"}, ${name}` }))));
+  const rows = Object.entries(t.stresses_kpa).map(([g, byKind]) => el("tr", {}, el("td", { textContent: g.replace("girder", "Girder") }),
+    ...kinds.flatMap(k => levels.map(([key]) => el("td", { textContent: fmt(byKind[k][key] / 1000, 2) })))));
+  return el("table", {}, head, ...rows, el("caption", { textContent: "Primary stresses in MPa (tension positive), Fig. 17b / Table 15B profiles on each girder's IRC:22 effective slab width." }));
+}
+
+function drawSite() {
+  const titles = Object.keys(result.governing), groups = [...new Set(titles.flatMap(k => Object.keys(result.governing[k].shares)))];
+  Plotly.react("shares", groups.map(gr => ({ type: "bar", orientation: "h", name: gr, y: titles.map(k => `${k} (${girderName(result.governing[k].girder)})`),
+    x: titles.map(k => result.governing[k].shares[gr] || 0), marker: { color: GROUP_COLOURS[gr] || "#8a94a3" },
+    hovertemplate: `${gr}: %{x:,.0f}<extra></extra>` })), plotLayout({ barmode: "relative", height: 300, margin: { l: 230, r: 20, t: 10, b: 40 }, legend: { orientation: "h", y: -0.2 },
+      xaxis: axis({ title: "kN·m or kN" }), yaxis: axis({ autorange: "reversed" }) }), { displaylogo: false, responsive: true });
+  const t = result.site.temperature;
+  if (!t) return;
+  Plotly.react("profile", Object.entries(t.profiles).map(([kind, pts]) => ({ x: pts.map(p => p[1]), y: pts.map(p => 1000 * p[0]), mode: "lines+markers",
+    name: kind === "positive difference" ? "Heating (slab hotter)" : "Cooling (slab colder)", line: { width: 3, color: kind === "positive difference" ? "#e8792b" : "#2b8ad6" } })),
+    plotLayout({ height: 320, margin: { l: 70, r: 20, t: 30, b: 45 }, title: { text: "Temperature difference through the depth", font: { size: 13 } },
+      xaxis: axis({ title: "temperature difference (°C)", zeroline: true }), yaxis: axis({ title: "depth below the deck top (mm)", autorange: "reversed" }) }),
+    { displaylogo: false, responsive: true });
+}
+
 function tableCard() {
   const head = ["Girder", "ULS moment kN·m", "SLS rare moment kN·m", "ULS shear kN", "ULS reaction kN", "Traffic deflection mm", "Total deflection mm", "Fatigue range kN·m"];
   const rows = girders().map(k => {
@@ -658,6 +582,3 @@ function tableCard() {
   schema.tables.forEach((t, k) => $("#fields").append(tableGroup(t, k < 3)));
   $("#analyse").onclick = analyse;
 })();
-</script>
-</body>
-</html>
