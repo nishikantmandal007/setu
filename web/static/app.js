@@ -105,46 +105,53 @@ const css = name => getComputedStyle(document.documentElement).getPropertyValue(
 const PALETTE = ["#2458d3", "#e4572e", "#1f8a4c", "#9b5de5", "#f2a007", "#00a6a6", "#c2185b", "#6d4c41", "#546e7a", "#7cb342", "#3949ab", "#d81b60"];
 let tab = "positions", plotCase = null, plotGirder = "all", plotQty = "m", addDead = false;
 
-function stat(k, value, unit, text) {
-  return el("div", { className: "card stat" }, el("div", { className: "k", textContent: k }),
-    el("div", { className: "v" }, value, el("small", { textContent: ` ${unit}` })), el("p", {}, ...[text].flat()));
+// one line of the summary: label, value and unit, a small chip (girder or pass/fail), and the explanation on hover
+function row(label, value, unit, chip, explain, tone = "") {
+  return el("div", { className: "row-kv", title: explain },
+    el("span", { className: "k", textContent: label }),
+    el("span", { className: "v" }, value, el("small", { textContent: ` ${unit}` })),
+    el("span", { className: `chip ${tone}`, textContent: chip }));
 }
 
-function check(value, limit) {
-  const ok = value <= limit;
-  return el("span", { className: ok ? "pass" : "fail", textContent: ok ? "✓ within the limit" : "✗ over the limit" });
+function group(title, rows) {
+  return el("div", { className: "group" }, el("h3", { textContent: title }), ...rows.filter(Boolean));
 }
 
 function showResults() {
-  const g = result.governing, L = result.bridge.span_m;
+  const g = result.governing, L = result.bridge.span_m, site = result.site;
   const worst = key => girders().reduce((a, b) => (result.deflections_m[`girder ${b}`][key] > result.deflections_m[`girder ${a}`][key] ? b : a), 0);
   const live = worst("live_m"), total = worst("total_m");
   const liveMm = 1000 * result.deflections_m[`girder ${live}`].live_m, totalMm = 1000 * result.deflections_m[`girder ${total}`].total_m;
+  const liveLimit = 1000 * L / 800, totalLimit = 1000 * L / 600;
   const fatigue = girders().reduce((a, b) => (result.fatigue_ranges[`girder ${b}`][M].range > result.fatigue_ranges[`girder ${a}`][M].range ? b : a), 0);
   const trucks = result.drawing.max_moment[g["ULS sagging"].girder];
-  const cards = el("div", { className: "cards" },
-    stat("Largest bending moment", fmt(g["ULS sagging"].value), "kN·m",
-      `Design (ULS) value in ${girderName(g["ULS sagging"].girder)}, ${fmt(g["ULS sagging"].at_m, 1)} m from the bearing. The traffic is ${describeTraffic(trucks)}.`),
-    stat("Largest shear at the support", fmt(Math.abs(g["ULS shear"].value)), "kN", `Design (ULS) value in ${girderName(g["ULS shear"].girder)}, at the bearing.`),
-    stat("Largest bearing reaction", fmt(g["ULS reaction"].value), "kN", `Design (ULS) value, ${girderName(g["ULS reaction"].girder)}. Use it to size the bearing.`),
-    stat("Traffic deflection", fmt(liveMm, 1), "mm",
-      [`Live load with impact, no footway, ${girderName(live)}. Limit span/800 = ${fmt(1000 * L / 800, 1)} mm. `, check(liveMm, 1000 * L / 800)]),
-    stat("Total deflection", fmt(totalMm, 1), "mm",
-      [`Dead load, surfacing and traffic, ${girderName(total)}. Limit span/600 = ${fmt(1000 * L / 600, 1)} mm before camber. `, check(totalMm, 1000 * L / 600)]),
-    stat("Fatigue moment range", fmt(result.fatigue_ranges[`girder ${fatigue}`][M].range), "kN·m", `One 40 t fatigue truck passing over, ${girderName(fatigue)} (IRC:6 204.6).`));
-  const site = result.site;
-  if (site.seismic)
-    cards.append(stat("Seismic case moment", fmt(g["ULS seismic"].value), "kN·m", `Ah = ${fmt(site.seismic.horizontal_coefficient, 3)}, ${girderName(g["ULS seismic"].girder)}.`));
-  if (site.temperature)
-    cards.append(stat("Bearing movement", fmt(1000 * site.temperature.free_bearing_movement_m, 1), "mm",
-      `Free bearing, effective temperature ${fmt(site.temperature.effective_range_c[0])} to ${fmt(site.temperature.effective_range_c[1])} °C (IRC:6 215). No girder force.`));
-  if (site.wind)
-    cards.append(stat("Wind at deck level", fmt(site.wind.speed_at_deck_mps, 1), "m/s", `Transverse force ${fmt(site.wind.forces_kn.transverse)} kN on the deck (IRC:6 209).`));
+  const pass = (v, limit) => v <= limit ? ["✓ ≤ " + fmt(limit, 1), "ok"] : ["✗ > " + fmt(limit, 1), "bad"];
+  const [liveChip, liveTone] = pass(liveMm, liveLimit), [totalChip, totalTone] = pass(totalMm, totalLimit);
+  const summary = el("div", { className: "card summary" },
+    group("Strength (ULS)", [
+      row("Bending moment", fmt(g["ULS sagging"].value), "kN·m", `G${g["ULS sagging"].girder}`,
+        `Design (ULS) value in ${girderName(g["ULS sagging"].girder)}, ${fmt(g["ULS sagging"].at_m, 1)} m from the bearing, under ${describeTraffic(trucks)}.`),
+      row("Support shear", fmt(Math.abs(g["ULS shear"].value)), "kN", `G${g["ULS shear"].girder}`, `Design (ULS) value in ${girderName(g["ULS shear"].girder)}, at the bearing.`),
+      row("Bearing reaction", fmt(g["ULS reaction"].value), "kN", `G${g["ULS reaction"].girder}`, `Design (ULS) value in ${girderName(g["ULS reaction"].girder)}. Use it to size the bearing.`),
+      site.seismic && row("Seismic moment", fmt(g["ULS seismic"].value), "kN·m", `G${g["ULS seismic"].girder}`, `ULS seismic combination, Ah = ${fmt(site.seismic.horizontal_coefficient, 3)} (IRC:SP:114).`),
+    ]),
+    group("Serviceability", [
+      row("Traffic deflection", fmt(liveMm, 1), "mm", liveChip, `Live load with impact, no footway, ${girderName(live)}. Limit span/800 (IRC:22).`, liveTone),
+      row("Total deflection", fmt(totalMm, 1), "mm", totalChip, `Dead load, surfacing and traffic, ${girderName(total)}. Limit span/600 before camber (IRC:22).`, totalTone),
+      row("Fatigue range", fmt(result.fatigue_ranges[`girder ${fatigue}`][M].range), "kN·m", `G${fatigue}`, `One 40 t fatigue truck passing over, ${girderName(fatigue)} (IRC:6 204.6).`),
+    ]),
+    group("Site loads", [
+      site.temperature && row("Bearing movement", fmt(1000 * site.temperature.free_bearing_movement_m, 1), "mm", "free bearing",
+        `Effective temperature ${fmt(site.temperature.effective_range_c[0])} to ${fmt(site.temperature.effective_range_c[1])} °C (IRC:6 215). No girder force.`),
+      site.wind && row("Wind at deck", fmt(site.wind.speed_at_deck_mps, 1), "m/s", `${fmt(site.wind.forces_kn.transverse)} kN`, "Hourly mean speed at deck level and the transverse force on the deck (IRC:6 209)."),
+      site.seismic && row("Seismic Ah", fmt(site.seismic.horizontal_coefficient, 3), "", `zone ${site.seismic.zone}`, "Design horizontal seismic coefficient (IRC:SP:114 5.2.1)."),
+      !site.temperature && !site.wind && !site.seismic && el("p", { className: "sub", textContent: "No wind, seismic or temperature included." }),
+    ]));
   girder = g["ULS sagging"].girder;
   plotCase = `Live · largest moment in G${girder}`;
   const tabs = el("div", { className: "big-tabs", id: "big-tabs" }, ...[["positions", "Critical positions"], ["replay", "Search replay"], ["diagrams", "Girder diagrams"], ["model", "3D model"], ["site", "Site loads"]]
     .map(([key, label]) => { const b = el("button", { textContent: label }); b.dataset.tab = key; b.onclick = () => { tab = key; showTab(); }; return b; }));
-  $("#out").replaceChildren(cards, tabs, el("div", { id: "panel" }), tableCard());
+  $("#out").replaceChildren(summary, tabs, el("div", { id: "panel" }), tableCard());
   showTab();
 }
 
