@@ -1,5 +1,6 @@
 site_name: Setu
 site_description: Find the worst legal traffic on a bridge deck and the IRC design forces for every girder.
+site_url: https://nishikantmandal007.github.io/setu/
 repo_url: https://github.com/nishikantmandal007/setu
 repo_name: setu
 
@@ -72,6 +73,17 @@ extra_css:
   - stylesheets/extra.css
 extra_javascript:
   - javascripts/vehicles.js
-  - javascripts/animations.js
+  - javascripts/animations/core.js
+  - javascripts/animations/influence.js
+  - javascripts/animations/adjoint.js
+  - javascripts/animations/replay.js
+  - javascripts/animations/stages.js
+  - javascripts/animations/combination.js
+  - javascripts/animations/temperature.js
+  - javascripts/animations/mesh.js
+  - javascripts/animations/breakpoints.js
+  - javascripts/animations/trains.js
+  - javascripts/animations/lanes.js
+  - javascripts/animations/start.js
   - javascripts/mathjax.js
   - javascripts/vendor/mathjax-tex-svg.js
