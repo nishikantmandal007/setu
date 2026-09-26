@@ -2,7 +2,7 @@
 
 ## How fine the mesh should be
 
-Tested on the 35 m example bridge (`examples/bridge.toml`):
+Tested on a 35 m bridge with five plate girders, a 13.5 m deck and a 0.23 m slab (the web app's default inputs):
 
 - **Along the span**, results settle by 16 panels between braces. Moment, reaction, deflection and fatigue change by under 0.1 % beyond that.
 - **Across the deck**, the middle girders settle quickly, but the **edge girder** converges slowly: at 0.25 m its moment is about 1.6 % low, and at 0.10 m about 0.6 % low.
