@@ -1,65 +1,28 @@
-import numpy as np
 import xarray as xr
-from setu.postprocess.girder_response import girder_forces, girder_deflections
 
-
-FORCE_COMPONENTS = [
-    "Mx_i", "Vy_i", "Vz_i", "Tx_i", "My_i", "Mz_i",
-    "Mx_j", "Vy_j", "Vz_j", "Tx_j", "My_j", "Mz_j",
-]
-
+# OpenSees localForce order, named the way OsdagBridge reads ds["forces"]
+FORCE_COMPONENTS = ["Vx_i", "Vy_i", "Vz_i", "Mx_i", "My_i", "Mz_i", "Vx_j", "Vy_j", "Vz_j", "Mx_j", "My_j", "Mz_j"]
 DISPLACEMENT_COMPONENTS = ["x", "y", "z", "theta_x", "theta_y", "theta_z"]
+UNITS = "forces kN, moments kN·m, displacements m, rotations rad"
 
 
-# girder element forces as an xarray dataset
-def forces_dataset(model, ops, load_case_name):
-    n_girders = model.bridge.girders.count
-    n_elements = model.mesh.stations_along_span - 1
-    elements = []
-    data = []
-    for k in range(n_girders):
-        for e in range(n_elements):
-            tag = model.girder_elements[k, e]
-            elements.append(tag)
-            f = ops.eleResponse(tag, "localForce")
-            data.append(f[:12])
-    return xr.Dataset(
-        {"forces": (["Element", "Component", "Loadcase"], np.array(data)[:, :, np.newaxis])},
-        coords={
-            "Element": elements,
-            "Component": FORCE_COMPONENTS,
-            "Loadcase": [load_case_name],
-        },
-    )
+# girder element end forces and girder node displacements of the load case just solved, in OsdagBridge's xarray layout
+def result_dataset(model, ops, load_case_name):
+    elements = list(model.girder_elements.values())
+    nodes = list(model.girder_nodes.values())
+    forces = xr.DataArray([[ops.eleResponse(tag, "localForce")[:len(FORCE_COMPONENTS)] for tag in elements]],
+                          dims=["Loadcase", "Element", "Component"],
+                          coords={"Loadcase": [load_case_name], "Element": elements, "Component": FORCE_COMPONENTS}, name="forces")
+    displacements = xr.DataArray([[ops.nodeDisp(node) for node in nodes]],
+                                 dims=["Loadcase", "Node", "Component"],
+                                 coords={"Loadcase": [load_case_name], "Node": nodes, "Component": DISPLACEMENT_COMPONENTS}, name="displacements")
+    dataset = xr.merge([forces, displacements], join="outer")
+    dataset.attrs["units"] = UNITS
+    return dataset
 
 
-# girder node displacements as an xarray dataset
-def displacements_dataset(model, ops, load_case_name):
-    nodes = []
-    data = []
-    for k in range(model.bridge.girders.count):
-        for i in range(model.mesh.stations_along_span):
-            node = model.girder_nodes[k, i]
-            nodes.append(node)
-            disp = [ops.nodeDisp(node, dof) for dof in range(1, 7)]
-            data.append(disp)
-    return xr.Dataset(
-        {"displacements": (["Node", "Component", "Loadcase"], np.array(data)[:, :, np.newaxis])},
-        coords={
-            "Node": nodes,
-            "Component": DISPLACEMENT_COMPONENTS,
-            "Loadcase": [load_case_name],
-        },
-    )
-
-
-# forces and displacements of one load case in one dataset
-def build_result_dataset(model, ops, load_case_name):
-    forces = forces_dataset(model, ops, load_case_name)
-    displacements = displacements_dataset(model, ops, load_case_name)
-    return xr.merge([forces, displacements])
-
-
-# stack load case datasets
+# stack the load cases into one dataset
 def merge_datasets(datasets):
-    return xr.concat(datasets, dim="Loadcase")
+    merged = xr.concat(datasets, dim="Loadcase")
+    merged.attrs["units"] = UNITS
+    return merged

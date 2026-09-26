@@ -30,32 +30,32 @@ def _lanes(*trains_per_lane, impact=1.3):
         VehiclePlacement("Class_A", z_centre_m=3.0 + 3.5 * lane, x_front_m=trains[0], impact_factor=impact, train_x_front_m=tuple(trains))
         for lane, trains in enumerate(trains_per_lane)
     ]
-    return CriticalPosition("test", "maximum", 0.0, 0.0, 1.0, len(vehicles), "", "separate", vehicles=vehicles)
+    return CriticalPosition("test", "maximum", 0.0, 0.0, 1.0, len(vehicles), "", vehicles, 0.0, [], [], 0.0)
 
 
 def test_one_train_all_on_the_span():
     """20 % of 543.474 kN = 108.695 kN, and impact plays no part."""
-    assert braking_force_kn(_lanes((5.0,)), span_m=35.0) == pytest.approx(0.2 * CLASS_A_KN)
+    assert braking_force_kn(_lanes((5.0,)), span_m=35.0, skew=0.0) == pytest.approx(0.2 * CLASS_A_KN)
 
 
 def test_part_of_the_first_train_off_the_span():
     """Front axle at 30 m: axles at 30, 31.1, 34.2 m are on (2.7 + 2.7 + 11.4 t); the rest is past the far end."""
     on_the_span_kn = (2.7 + 2.7 + 11.4) * 9.81
 
-    assert braking_force_kn(_lanes((30.0,)), span_m=35.0) == pytest.approx(0.2 * on_the_span_kn)
+    assert braking_force_kn(_lanes((30.0,)), span_m=35.0, skew=0.0) == pytest.approx(0.2 * on_the_span_kn)
 
 
 def test_a_train_following_the_first():
     """90 m span, two trains a pitch apart: 20 % of the first plus 10 % of the second."""
-    assert braking_force_kn(_lanes((5.0, 5.0 + CLASS_A_PITCH_M)), span_m=90.0) == pytest.approx(0.3 * CLASS_A_KN)
+    assert braking_force_kn(_lanes((5.0, 5.0 + CLASS_A_PITCH_M)), span_m=90.0, skew=0.0) == pytest.approx(0.3 * CLASS_A_KN)
 
 
 def test_two_lanes_count_one_lane_only():
-    assert braking_force_kn(_lanes((5.0,), (5.0,)), span_m=35.0) == pytest.approx(0.2 * CLASS_A_KN)
+    assert braking_force_kn(_lanes((5.0,), (5.0,)), span_m=35.0, skew=0.0) == pytest.approx(0.2 * CLASS_A_KN)
 
 
 def test_three_lanes_add_five_percent_of_the_third():
-    assert braking_force_kn(_lanes((5.0,), (5.0,), (5.0,)), span_m=35.0) == pytest.approx(0.2 * CLASS_A_KN + 0.05 * CLASS_A_KN)
+    assert braking_force_kn(_lanes((5.0,), (5.0,), (5.0,)), span_m=35.0, skew=0.0) == pytest.approx(0.2 * CLASS_A_KN + 0.05 * CLASS_A_KN)
 
 
 @pytest.fixture(scope="module")

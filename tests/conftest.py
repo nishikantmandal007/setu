@@ -58,6 +58,7 @@ def sagging_surface() -> InfluenceSurface:
         length_mesh_m=length_mesh_m,
         width_mesh_m=width_mesh_m,
         name="midspan sagging moment",
+        skew=0.0,
     )
 
 
@@ -84,4 +85,5 @@ def hogging_surface() -> InfluenceSurface:
         length_mesh_m=length_mesh_m,
         width_mesh_m=width_mesh_m,
         name="hogging moment over the pier",
+        skew=0.0,
     )

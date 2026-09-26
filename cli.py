@@ -8,11 +8,16 @@ analysis_results/result.json holds every critical position (every girder, moment
 both directions: vehicles, wheels with their loads, lanes, UDL and footway strips, and the
 same load solved in OpenSees), the design values for every girder and limit state, the dead
 loads by stage, and the wind, seismic and temperature numbers. Plots go to analysis_results/plots/.
+analysis_results/midas/ has one CSV per critical position (every wheel and UDL/footway patch with
+its coordinates) to rebuild the load in MIDAS. analysis_results/girder_results.nc holds the girder
+element forces and displacements of every dead load stage and critical live load, in OsdagBridge's
+xarray layout.
 
 To write the bridge file, open examples/form.html in a browser. Only setu's public API is used.
 """
 
 import argparse
+import csv
 import inspect
 import json
 import os
@@ -36,17 +41,16 @@ from setu import (
     build_bridge_model,
     live_load,
 )
-from setu.helpers import DEFAULT_SAMPLING
 from setu.irc6.combinations import custom_combination
 from setu.irc6.seismic import horizontal_seismic_coefficient, vertical_seismic_coefficient
 from setu.irc6.temperature import temperature_difference_profile
-from setu.irc6.vehicles import find_vehicle_or_its_reverse
-from setu.irc6.wheel_loads import wheel_load_offsets
 from setu.loads.wind_loads import wind_load_cases
 from setu.models.custom_load import CustomLoad
 from setu.models.materials import Concrete, Steel, SurfacingLayer
 from setu.models.site import SeismicSite, TemperatureSite, WindSite
-from setu.postprocess.design_values import girder_design_values
+from setu.loads.load_builders import applied_live_loads
+from setu.postprocess.design_values import girder_design_values, midas_loads
+from setu.postprocess.result_dataset import merge_datasets, result_dataset
 from setu.postprocess.girder_response import analyze_load_case, dead_load_forces
 from setu.utils.constants import (
     BASIC,
@@ -63,6 +67,7 @@ from setu.utils.constants import (
 )
 
 BAD_INPUT = 2
+WHEEL_COLUMNS = ("vehicle", "train", "x_m", "z_m", "wheel_load_kn", "impact_factor", "lane_reduction", "applied_kn", "on_span")
 DIRECTIONS = (BIGGER_IS_WORSE, SMALLER_IS_WORSE)
 BRIDGE_KEYS = {"span_m", "skew", "wearing_course_unit_weight_kn_m3"}
 ADDED_DEAD_LOAD_STRIPS = ("footpath", "kerb", "median", "crash_barrier")
@@ -156,46 +161,30 @@ def read_input(path):
 def checked_in_opensees(bridge, results, model):
     midspan = model.mesh.stations_along_span // 2
     found = {}
+    datasets = []
     for (girder, response, adverse), critical in results.criticals.items():
         surface = results.surfaces[girder, response]
         forces = analyze_load_case(model, live_load(model, critical, surface), ops)[girder]
+        datasets.append(result_dataset(model, ops, f"live, girder {girder}, {response}, {adverse}"))
         solved = forces.composite_moment_kn_m[midspan] if response == MIDSPAN_MOMENT else forces.shear_kn[SUPPORT]
         found[girder, response, adverse] = (surface, critical, float(solved))
-    return found
+    return found, datasets
 
 
 # design values, the OpenSees check, wind and dead load for the bridge
 def analyse(bridge, loads):
     results = girder_design_values(bridge, ops=ops, **loads)
-    model = build_bridge_model(bridge, ops)
-    found = checked_in_opensees(bridge, results, model)
-    wind = wind_load_cases(model, loads["wind"]) if loads["wind"] else None
     dead = dead_load_forces(bridge, ops)
-    return found, wind, results, dead
+    model = build_bridge_model(bridge, ops)
+    found, live_datasets = checked_in_opensees(bridge, results, model)
+    wind = wind_load_cases(model, loads["wind"]) if loads["wind"] else None
+    return found, wind, results, dead, merge_datasets([dead.dataset, *live_datasets])
 
 
 # ── result.json ───────────────────────────────────────────────────────────────
 
-# every wheel of a critical position with its load, impact and lane reduction
-def wheels_of(bridge, critical):
-    wheels = []
-    for placed in critical.vehicles:
-        vehicle = find_vehicle_or_its_reverse(placed.vehicle_name)
-        offsets = wheel_load_offsets(vehicle, bridge.wearing_course_thickness_m, DEFAULT_SAMPLING)
-        for train, x_front_m in enumerate(placed.train_x_front_m):
-            for dx_m, dz_m, load_kn in offsets:
-                x_m, z_m = x_front_m + dx_m, placed.z_centre_m + dz_m
-                on_span = bool(0.0 <= x_m - bridge.skew * z_m <= bridge.span_m)
-                applied_kn = load_kn * placed.impact_factor * critical.lane_reduction
-                wheels.append({"vehicle": placed.vehicle_name, "train": train, "x_m": round(x_m, 6), "z_m": round(z_m, 6),
-                               "wheel_load_kn": round(float(load_kn), 6), "impact_factor": placed.impact_factor,
-                               "lane_reduction": critical.lane_reduction, "applied_kn": round(float(applied_kn), 6), "on_span": on_span})
-    return wheels
-
-
-
 # one critical position for result.json
-def critical_to_dict(bridge, critical, solved):
+def critical_to_dict(critical, solved, wheels, patches):
     return {
         "live_load_response": critical.response,
         "solved_in_opensees": solved,
@@ -203,21 +192,20 @@ def critical_to_dict(bridge, critical, solved):
         "lane_pattern": critical.lane_pattern,
         "design_lanes": critical.design_lanes,
         "lane_reduction": critical.lane_reduction,
-        "carriageways_read_as": critical.carriageways_read_as,
         "footway_response": critical.footway_response,
         "residual_udl_strips_m": critical.residual_udl_strips,
         "footway_strips_m_kpa": critical.footway_strips,
-        "resultant_centred_response": critical.resultant_centred_response,
         "vehicles": [{"vehicle": v.vehicle_name, "centre_z_m": v.z_centre_m, "front_x_m": v.x_front_m, "impact_factor": v.impact_factor,
                       "train_front_x_m": list(v.train_x_front_m)} for v in critical.vehicles],
-        "wheels": wheels_of(bridge, critical),
+        "wheels": wheels,
+        "udl_and_footway_patches": patches,
     }
 
 
 # everything for result.json
-def result_to_dict(bridge, loads, found, wind, results, dead):
+def result_to_dict(bridge, loads, found, wind, results, dead, midas):
     midspan = len(dead.total[0].moment_kn_m) // 2
-    critical = {f"girder {girder}": {response: {adverse: critical_to_dict(bridge, found[girder, response, adverse][1], found[girder, response, adverse][2])
+    critical = {f"girder {girder}": {response: {adverse: critical_to_dict(found[girder, response, adverse][1], found[girder, response, adverse][2], *midas[girder, response, adverse])
                                                 for adverse in DIRECTIONS} for response in RESPONSES}
                 for girder in range(bridge.girders.count)}
     design = {f"girder {girder}": {response: {limit: {adverse: value.to_dict() for adverse, value in by_direction.items()}
@@ -253,6 +241,20 @@ def result_to_dict(bridge, loads, found, wind, results, dead):
                                  "primary_stress_kpa": {"slab_top": positive.slab_top_kpa, "slab_bottom": positive.slab_bottom_kpa,
                                                         "steel_top": positive.steel_top_kpa, "steel_bottom": positive.steel_bottom_kpa}}
     return result
+
+
+# one CSV per critical position: every wheel, then every UDL/footway patch, ready to type into MIDAS as static loads
+def write_midas_csvs(folder, midas):
+    folder.mkdir(parents=True, exist_ok=True)
+    for (girder, response, adverse), (wheels, patches) in midas.items():
+        with open(folder / f"girder{girder}_{response.replace(' ', '_')}_{adverse}.csv", "w", newline="") as file:
+            rows = csv.writer(file)
+            rows.writerow(["# wheels: x along the span from the first bearing line (skew included), z across from the left edge"])
+            rows.writerow(WHEEL_COLUMNS)
+            rows.writerows([wheel[column] for column in WHEEL_COLUMNS] for wheel in wheels)
+            rows.writerow(["# patches: residual UDL and footway where they make the response worse, four corners (x, z) in m"])
+            rows.writerow(["kind", "pressure_kpa", "x1_m", "z1_m", "x2_m", "z2_m", "x3_m", "z3_m", "x4_m", "z4_m"])
+            rows.writerows([patch["kind"], patch["pressure_kpa"], *(value for corner in patch["corners_x_z_m"] for value in corner)] for patch in patches)
 
 
 # ── what the screen shows ─────────────────────────────────────────────────────
@@ -312,7 +314,7 @@ def plot_critical(bridge, found, girder):
         figure.colorbar(filled, ax=axis, label="influence ordinate")
         for strip in bridge.cross_section.strips:
             axis.axhline(strip.z_from_m, color="0.4", lw=0.6)
-        wheels = [w for w in wheels_of(bridge, critical) if w["on_span"]]
+        wheels = [w for w in applied_live_loads(bridge, critical, surface)[0] if w["on_span"]]
         axis.scatter([w["x_m"] - bridge.skew * w["z_m"] for w in wheels], [w["z_m"] for w in wheels],
                      s=[8 + w["applied_kn"] for w in wheels], c="k", marker="s", label="wheel loads (size ∝ kN)")
         for k, (a, b) in enumerate(critical.residual_udl_strips):
@@ -421,14 +423,17 @@ def main(argv=None):
     print_summary(bridge, loads)
     print("Analysing …", end=" ", flush=True)
     started = time.time()
-    found, wind, results, dead = analyse(bridge, loads)
+    found, wind, results, dead, dataset = analyse(bridge, loads)
     print(f"done in {time.time() - started:.1f} s")
     print_results(bridge, found, results)
     out = Path(arguments.out)
     out.mkdir(parents=True, exist_ok=True)
-    (out / "result.json").write_text(json.dumps(result_to_dict(bridge, loads, found, wind, results, dead), indent=1, default=float))
+    midas = midas_loads(bridge, results)
+    (out / "result.json").write_text(json.dumps(result_to_dict(bridge, loads, found, wind, results, dead, midas), indent=1, default=float))
+    write_midas_csvs(out / "midas", midas)
+    dataset.to_netcdf(out / "girder_results.nc")
     save_plots(bridge, found, results, out, arguments.plot)
-    print(f"Everything written to {out}/ (result.json and plots/)")
+    print(f"Everything written to {out}/ (result.json, midas/, girder_results.nc and plots/)")
     return 0
 
 

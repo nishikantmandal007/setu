@@ -132,6 +132,3 @@ class DeckModel:
     def width_m(self):
         return float(self.width_mesh_m[-1] - self.width_mesh_m[0])
 
-    # plain dict for the JSON output
-    def to_dict(self):
-        return self.__dict__

@@ -82,8 +82,7 @@ def test_combining_the_three_directions():
 
 
 SITE = SeismicSite(zone="IV", soil="II", importance_factor=1.2, period_s=0.8, response_reduction=1.0)
-ONE_CLASS_A = CriticalPosition("t", "maximum", 0.0, 0.0, 1.0, 1, "", "separate",
-                               vehicles=[VehiclePlacement("Class_A", 5.0, 5.0, 1.3, (5.0,))])
+ONE_CLASS_A = CriticalPosition("t", "maximum", 0.0, 0.0, 1.0, 1, "", [VehiclePlacement("Class_A", 5.0, 5.0, 1.3, (5.0,))], 0.0, [], [], 0.0)
 CLASS_A_KN = 55.4 * 9.81
 
 

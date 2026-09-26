@@ -8,7 +8,6 @@ from setu.irc6.irc_constants import (
     CLASS_A_LANE_WIDTH_M,
     CLASS_A_VEHICLE_GAP_M,
     DESIGN_LANES_BY_WIDTH,
-    FOOTWAY_CROWD_KG_M2,
     FOOTWAY_FULL_LOAD_UP_TO_SPAN_M,
     FOOTWAY_LONG_SPAN_DEDUCTION_KG_M2,
     FOOTWAY_LONG_SPAN_KG_M2_M,
@@ -25,7 +24,6 @@ from setu.irc6.irc_constants import (
     MOST_DESIGN_LANES,
     NARROWEST_LOADED_CARRIAGEWAY_M,
     RESIDUAL_UDL_APPLIES_BELOW_M,
-    RESIDUAL_UDL_KPA,
     SMALLEST_CLASS_A_GAP_M,
     TWO_CLASS_A_LANES_AND_KERB_CLEARANCES_M,
     VEHICLE_70R_CLEARANCE_M,
@@ -35,10 +33,9 @@ from setu.irc6.irc_constants import (
     ZONE_70R_AT_EDGE_M,
     ZONE_70R_INSIDE_M,
 )
-from setu.helpers import adverse_sign, where_a_load_hurts, DEFAULT_SAMPLING
+from setu.helpers import where_a_load_hurts
 from setu.utils.constants import CLASS_A_LANE, KPA_PER_KG_M2, NOTHING_THERE_M, ROUND_TO_DECIMALS, TOLERANCE_M, ZONE_70R
 
-LanePattern = list[str]
 DESIGN_LANES_PER_70R_ZONE = 2
 DESIGN_LANES_PER_CLASS_A_LANE = 1
 NO_GAP_NEEDED_M = 0.0
@@ -55,11 +52,6 @@ class LaneArrangement:
         self.sliding_room_m = sliding_room_m
         self.is_fully_loaded = is_fully_loaded
 
-    # plain dict for the JSON output
-    def to_dict(self):
-        return self.__dict__
-
-
 class BlockLayout:
     # where the blocks sit when packed hard left, and how far they can slide
     def __init__(self, packed_left_edges_m, block_widths_m, gaps_between_blocks_m, sliding_room_m):
@@ -67,11 +59,6 @@ class BlockLayout:
         self.block_widths_m = block_widths_m
         self.gaps_between_blocks_m = gaps_between_blocks_m
         self.sliding_room_m = sliding_room_m
-
-    # plain dict for the JSON output
-    def to_dict(self):
-        return self.__dict__
-
 
 # how many design lanes a lane pattern takes up
 def design_lanes_used_by(lane_pattern):
@@ -129,14 +116,9 @@ def kerb_clearance_at_each_end(lane_pattern):
     return (at_left, at_right)
 
 # smallest carriageway this lane pattern fits in
-def narrowest_carriageway_that_fits(lane_pattern, carriageway_width_m=None):
-    if not lane_pattern:
-        return 0.0
+def narrowest_carriageway_that_fits(lane_pattern, carriageway_width_m):
     at_left_m, at_right_m = kerb_clearance_at_each_end(lane_pattern)
-    if carriageway_width_m is None:
-        gap_m = CLASS_A_VEHICLE_GAP_M
-    else:
-        gap_m = class_a_gap(carriageway_width_m)
+    gap_m = class_a_gap(carriageway_width_m)
     width_m = sum(block_widths(lane_pattern)) + at_left_m + at_right_m + sum(gaps_between(lane_pattern, gap_m))
     return round(width_m, ROUND_TO_DECIMALS)
 
@@ -164,7 +146,7 @@ def is_drawn_in_the_combinations(pattern):
     return is_70r_placed_as_the_code_draws_it(list(pattern))
 
 # every lane pattern the code allows on this carriageway
-def list_admissible_arrangements(carriageway_width_m, follow_combination_drawings=True):
+def list_admissible_arrangements(carriageway_width_m):
     if not can_carry_vehicles(carriageway_width_m):
         return []
     design_lanes = count_design_lanes(carriageway_width_m)
@@ -176,7 +158,7 @@ def list_admissible_arrangements(carriageway_width_m, follow_combination_drawing
                 continue
             if not fits_in_carriageway(list(pattern), carriageway_width_m):
                 continue
-            if follow_combination_drawings and (not is_drawn_in_the_combinations(pattern)):
+            if not is_drawn_in_the_combinations(pattern):
                 continue
             arrangements.append(describe_arrangement(pattern, carriageway_width_m, is_fully_loaded=lanes_used == design_lanes))
     arrangements.sort(key=lambda arrangement: (-arrangement.design_lanes, arrangement.lane_pattern))
@@ -242,27 +224,42 @@ def uncovered_strips(covered, from_m, to_m, tolerance_m=1e-06):
     return [(starts_m, ends_m) for starts_m, ends_m in strips if ends_m - starts_m > tolerance_m]
 
 # response to a pressure over the strips, only where it hurts if asked
-def response_to_area_load(surface, strips, adverse, pressure_kpa=RESIDUAL_UDL_KPA, adverse_area_only=True, sampling=DEFAULT_SAMPLING):
-    if not strips:
-        return 0.0
-    x_centres_m, x_widths_m = cell_centres(surface.length_mesh_m, sampling.udl_cells_per_mesh_interval_along_span)
+def response_to_area_load(surface, strips, adverse, pressure_kpa, sampling):
     total = 0.0
     for from_m, to_m in strips:
-        if to_m - from_m <= NOTHING_THERE_M:
-            continue
-        z_centres_m, z_widths_m = cell_centres([from_m, to_m], sampling.udl_cells_per_mesh_interval_across_width)
-        ordinates = surface.influence_at(x_centres_m[:, None], z_centres_m[None, :])
-        cell_areas_m2 = x_widths_m[:, None] * z_widths_m[None, :]
-        cells = ordinates * cell_areas_m2
-        if adverse_area_only:
-            cells = np.where(where_a_load_hurts(ordinates, adverse), cells, 0.0)
-        total += float(cells.sum())
+        cells = cells_where_it_hurts(surface, from_m, to_m, adverse, sampling)
+        if cells is not None:
+            total += float(np.where(cells.hurts, cells.ordinates * cells.areas_m2, 0.0).sum())
     return pressure_kpa * total
 
+
+class LoadedCells:
+    # a strip cut into cells: centres, sizes, influence at each, and which ones make it worse
+    def __init__(self, x_centres_m, x_widths_m, z_centres_m, z_widths_m, ordinates, hurts):
+        self.x_centres_m = x_centres_m
+        self.x_widths_m = x_widths_m
+        self.z_centres_m = z_centres_m
+        self.z_widths_m = z_widths_m
+        self.ordinates = ordinates
+        self.hurts = hurts
+
+    # area of each cell
+    @property
+    def areas_m2(self):
+        return self.x_widths_m[:, None] * self.z_widths_m[None, :]
+
+
+# the cells of a strip from..to, in mesh coordinates, marked where a downward load makes the response worse; None for a strip of no width
+def cells_where_it_hurts(surface, from_m, to_m, adverse, sampling):
+    if to_m - from_m <= NOTHING_THERE_M:
+        return None
+    x_centres_m, x_widths_m = cell_centres(surface.length_mesh_m, sampling.udl_cells_per_mesh_interval_along_span)
+    z_centres_m, z_widths_m = cell_centres([from_m, to_m], sampling.udl_cells_per_mesh_interval_across_width)
+    ordinates = surface.influence_at(x_centres_m[:, None], z_centres_m[None, :])
+    return LoadedCells(x_centres_m, x_widths_m, z_centres_m, z_widths_m, ordinates, where_a_load_hurts(ordinates, adverse))
+
 # clause 206.3 footway load for this span and width
-def footway_pressure_kpa(span_m, footway_width_m, crowd=False):
-    if crowd:
-        return FOOTWAY_CROWD_KG_M2 * KPA_PER_KG_M2
+def footway_pressure_kpa(span_m, footway_width_m):
     full_kg_m2 = FOOTWAY_PEDESTRIAN_KG_M2
     if span_m <= FOOTWAY_FULL_LOAD_UP_TO_SPAN_M:
         return full_kg_m2 * KPA_PER_KG_M2
@@ -274,12 +271,12 @@ def footway_pressure_kpa(span_m, footway_width_m, crowd=False):
     return long_span_kg_m2 * width_factor * KPA_PER_KG_M2
 
 # each footway strip with its pressure
-def footway_loaded_strips(cross_section, span_m, crowd=False):
-    return [(strip.z_from_m, strip.z_to_m, footway_pressure_kpa(span_m, strip.width_m, crowd)) for strip in cross_section.footways()]
+def footway_loaded_strips(cross_section, span_m):
+    return [(strip.z_from_m, strip.z_to_m, footway_pressure_kpa(span_m, strip.width_m)) for strip in cross_section.footways()]
 
 # response to the footway load on every footway
-def footway_response(surface, cross_section, adverse, span_m, crowd=False, sampling=DEFAULT_SAMPLING):
-    return sum(response_to_area_load(surface, [(from_m, to_m)], adverse, pressure_kpa=pressure_kpa, sampling=sampling) for from_m, to_m, pressure_kpa in footway_loaded_strips(cross_section, span_m, crowd))
+def footway_response(surface, cross_section, adverse, span_m, sampling):
+    return sum(response_to_area_load(surface, [(from_m, to_m)], adverse, pressure_kpa, sampling) for from_m, to_m, pressure_kpa in footway_loaded_strips(cross_section, span_m))
 
 # centres and widths of the cells each mesh interval is split into
 def cell_centres(edges_m, cells_per_interval):

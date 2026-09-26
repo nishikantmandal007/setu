@@ -23,7 +23,7 @@ def braking_load_cases(model, critical_position):
     for placed in critical_position.vehicles:
         vehicle = find_vehicle_or_its_reverse(placed.vehicle_name)
         for x_front_m in placed.train_x_front_m:
-            wheels += wheels_on_the_span(vehicle, x_front_m, placed.z_centre_m, bridge.span_m, bridge.skew)
+            wheels += wheels_on_the_span(vehicle, x_front_m, placed.z_centre_m, bridge.span_m, bridge.skew, bridge.wearing_course_thickness_m)
     weight_kn = sum(load_kn for _, _, load_kn in wheels)
     shares = {}
     for x_m, z_m, load_kn in wheels:

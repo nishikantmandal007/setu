@@ -35,6 +35,20 @@ def test_everything_lands_in_one_folder(run):
     assert sorted(p.name for p in (out / "plots").iterdir()) == ["critical_girder_0.png", "critical_girder_1.png", "critical_girder_2.png", "critical_girder_3.png", "critical_girder_4.png", "design.png"]
 
 
+def test_every_critical_position_gets_a_midas_csv_and_osdagbridge_gets_the_dataset(run):
+    import xarray as xr
+
+    out, result = run
+    csvs = sorted((out / "midas").iterdir())
+    dataset = xr.open_dataset(out / "girder_results.nc")
+
+    assert len(csvs) == 5 * 2 * 2
+    assert "wheel_load_kn" in csvs[0].read_text() and "pressure_kpa" in csvs[0].read_text()
+    assert dataset["forces"].dims == ("Loadcase", "Element", "Component")
+    assert len(dataset["Loadcase"]) == 3 + 5 * 2 * 2
+    assert result["critical_positions"]["girder 0"]["midspan composite moment"]["maximum"]["udl_and_footway_patches"]
+
+
 def test_every_critical_position_is_there_and_matches_opensees(run):
     _, result = run
     positions = result["critical_positions"]

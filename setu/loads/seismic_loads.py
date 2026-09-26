@@ -20,7 +20,7 @@ class SeismicLoadCases(dict):
 
 
 # longitudinal, transverse and (zones IV, V) vertical seismic load cases
-def seismic_load_cases(model, site, live_critical=None, ops=None):
+def seismic_load_cases(model, site, live_critical, ops=None):
     dead_kn = dead_weight_at_nodes(model, ops)
     live_kn = live_weight_at_nodes(model, live_critical)
     with_live_kn = dict(dead_kn)
@@ -55,14 +55,12 @@ def dead_weight_at_nodes(model, ops=None):
 
 # 20% of the critical position's vehicles at the nodes
 def live_weight_at_nodes(model, live_critical):
-    if live_critical is None:
-        return {}
     bridge = model.bridge
     shares = {}
     for placed in live_critical.vehicles:
         vehicle = find_vehicle_or_its_reverse(placed.vehicle_name)
         for x_front_m in placed.train_x_front_m:
-            for x_m, z_m, load_kn in wheels_on_the_span(vehicle, x_front_m, placed.z_centre_m, bridge.span_m, bridge.skew):
+            for x_m, z_m, load_kn in wheels_on_the_span(vehicle, x_front_m, placed.z_centre_m, bridge.span_m, bridge.skew, bridge.wearing_course_thickness_m):
                 share_between_nodes(model, x_m, z_m, LIVE_LOAD_SEISMIC_FRACTION * load_kn, shares)
     return {model.deck_nodes[i, j]: weight_kn for (i, j), weight_kn in shares.items()}
 

@@ -1,6 +1,6 @@
 import numpy as np
 from setu.analysis.influence_surface import cell_containing
-from setu.helpers import DEFAULT_SAMPLING, adverse_sign, index_of_worst, is_worse
+from setu.helpers import adverse_sign, is_worse
 from setu.irc6.impact import impact_factor
 from setu.irc6.vehicles import class_of, most_vehicles_that_fit, pitch_between_vehicles_m
 from setu.irc6.wheel_loads import split_offsets, wheel_load_offsets
@@ -18,8 +18,6 @@ def best_so_far(values):
     position_of_the_best_so_far = np.maximum.accumulate(position_when_it_is_a_new_best)
     return (best_value_so_far, position_of_the_best_so_far)
 
-NO_IMPACT = 1.0
-
 class ResponseCurve:
     # worst response of one vehicle (or train) at each position across, and where along
     def __init__(self, vehicle_name, z_positions_m, response, x_positions_m, vehicles_in_train, train_x_front_m, impact_factor):
@@ -31,14 +29,6 @@ class ResponseCurve:
         self.train_x_front_m = train_x_front_m
         self.impact_factor = impact_factor
 
-    # plain dict for the JSON output
-    def to_dict(self):
-        return self.__dict__
-
-    # curve read at z
-    def read_at(self, z_m):
-        return np.interp(z_m, self.z_positions_m, self.response)
-
 class WorstAlongSpan:
     # worst spot along the span at each position across
     def __init__(self, response, x_positions_m, vehicles_in_train, train_x_front_m):
@@ -47,56 +37,35 @@ class WorstAlongSpan:
         self.vehicles_in_train = vehicles_in_train
         self.train_x_front_m = train_x_front_m
 
-    # plain dict for the JSON output
-    def to_dict(self):
-        return self.__dict__
-
 class VehicleResponses:
 
     # builds and remembers each vehicle's response curve on one surface
-    def __init__(self, surface, span_m, material='steel', member_span_m=None, wearing_course_thickness_m=0.0, apply_impact=True, allow_trains=True, sampling=DEFAULT_SAMPLING, skew=0.0):
+    def __init__(self, surface, span_m, wearing_course_thickness_m, skew, sampling):
         self.surface = surface
         self.skew = float(skew)
         self.span_m = float(span_m)
-        self.material = material
-        self.member_span_m = member_span_m
         self.wearing_course_thickness_m = float(wearing_course_thickness_m)
-        self.apply_impact = apply_impact
-        self.allow_trains = allow_trains
         self.sampling = sampling
         self._already_built = {}
 
     # the vehicle's response curve, built once and remembered
-    def for_vehicle(self, vehicle, z_positions_m, adverse='maximum'):
+    def for_vehicle(self, vehicle, z_positions_m, adverse):
         z_positions_m = np.asarray(z_positions_m, float)
         remembered = remembered_as(vehicle, z_positions_m, adverse)
         if remembered not in self._already_built:
             self._already_built[remembered] = self.build_curve(vehicle, z_positions_m, adverse)
         return self._already_built[remembered]
 
-    # slide the vehicle (or train) along the span at every position across, keep the worst
+    # slide the vehicle, or a train of them, along the span at every position across, keep the worst
     def build_curve(self, vehicle, z_positions_m, adverse):
         wheel_offsets = along_the_mesh(wheel_load_offsets(vehicle, self.wearing_course_thickness_m, self.sampling), self.skew)
-        x_positions_m = positions_along_span(self.surface, wheel_offsets)
-        if self.allow_trains:
-            x_positions_m = with_every_train_spacing(x_positions_m, vehicle)
+        x_positions_m = with_every_train_spacing(positions_along_span(self.surface, wheel_offsets), vehicle)
         response_to_one_vehicle = response_to_one_vehicle_everywhere(self.surface, wheel_offsets, x_positions_m, z_positions_m, self.sampling)
-        if self.allow_trains:
-            worst = self.worst_train_at_each_position(vehicle, response_to_one_vehicle, x_positions_m, adverse)
-        else:
-            worst = self.worst_single_vehicle_at_each_position(response_to_one_vehicle, x_positions_m, adverse)
-        factor = self.impact_factor_for(vehicle)
+        worst = self.worst_train_at_each_position(vehicle, response_to_one_vehicle, x_positions_m, adverse)
+        factor = impact_factor(class_of(vehicle), self.span_m)
         shift_m = self.skew * z_positions_m
         train_x_front_m = [tuple(x_m + float(shift) for x_m in train) for train, shift in zip(worst.train_x_front_m, shift_m, strict=True)]
         return ResponseCurve(vehicle_name=vehicle.name, z_positions_m=z_positions_m, response=factor * worst.response, x_positions_m=worst.x_positions_m + shift_m, vehicles_in_train=worst.vehicles_in_train, train_x_front_m=train_x_front_m, impact_factor=factor)
-
-    # worst x for one vehicle at each position across
-    def worst_single_vehicle_at_each_position(self, response_to_one_vehicle, x_positions_m, adverse):
-        positions_across_the_width = response_to_one_vehicle.shape[1]
-        worst_along_the_span = index_of_worst(response_to_one_vehicle, adverse, axis=0)
-        every_position = np.arange(positions_across_the_width)
-        where_it_stopped_m = x_positions_m[worst_along_the_span]
-        return WorstAlongSpan(response=response_to_one_vehicle[worst_along_the_span, every_position], x_positions_m=where_it_stopped_m, vehicles_in_train=np.ones(positions_across_the_width, int), train_x_front_m=[(float(x_m),) for x_m in where_it_stopped_m])
 
     # worst train of any length at each position across
     def worst_train_at_each_position(self, vehicle, response_to_one_vehicle, x_positions_m, adverse):
@@ -117,13 +86,6 @@ class VehicleResponses:
             trains.append(worst.positions_m)
         return WorstAlongSpan(response=response, x_positions_m=leading_x_m, vehicles_in_train=vehicles_in_train, train_x_front_m=trains)
 
-    # impact factor for the vehicle on this span, or 1 when switched off
-    def impact_factor_for(self, vehicle):
-        if not self.apply_impact:
-            return NO_IMPACT
-        span_m = self.span_m if self.member_span_m is None else float(self.member_span_m)
-        return impact_factor(class_of(vehicle), span_m, self.material)
-
 # shift wheel offsets for skew so they line up with the mesh
 def along_the_mesh(wheel_offsets, skew):
     sheared = np.array(wheel_offsets, float)
@@ -135,9 +97,8 @@ def remembered_as(vehicle, z_positions_m, adverse):
     return (vehicle.name, adverse, len(z_positions_m), float(z_positions_m[0]), float(z_positions_m[-1]))
 
 # positions across to try: an even spread plus where wheels hit stations
-def positions_across_width(responses, vehicles, z_from_m, z_to_m, steps=None):
-    steps = DEFAULT_SAMPLING.positions_across_the_deck_to_try if steps is None else steps
-    an_even_spread = np.linspace(z_from_m, z_to_m, steps)
+def positions_across_width(responses, vehicles, z_from_m, z_to_m):
+    an_even_spread = np.linspace(z_from_m, z_to_m, responses.sampling.positions_across_the_deck_to_try)
     worth_sampling = [an_even_spread]
     for vehicle in vehicles:
         worth_sampling.append(bending_positions_across_width(responses.surface, vehicle, responses.wearing_course_thickness_m, responses.sampling, z_from_m, z_to_m))
@@ -241,11 +202,9 @@ def read_one_position_at_a_time(curve, positions_m):
 def positions_inside_zone(from_m, to_m, curve_breakpoints_m, sampling):
     both_ends = np.array([from_m, to_m], float)
     an_even_spread = np.linspace(from_m, to_m, sampling.positions_inside_a_70r_zone_to_try)
-    worth_trying = [both_ends, an_even_spread]
-    if curve_breakpoints_m is not None:
-        breakpoints_m = np.asarray(curve_breakpoints_m, float)
-        is_inside_the_zone = (breakpoints_m >= from_m - TOLERANCE_M) & (breakpoints_m <= to_m + TOLERANCE_M)
-        worth_trying.append(breakpoints_m[is_inside_the_zone])
+    breakpoints_m = np.asarray(curve_breakpoints_m, float)
+    is_inside_the_zone = (breakpoints_m >= from_m - TOLERANCE_M) & (breakpoints_m <= to_m + TOLERANCE_M)
+    worth_trying = [both_ends, an_even_spread, breakpoints_m[is_inside_the_zone]]
     return np.unique(np.round(np.concatenate(worth_trying), ROUND_TO_DECIMALS))
 
 NOWHERE = -1
@@ -265,7 +224,7 @@ def last_position_a_vehicle_in_front_could_take(positions_m, pitch_m):
     return np.searchsorted(positions_m, positions_m - pitch_m, side='right') - 1
 
 # worst place for a train of n vehicles, by dynamic programming
-def place_train(response_to_one_vehicle, positions_m, pitch_m, vehicles_in_train, adverse='minimum'):
+def place_train(response_to_one_vehicle, positions_m, pitch_m, vehicles_in_train, adverse):
     response_to_one_vehicle = np.asarray(response_to_one_vehicle, float)
     positions_m = np.asarray(positions_m, float)
     worse_is_positive = adverse_sign(adverse)
@@ -290,7 +249,7 @@ def place_train(response_to_one_vehicle, positions_m, pitch_m, vehicles_in_train
     return TrainPlacement(response=float(sum((response_to_one_vehicle[position] for position in chosen))), positions_m=tuple((float(positions_m[position]) for position in chosen)))
 
 # worst train of one up to the most vehicles that fit
-def find_worst_train(response_to_one_vehicle, positions_m, pitch_m, most_vehicles, adverse='minimum'):
+def find_worst_train(response_to_one_vehicle, positions_m, pitch_m, most_vehicles, adverse):
     worst = None
     for how_many in range(1, int(most_vehicles) + 1):
         placement = place_train(response_to_one_vehicle, positions_m, pitch_m, how_many, adverse)

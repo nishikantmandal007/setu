@@ -9,10 +9,11 @@ from setu.irc6.seismic import combine_directions
 from setu.irc6.temperature import effective_temperature_range, temperature_difference_profile
 from setu.loads.braking_loads import braking_load_cases
 from setu.loads.custom_loads import custom_load_cases
+from setu.loads.load_builders import applied_live_loads
 from setu.loads.load_cases import LoadCase
 from setu.loads.seismic_loads import seismic_load_cases
 from setu.loads.wind_loads import wind_load_cases
-from setu.postprocess.girder_response import analyze_load_case, dead_load_forces
+from setu.postprocess.girder_response import dead_load_forces
 from setu.postprocess.thermal_stresses import free_bearing_movement_m, primary_thermal_stresses
 from setu.utils.constants import (
     BIGGER_IS_WORSE,
@@ -48,19 +49,20 @@ class GoverningValue:
 
 class DesignValues:
     # design values for every girder, response and limit state, plus what went into them
-    def __init__(self, girders, thermal=None, surfaces=None, criticals=None):
+    def __init__(self, girders, thermal, surfaces, criticals):
         self.girders = girders
         self.thermal = thermal
-        self.surfaces = surfaces or {}
-        self.criticals = criticals or {}
+        self.surfaces = surfaces
+        self.criticals = criticals
 
     # the girder with the biggest value for this response and limit state
-    def governing(self, response, limit_state, adverse=BIGGER_IS_WORSE):
+    def governing(self, response, limit_state, adverse):
         return max(((girder, by_response[response][limit_state][adverse]) for girder, by_response in self.girders.items()), key=lambda pair: abs(pair[1].value))
 
-    # plain dict for the JSON output
-    def to_dict(self):
-        return self.__dict__
+
+# every critical position's wheels and UDL/footway patches, keyed (girder, response, adverse), to rebuild the live load in MIDAS
+def midas_loads(bridge, design_values):
+    return {key: applied_live_loads(bridge, critical, design_values.surfaces[key[0], key[1]]) for key, critical in design_values.criticals.items()}
 
 
 # every load on every girder, combined per IRC:6 Annex B
@@ -74,8 +76,8 @@ def girder_design_values(bridge, wind=None, seismic=None, temperature=None, cust
     for girder in girders:
         surfaces[girder, MIDSPAN_MOMENT] = solver.for_girder_composite_moment(f"girder {girder}, {MIDSPAN_MOMENT}", model.midspan_element_of_girder(girder))
         surfaces[girder, SUPPORT_SHEAR] = solver.for_girder_shear(f"girder {girder}, {SUPPORT_SHEAR}", model.element_of_girder_at(girder, SUPPORT))
-    live = {(girder, response, adverse): find_critical_position(surfaces[girder, response], bridge.cross_section, span_m=bridge.span_m, adverse=adverse,
-                                                                  wearing_course_thickness_m=bridge.wearing_course_thickness_m)
+    live = {(girder, response, adverse): find_critical_position(surfaces[girder, response], bridge.cross_section, bridge.span_m, adverse,
+                                                                  bridge.wearing_course_thickness_m)
             for girder in girders for response in RESPONSES for adverse in (BIGGER_IS_WORSE, SMALLER_IS_WORSE)}
     read = reader(model, surfaces)
     wind_cases = wind_load_cases(model, wind) if wind is not None else None
@@ -95,7 +97,7 @@ def girder_design_values(bridge, wind=None, seismic=None, temperature=None, cust
             effects = {
                 DEAD: sum(read(dead.stages[stage], girder, response) for stage in DEAD_STAGES),
                 SURFACING: read(dead.stages["surfacing"], girder, response),
-                LIVE: [live_with_braking(model, live[girder, response, adverse], read, girder, response, ops) for adverse in (BIGGER_IS_WORSE, SMALLER_IS_WORSE)],
+                LIVE: [live_with_braking(model, live[girder, response, adverse], read, girder, response) for adverse in (BIGGER_IS_WORSE, SMALLER_IS_WORSE)],
             }
             if wind_forces:
                 effects[WIND] = wind_alternatives(wind_forces, read, girder, response, with_the_live_load=False)
@@ -124,7 +126,7 @@ def reader(model, surfaces):
 
 
 # live load response plus the worse of the two braking directions
-def live_with_braking(model, critical, read, girder, response, ops):
+def live_with_braking(model, critical, read, girder, response):
     braking = [read(case, girder, response) for case in braking_load_cases(model, critical).values()]
     adding = max(braking) if critical.adverse == BIGGER_IS_WORSE else min(braking)
     return critical.response + adding

@@ -22,8 +22,5 @@ class BackendError(SetuError):
 class ModelAlreadyLoadedError(SetuError):
     pass
 
-class NotLinearError(SetuError):
-    pass
-
 class OtherLoadsStillActiveError(SetuError):
     pass

@@ -1,33 +1,7 @@
 from setu.helpers import import_opensees
 
 
-class FEBackend:
-
-    # solve with these nodal loads
-    def solve_with_loads(self, loads, pattern=None):
-        raise NotImplementedError
-
-    # displacement of one node in one dof
-    def node_displacement(self, node, dof):
-        raise NotImplementedError
-
-    # the nodes of an element
-    def element_nodes(self, element):
-        raise NotImplementedError
-
-    # where a node is
-    def node_coordinates(self, node):
-        raise NotImplementedError
-
-    # take the loads off
-    def clear_loads(self):
-        raise NotImplementedError
-
-    # displacements of every node
-    def every_node_displacement(self):
-        raise NotImplementedError
-
-class OpenSeesBackend(FEBackend):
+class OpenSeesBackend:
 
     ADJOINT_PATTERN = 7
     ADJOINT_TIME_SERIES = 7
@@ -69,14 +43,6 @@ class OpenSeesBackend(FEBackend):
     # displacements of every node
     def every_node_displacement(self):
         return {node: self.ops.nodeDisp(node) for node in self.ops.getNodeTags()}
-
-    # element end forces in local axes
-    def element_forces(self, element):
-        return self.ops.eleResponse(element, "localForce")
-
-    # support reaction at a node
-    def node_reaction(self, node):
-        return self.ops.nodeReaction(node)
 
     # remove the load pattern and reset
     def clear_loads(self):

@@ -19,11 +19,6 @@ class WindSite:
         self.plan_area_m2 = plan_area_m2
         self.live_load_exposed_area_m2 = live_load_exposed_area_m2
 
-    # plain dict for the JSON output
-    def to_dict(self):
-        return self.__dict__
-
-
 class SeismicSite:
     # IRC:SP:114 inputs as OsdagBridge gives them: zone, soil, I, T and R
     def __init__(self, zone, soil, importance_factor, period_s, response_reduction):
@@ -38,17 +33,9 @@ class SeismicSite:
     def include_vertical(self):
         return self.zone in VERTICAL_ALWAYS_IN_ZONES
 
-    # plain dict for the JSON output
-    def to_dict(self):
-        return {**self.__dict__, "include_vertical": self.include_vertical}
-
-
 class TemperatureSite:
     # IRC:6 clause 215 inputs: the site's highest and lowest shade air temperature
     def __init__(self, shade_max_c, shade_min_c):
         self.shade_max_c = shade_max_c
         self.shade_min_c = shade_min_c
 
-    # plain dict for the JSON output
-    def to_dict(self):
-        return self.__dict__

@@ -18,11 +18,6 @@ class DeckStrip:
     def carries_pedestrians(self):
         return self.name.startswith(("footway", "footpath"))
 
-    # plain dict for the JSON output
-    def to_dict(self):
-        return self.__dict__
-
-
 class Carriageway:
     # a stretch of road between two kerbs
     def __init__(self, left_m, right_m):
@@ -68,25 +63,10 @@ class DeckCrossSection:
     def has_carriageway(self):
         return any(s.carries_traffic() for s in self.strips)
 
-    # first strip whose name starts with this, or None
-    def strip_named(self, name):
-        for s in self.strips:
-            if s.name.startswith(name):
-                return s
-        return None
-
     # all the strips people walk on
     def footways(self):
         return [s for s in self.strips if s.carries_pedestrians()]
 
-    # the road stretches, each on its own or merged into one
-    def carriageways(self, split="separate"):
-        stretches = [
-            Carriageway(left_m=s.z_from_m, right_m=s.z_to_m)
-            for s in self.strips if s.carries_traffic()
-        ]
-        if split == "separate":
-            return stretches
-        if split == "combined":
-            return [Carriageway(left_m=stretches[0].left_m, right_m=stretches[-1].right_m)]
-        raise CrossSectionError(f"split must be 'separate' or 'combined', got {split!r}")
+    # each road stretch between its kerbs
+    def carriageways(self):
+        return [Carriageway(left_m=s.z_from_m, right_m=s.z_to_m) for s in self.strips if s.carries_traffic()]

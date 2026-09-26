@@ -73,7 +73,7 @@ def test_the_custom_group_only_shows_in_its_own_combination(results):
 
 
 def test_the_governing_girder_is_reported(results):
-    girder, governing = results.governing(MIDSPAN_MOMENT, BASIC)
+    girder, governing = results.governing(MIDSPAN_MOMENT, BASIC, BIGGER_IS_WORSE)
 
     assert governing.value == max(results.girders[g][MIDSPAN_MOMENT][BASIC][BIGGER_IS_WORSE].value for g in results.girders)
 

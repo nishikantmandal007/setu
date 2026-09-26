@@ -20,8 +20,3 @@ KPA_PER_KG_M2 = 9.81 / 1000
 )
 def test_footway_pressure_follows_clause_206_3(span_m, width_m, kg_m2):
     assert footway_pressure_kpa(span_m, width_m) == pytest.approx(kg_m2 * KPA_PER_KG_M2)
-
-
-@pytest.mark.parametrize("span_m", [5.0, 20.0, 35.0])
-def test_a_crowd_is_never_reduced(span_m):
-    assert footway_pressure_kpa(span_m, 1.5, crowd=True) == pytest.approx(500.0 * KPA_PER_KG_M2)

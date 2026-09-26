@@ -14,7 +14,7 @@ def flat_surface(gradient_along: float = 2.0, gradient_across: float = 3.0):
     width_mesh_m = np.linspace(0.0, 5.0, 6)
     values = gradient_along * length_mesh_m[:, None] + gradient_across * width_mesh_m[None, :]
     return InfluenceSurface(
-        values=values, length_mesh_m=length_mesh_m, width_mesh_m=width_mesh_m, name="a plane"
+        values=values, length_mesh_m=length_mesh_m, width_mesh_m=width_mesh_m, name="a plane", skew=0.0
     )
 
 
@@ -58,12 +58,8 @@ def test_a_skewed_deck_is_read_on_its_own_grid():
     width_mesh_m = np.linspace(0.0, 5.0, 6)
     values = np.tile(length_mesh_m[:, None], (1, len(width_mesh_m)))
 
-    square = InfluenceSurface(
-        values=values, length_mesh_m=length_mesh_m, width_mesh_m=width_mesh_m
-    )
-    skewed = InfluenceSurface(
-        values=values, length_mesh_m=length_mesh_m, width_mesh_m=width_mesh_m, skew=0.5
-    )
+    square = InfluenceSurface(values=values, length_mesh_m=length_mesh_m, width_mesh_m=width_mesh_m, name="square", skew=0.0)
+    skewed = InfluenceSurface(values=values, length_mesh_m=length_mesh_m, width_mesh_m=width_mesh_m, name="skewed", skew=0.5)
 
     # a point 0.5 * z further along the skewed deck is the same point on its grid
     assert skewed.influence_at(4.0 + 0.5 * 3.0, 3.0) == pytest.approx(
@@ -77,31 +73,6 @@ def test_a_grid_that_does_not_match_the_mesh_is_refused():
             values=np.zeros((3, 3)),
             length_mesh_m=np.linspace(0, 1, 4),
             width_mesh_m=np.linspace(0, 1, 3),
+            name="mismatched",
+            skew=0.0,
         )
-
-
-def test_a_saved_surface_reads_back_the_same(tmp_path):
-    surface = flat_surface()
-    path = tmp_path / "surface.npz"
-    surface.save(str(path))
-
-    read_back = InfluenceSurface.load(str(path))
-
-    assert read_back.values == pytest.approx(surface.values)
-    assert read_back.name == surface.name
-
-
-def test_a_saved_surface_keeps_what_it_describes(tmp_path):
-    """describes must round-trip too, not just the grid and the name."""
-    surface = InfluenceSurface(
-        values=np.zeros((3, 3)),
-        length_mesh_m=np.linspace(0.0, 1.0, 3),
-        width_mesh_m=np.linspace(0.0, 1.0, 3),
-        describes={"response": "girder_moment", "element": 12, "dof": 5},
-    )
-    path = tmp_path / "surface.npz"
-    surface.save(str(path))
-
-    read_back = InfluenceSurface.load(str(path))
-
-    assert read_back.describes == surface.describes

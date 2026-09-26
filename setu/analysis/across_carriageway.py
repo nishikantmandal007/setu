@@ -1,7 +1,7 @@
 import itertools
 import numpy as np
 from setu.errors import NoAdmissibleArrangementError
-from setu.helpers import DEFAULT_SAMPLING, adverse_sign, index_of_worst, is_worst_first
+from setu.helpers import adverse_sign, index_of_worst, is_worst_first
 from setu.irc6.lanes import (
     fit_blocks_between,
     lane_reduction_factor,
@@ -12,7 +12,8 @@ from setu.irc6.lanes import (
     where_vehicle_sits_in_block,
 )
 from setu.analysis.along_span import best_so_far, positions_inside_zone, read_curve
-from setu.utils.constants import CLASS_A_LANE, NO_LANE_REDUCTION, ROUND_TO_DECIMALS, TOLERANCE_M
+from setu.irc6.irc_constants import RESIDUAL_UDL_KPA
+from setu.utils.constants import CLASS_A_LANE, ROUND_TO_DECIMALS, TOLERANCE_M
 
 class BlockEnvelope:
     # worst response of any allowed vehicle at each position across, and who gave it
@@ -20,10 +21,6 @@ class BlockEnvelope:
         self.z_positions_m = z_positions_m
         self.response = response
         self.winner = winner
-
-    # plain dict for the JSON output
-    def to_dict(self):
-        return self.__dict__
 
     # envelope read at z
     def __call__(self, z_m):
@@ -36,11 +33,11 @@ class BlockEnvelope:
         return self.winner[nearest]
 
 # envelope for Class A lanes and 70R zones on one carriageway
-def envelope_every_block(responses, permitted, z_positions_m, adverse, carriageway, surface, apply_residual_udl, sampling):
+def envelope_every_block(responses, permitted, z_positions_m, adverse, carriageway, surface, sampling):
     envelopes = {}
     for block, choices in permitted.items():
         response, winner = worst_of_the_permitted_vehicles(responses, choices, z_positions_m, adverse)
-        if carries_a_residual_udl(block, carriageway, apply_residual_udl):
+        if carries_a_residual_udl(block, carriageway):
             response = response + residual_udl_curve(surface, z_positions_m, carriageway, adverse, sampling)
         envelopes[block] = BlockEnvelope(z_positions_m=z_positions_m, response=response, winner=winner)
     return envelopes
@@ -56,19 +53,17 @@ def worst_of_the_permitted_vehicles(responses, choices, z_positions_m, adverse):
     return (response, winner)
 
 # a Class A lane on a narrow carriageway gets the residual UDL
-def carries_a_residual_udl(block, carriageway, apply_residual_udl):
-    if block != CLASS_A_LANE or not apply_residual_udl:
-        return False
-    return needs_residual_udl(carriageway.width_m())
+def carries_a_residual_udl(block, carriageway):
+    return block == CLASS_A_LANE and needs_residual_udl(carriageway.width_m())
 
 # residual UDL response beside a Class A lane at each position
 def residual_udl_curve(surface, z_positions_m, carriageway, adverse, sampling):
-    added_at_each_position = [response_to_area_load(surface, strips_beside_class_a(float(z_m), carriageway.left_m, carriageway.right_m), adverse, sampling=sampling) for z_m in z_positions_m]
+    added_at_each_position = [response_to_area_load(surface, strips_beside_class_a(float(z_m), carriageway.left_m, carriageway.right_m), adverse, RESIDUAL_UDL_KPA, sampling) for z_m in z_positions_m]
     return np.array(added_at_each_position)
 
 
 # best offset for each block left to right, by dynamic programming
-def place_vehicles(block_curves, adverse='maximum'):
+def place_vehicles(block_curves, adverse):
     worse_is_positive = adverse_sign(adverse)
     signed_best_total = worse_is_positive * np.asarray(block_curves[0], float)
     offset_of_the_block_to_the_left = [None]
@@ -105,10 +100,6 @@ class CarriagewayCase:
         self.response = response
         self.lane_reduction = lane_reduction
 
-    # plain dict for the JSON output
-    def to_dict(self):
-        return self.__dict__
-
 class TransversePlacement:
     # one case per carriageway put together, with the lane reduction
     def __init__(self, response, response_before_reduction, lane_reduction, design_lanes, per_carriageway):
@@ -118,33 +109,17 @@ class TransversePlacement:
         self.design_lanes = design_lanes
         self.per_carriageway = per_carriageway
 
-    # plain dict for the JSON output
-    def to_dict(self):
-        return self.__dict__
-
 class TransverseSearch:
     # settings for the search across the deck
-    def __init__(self, adverse, sampling, curve_breakpoints_m, apply_lane_reduction, follow_combination_drawings):
+    def __init__(self, adverse, sampling, curve_breakpoints_m):
         self.adverse = adverse
         self.sampling = sampling
         self.curve_breakpoints_m = curve_breakpoints_m
-        self.apply_lane_reduction = apply_lane_reduction
-        self.follow_combination_drawings = follow_combination_drawings
-
-    # plain dict for the JSON output
-    def to_dict(self):
-        return self.__dict__
-
-    # lane reduction for this many lanes, or 1 when switched off
-    def reduction_for(self, design_lanes):
-        if not self.apply_lane_reduction:
-            return NO_LANE_REDUCTION
-        return lane_reduction_factor(design_lanes)
 
 # every legal lane layout across all carriageways, worst first
-def find_worst_placement(carriageways, response_curves, adverse='maximum', apply_lane_reduction=True, curve_breakpoints_m=None, sampling=DEFAULT_SAMPLING, follow_combination_drawings=True):
+def find_worst_placement(carriageways, response_curves, adverse, curve_breakpoints_m, sampling):
     check_one_set_of_curves_per_carriageway(carriageways, response_curves)
-    search = TransverseSearch(adverse=adverse, sampling=sampling, curve_breakpoints_m=curve_breakpoints_m, apply_lane_reduction=apply_lane_reduction, follow_combination_drawings=follow_combination_drawings)
+    search = TransverseSearch(adverse=adverse, sampling=sampling, curve_breakpoints_m=curve_breakpoints_m)
     cases_per_carriageway = [cases_for_one_carriageway(carriageway, curves, search) for carriageway, curves in zip(carriageways, response_curves, strict=True)]
     if any((not cases for cases in cases_per_carriageway)):
         widths_m = [round(carriageway.width_m(), 3) for carriageway in carriageways]
@@ -154,7 +129,7 @@ def find_worst_placement(carriageways, response_curves, adverse='maximum', apply
 # best placement of every allowed lane pattern on one carriageway
 def cases_for_one_carriageway(carriageway, curves, search):
     cases = []
-    for arrangement in list_admissible_arrangements(carriageway.width_m(), search.follow_combination_drawings):
+    for arrangement in list_admissible_arrangements(carriageway.width_m()):
         layout = fit_blocks_between(arrangement.lane_pattern, carriageway.left_m, carriageway.right_m)
         if layout is None:
             continue
@@ -166,7 +141,7 @@ def cases_for_one_carriageway(carriageway, curves, search):
             contributions.append(values)
             centres_m.append(positions)
         response, chosen = place_vehicles(contributions, search.adverse)
-        reduction = search.reduction_for(arrangement.design_lanes)
+        reduction = lane_reduction_factor(arrangement.design_lanes)
         cases.append(CarriagewayCase(lane_pattern=list(arrangement.lane_pattern), design_lanes=arrangement.design_lanes, sliding_room_m=layout.sliding_room_m, vehicle_centres_m=[float(centre_m[offset]) for centre_m, offset in zip(centres_m, chosen, strict=True)], response_before_reduction=response, lane_reduction=reduction, response=response * reduction))
     return cases
 
@@ -180,7 +155,7 @@ def sliding_offsets(arrangement, layout, search):
     has_nowhere_to_slide = room_m < TOLERANCE_M
     steps = 1 if has_nowhere_to_slide else search.sampling.sliding_offsets_to_try
     worth_trying = [np.linspace(0.0, room_m, steps)]
-    if search.curve_breakpoints_m is not None and (not has_nowhere_to_slide):
+    if not has_nowhere_to_slide:
         breakpoints_m = np.asarray(search.curve_breakpoints_m, float)
         for block, width_m, packed_left_m in walk_the_blocks(arrangement, layout):
             for where_in_block_m in set(where_vehicle_sits_in_block(block, width_m)):
@@ -218,7 +193,7 @@ def combine_across_carriageways(cases_per_carriageway, search):
     for chosen in itertools.product(*cases_per_carriageway):
         design_lanes = sum((case.design_lanes for case in chosen))
         before_reduction = sum((case.response_before_reduction for case in chosen))
-        reduction = search.reduction_for(design_lanes)
+        reduction = lane_reduction_factor(design_lanes)
         combinations.append(TransversePlacement(response=before_reduction * reduction, response_before_reduction=before_reduction, lane_reduction=reduction, design_lanes=design_lanes, per_carriageway=list(chosen)))
     combinations.sort(key=lambda placement: placement.response, reverse=is_worst_first(search.adverse))
     return combinations

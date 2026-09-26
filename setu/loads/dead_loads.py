@@ -1,64 +1,18 @@
 import numpy as np
-from setu.helpers import import_opensees, report
+from setu.helpers import import_opensees
 from setu.builder.mesh import tributary_length_m
 from setu.loads.load_cases import LoadCase
 from setu.utils.constants import CRASH_BARRIER_PREFIX, KERB_PREFIX, MEDIAN_PREFIX
 
 
-DEAD_LOAD_PATTERN = 1
-DEAD_LOAD_TIME_SERIES = 1
-START_OF_THE_LOAD_STEP = 0.0
 NOTHING_ON_TOP_KPA = 0.0
 
-
-class DeadLoadTotals:
-
-    # how much dead load went on, by part
-    def __init__(self, deck_and_surfacing_kn=0.0, girders_kn=0.0, bracing_kn=0.0):
-        self.deck_and_surfacing_kn = deck_and_surfacing_kn
-        self.girders_kn = girders_kn
-        self.bracing_kn = bracing_kn
-
-    # all of it
-    @property
-    def total_kn(self):
-        return self.deck_and_surfacing_kn + self.girders_kn + self.bracing_kn
 
 # six nodal load terms for a downward force
 def downward_force(load_kn):
     force_x, force_y, force_z = (0.0, -load_kn, 0.0)
     moment_x, moment_y, moment_z = (0.0, 0.0, 0.0)
     return (force_x, force_y, force_z, moment_x, moment_y, moment_z)
-
-# put the whole dead load straight on the model
-def apply_dead_loads(model, ops=None, new_pattern=True):
-    ops = import_opensees() if ops is None else ops
-    if new_pattern:
-        start_a_fresh_load_case(ops)
-    deck_kn = apply_deck_and_surfacing(ops, model)
-    girders_kn = apply_girder_weight(ops, model)
-    bracing_kn = apply_bracing_weight(ops, model)
-    totals = DeadLoadTotals(deck_and_surfacing_kn=deck_kn, girders_kn=girders_kn, bracing_kn=bracing_kn)
-    report_dead_loads(model, totals)
-    return totals
-
-# clear the old dead load pattern and start a new one
-def start_a_fresh_load_case(ops):
-    ops.remove('loadPattern', DEAD_LOAD_PATTERN)
-    ops.remove('timeSeries', DEAD_LOAD_TIME_SERIES)
-    ops.timeSeries('Linear', DEAD_LOAD_TIME_SERIES)
-    ops.pattern('Plain', DEAD_LOAD_PATTERN, DEAD_LOAD_TIME_SERIES)
-    ops.reset()
-    ops.setTime(START_OF_THE_LOAD_STEP)
-
-# slab and surfacing on the deck nodes
-def apply_deck_and_surfacing(ops, model):
-    slab_kpa = model.bridge.concrete.unit_weight_kn_m3 * model.bridge.deck.thickness_m
-    applied_kn = 0.0
-    for node, *force in deck_loads(model, lambda z_m: slab_kpa + surfacing_pressure_at(model, z_m)):
-        ops.load(node, *force)
-        applied_kn -= force[1]
-    return applied_kn
 
 # what sits on the deck at z: wearing course, footpath, kerb, median or barrier
 def surfacing_pressure_at(model, z_m):
@@ -79,23 +33,6 @@ def surfacing_pressure_at(model, z_m):
             return added.crash_barrier.pressure_kpa
         return NOTHING_ON_TOP_KPA
     return NOTHING_ON_TOP_KPA
-
-# girder self weight as a uniform beam load
-def apply_girder_weight(ops, model):
-    weight_kn_per_m = model.bridge.steel.unit_weight_kn_m3 * model.girder.area_m2
-    down_the_local_y_axis = -weight_kn_per_m
-    along_the_local_z_axis = 0.0
-    for element in model.girder_elements.values():
-        ops.eleLoad('-ele', element, '-type', '-beamUniform', down_the_local_y_axis, along_the_local_z_axis)
-    return weight_kn_per_m * model.bridge.span_m * model.bridge.girders.count
-
-# bracing weight at its end nodes
-def apply_bracing_weight(ops, model):
-    applied_kn = 0.0
-    for node, half_of_it_kn in bracing_weight_at_its_ends(ops, model):
-        ops.load(node, *downward_force(half_of_it_kn))
-        applied_kn += half_of_it_kn
-    return applied_kn
 
 # half of each brace member's weight at each end
 def bracing_weight_at_its_ends(ops, model):
@@ -175,10 +112,3 @@ def load_across_the_share_of(stations_m, station, strip_edges_m, pressure_kpa_at
     cuts_m = [share_from_m] + [edge_m for edge_m in strip_edges_m if share_from_m < edge_m < share_to_m] + [share_to_m]
     return sum(pressure_kpa_at((from_m + to_m) / 2) * (to_m - from_m) for from_m, to_m in zip(cuts_m, cuts_m[1:], strict=False))
 
-# log the dead load that went on
-def report_dead_loads(model, totals):
-    bridge = model.bridge
-    added = bridge.added_dead_loads
-    slab_kpa = bridge.concrete.unit_weight_kn_m3 * bridge.deck.thickness_m
-    girder_kn_per_m = bridge.steel.unit_weight_kn_m3 * model.girder.area_m2
-    report('DEAD LOADS APPLIED', {'Deck slab': f'{slab_kpa:8.3f} kN/m2', 'Wearing course': f'{bridge.wearing_course.pressure_kpa:8.3f} kN/m2', 'Footpath': f'{added.footpath.pressure_kpa:8.3f} kN/m2', 'Kerb': f'{added.kerb.pressure_kpa:8.3f} kN/m2', 'Median': f'{added.median.pressure_kpa:8.3f} kN/m2', 'Girder self weight': f'{girder_kn_per_m:8.3f} kN/m', 'Deck and surfacing': f'{totals.deck_and_surfacing_kn:8.1f} kN', 'Girders': f'{totals.girders_kn:8.1f} kN', 'Bracing': f'{totals.bracing_kn:8.1f} kN', 'Total dead load': f'{totals.total_kn:8.1f} kN'})

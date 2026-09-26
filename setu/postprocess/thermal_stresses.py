@@ -19,21 +19,15 @@ class ThermalStresses:
         self.steel_bottom_kpa = stresses[-1]
         self.girder_forces_note = "simply supported with a free bearing: no girder force from temperature, only these primary stresses"
 
-    # plain dict for the JSON output
-    def to_dict(self):
-        return self.__dict__
-
-
 # self-balancing stresses from a temperature difference profile
-def primary_thermal_stresses(bridge, profile, slab_width_m=None, alpha_per_c=THERMAL_EXPANSION_PER_C):
-    layers = composite_layers(bridge, slab_width_m)
-    return ThermalStresses(layers, primary_stresses(layers, profile, alpha_per_c), bridge.deck.thickness_m)
+def primary_thermal_stresses(bridge, profile):
+    layers = composite_layers(bridge)
+    return ThermalStresses(layers, primary_stresses(layers, profile), bridge.deck.thickness_m)
 
 
-# slab and girder plates cut into thin layers with their moduli
-def composite_layers(bridge, slab_width_m=None):
-    if slab_width_m is None:
-        slab_width_m = (bridge.width_m() - 2 * bridge.deck.overhang_m) / (bridge.girders.count - 1)
+# slab (one girder spacing wide) and girder plates cut into thin layers with their moduli
+def composite_layers(bridge):
+    slab_width_m = (bridge.width_m() - 2 * bridge.deck.overhang_m) / (bridge.girders.count - 1)
     girder = bridge.girders.section
     concrete_kpa = bridge.concrete.modulus_for(SHORT_TERM, bridge.steel.elastic_modulus_kpa)
     steel_kpa = bridge.steel.elastic_modulus_kpa

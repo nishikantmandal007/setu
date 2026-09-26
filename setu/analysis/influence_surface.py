@@ -1,30 +1,23 @@
-import json
 import numpy as np
 from setu.errors import InfluenceSurfaceError, ModelAlreadyLoadedError
 from setu.utils.constants import END_I_FORCE_TO_INTERNAL_FORCE, N_I, OFF_THE_DECK
-from setu.solver.backend import FEBackend, OpenSeesBackend
-from setu.builder.mesh import DeckModel
+from setu.solver.backend import OpenSeesBackend
 from setu.solver.stiffness import beam_stiffness_matrix, element_rotation_matrix, moment_dof_for, shear_dof_for
 
 VERTICAL_DOF = 2
 
 class InfluenceSurface:
     # response to a unit load at every deck node
-    def __init__(self, values, length_mesh_m, width_mesh_m, name="", skew=0.0, describes=None):
+    def __init__(self, values, length_mesh_m, width_mesh_m, name, skew):
         self.values = np.asarray(values, float)
         self.length_mesh_m = np.asarray(length_mesh_m, float)
         self.width_mesh_m = np.asarray(width_mesh_m, float)
         self.name = name
         self.skew = skew
-        self.describes = describes or {}
 
         expected_shape = (len(self.length_mesh_m), len(self.width_mesh_m))
         if self.values.shape != expected_shape:
             raise InfluenceSurfaceError(f"influence values have shape {self.values.shape}, but the deck mesh is {expected_shape}")
-
-    # plain dict for the JSON output
-    def to_dict(self):
-        return self.__dict__
 
     # influence at any (x, z), zero off the deck
     def influence_at(self, x_m, z_m):
@@ -47,21 +40,7 @@ class InfluenceSurface:
 
     # same surface read in mesh coordinates, skew taken out
     def along_the_mesh(self):
-        return InfluenceSurface(values=self.values, length_mesh_m=self.length_mesh_m, width_mesh_m=self.width_mesh_m, name=self.name, describes=self.describes)
-
-    # write the surface to an .npz file
-    def save(self, path):
-        np.savez(path, values=self.values, length_mesh_m=self.length_mesh_m, width_mesh_m=self.width_mesh_m, skew=self.skew, name=str(self.name), describes=json.dumps(self.describes))
-
-    # read a surface back from an .npz file
-    @classmethod
-    def load(cls, path):
-        stored = np.load(path, allow_pickle=False)
-        if 'describes' in stored.files:
-            describes = json.loads(str(stored['describes']))
-        else:
-            describes = {}
-        return cls(values=stored['values'], length_mesh_m=stored['length_mesh_m'], width_mesh_m=stored['width_mesh_m'], name=str(stored['name']), skew=float(stored['skew']), describes=describes)
+        return InfluenceSurface(values=self.values, length_mesh_m=self.length_mesh_m, width_mesh_m=self.width_mesh_m, name=self.name, skew=0.0)
 
 # response to a nodal load case by reciprocity: sum of force times adjoint displacement
 def response_to_load_case(surface, load_case):
@@ -80,7 +59,6 @@ def cell_containing(stations_m, positions_m):
 
 NODE_I_COMPONENTS = slice(0, 6)
 NODE_J_COMPONENTS = slice(6, 12)
-UNIT_LOAD_DOWNWARDS = [0.0, -1.0, 0.0, 0.0, 0.0, 0.0]
 NO_LOADS = []
 STILL_AT_REST_M = 1e-12
 
@@ -93,15 +71,6 @@ class InfluenceSolver:
         self.surfaces = {}
         self._model_was_checked = False
 
-    # influence surface of a girder's steel moment
-    def for_girder_moment(self, name, element, response_dof=None):
-        self.check_nothing_else_is_loading_the_model()
-        if response_dof is None:
-            response_dof = moment_dof_for(self.deck.girder_local_axis)
-        adjoint_loads = self.adjoint_loads_for_girder_force(element, [(response_dof, 1.0)])
-        self.backend.solve_with_loads(adjoint_loads)
-        return self.surface_from_solved_deck(name, describes={'response': 'girder_moment', 'element': element, 'dof': response_dof})
-
     # influence surface of a girder's composite moment: steel moment plus axial couple
     def for_girder_composite_moment(self, name, element):
         self.check_nothing_else_is_loading_the_model()
@@ -109,7 +78,7 @@ class InfluenceSolver:
         steel_moment_and_axial_couple = [(moment_dof, 1.0), (N_I, self.deck.composite_lever_arm_m)]
         adjoint_loads = self.adjoint_loads_for_girder_force(element, steel_moment_and_axial_couple)
         self.backend.solve_with_loads(adjoint_loads)
-        return self.surface_from_solved_deck(name, describes={'response': 'girder_composite_moment', 'element': element, 'lever_arm_m': self.deck.composite_lever_arm_m})
+        return self.surface_from_solved_deck(name)
 
     # influence surface of a girder's shear
     def for_girder_shear(self, name, element):
@@ -117,28 +86,7 @@ class InfluenceSolver:
         response_dof = shear_dof_for(self.deck.girder_local_axis)
         adjoint_loads = self.adjoint_loads_for_girder_force(element, [(response_dof, 1.0)])
         self.backend.solve_with_loads(adjoint_loads)
-        return self.surface_from_solved_deck(name, describes={'response': 'girder_shear', 'element': element, 'dof': response_dof})
-
-    # influence surface of a node's deflection
-    def for_deflection(self, name, node):
-        self.check_nothing_else_is_loading_the_model()
-        self.backend.solve_with_loads([(node, UNIT_LOAD_DOWNWARDS)])
-        return self.surface_from_solved_deck(name, describes={'response': 'deflection', 'node': node})
-
-    # influence surface of a truss member's axial force
-    def for_truss_axial(self, name, element, area_m2, elastic_modulus_kpa=None):
-        self.check_nothing_else_is_loading_the_model()
-        node_i, node_j = self.backend.element_nodes(element)
-        start = np.array(self.backend.node_coordinates(node_i), float)
-        end = np.array(self.backend.node_coordinates(node_j), float)
-        length_m = float(np.linalg.norm(end - start))
-        direction = (end - start) / length_m
-        if elastic_modulus_kpa is None:
-            elastic_modulus_kpa = self.deck.girder_section.elastic_modulus_kpa
-        axial_stiffness = elastic_modulus_kpa * area_m2 / length_m
-        no_moments = [0.0, 0.0, 0.0]
-        self.backend.solve_with_loads([(node_i, list(-axial_stiffness * direction) + no_moments), (node_j, list(+axial_stiffness * direction) + no_moments)])
-        return self.surface_from_solved_deck(name, describes={'response': 'truss_axial', 'element': element})
+        return self.surface_from_solved_deck(name)
 
     # the nodal loads whose deflections are the girder force's influence surface
     def adjoint_loads_for_girder_force(self, element, weighted_dofs):
@@ -165,8 +113,8 @@ class InfluenceSolver:
         self._model_was_checked = True
 
     # read the deck deflections off the solve as a surface, then clear the loads
-    def surface_from_solved_deck(self, name, describes):
-        surface = InfluenceSurface(values=self.deck_deflections(), length_mesh_m=self.deck.length_mesh_m, width_mesh_m=self.deck.width_mesh_m, name=name, skew=self.deck.skew, describes=describes)
+    def surface_from_solved_deck(self, name):
+        surface = InfluenceSurface(values=self.deck_deflections(), length_mesh_m=self.deck.length_mesh_m, width_mesh_m=self.deck.width_mesh_m, name=name, skew=self.deck.skew)
         surface.every_node_displacement = self.backend.every_node_displacement()
         self.surfaces[name] = surface
         self.backend.clear_loads()

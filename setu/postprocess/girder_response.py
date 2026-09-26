@@ -3,6 +3,7 @@ from setu.errors import OtherLoadsStillActiveError
 from setu.solver.backend import configure_linear_static
 from setu.loads.load_cases import apply_load_case
 from setu.helpers import import_opensees
+from setu.postprocess.result_dataset import merge_datasets, result_dataset
 from setu.loads.dead_loads import construction_stage_load, superimposed_dead_load, surfacing_load
 from setu.utils.constants import (
     DEAD,
@@ -26,7 +27,7 @@ from setu.utils.constants import (
 class GirderForces:
 
     # internal forces along one girder
-    def __init__(self, stations_m, moment_kn_m, shear_kn, torsion_kn_m, axial_kn, composite_lever_arm_m=0.0):
+    def __init__(self, stations_m, moment_kn_m, shear_kn, torsion_kn_m, axial_kn, composite_lever_arm_m):
         self.stations_m = np.asarray(stations_m, float)
         self.moment_kn_m = np.asarray(moment_kn_m, float)
         self.shear_kn = np.asarray(shear_kn, float)
@@ -38,14 +39,6 @@ class GirderForces:
     @property
     def composite_moment_kn_m(self):
         return self.moment_kn_m + self.composite_lever_arm_m * self.axial_kn
-
-
-class GirderDeflections:
-
-    # vertical deflection along one girder
-    def __init__(self, stations_m, vertical_m):
-        self.stations_m = np.asarray(stations_m, float)
-        self.vertical_m = np.asarray(vertical_m, float)
 
 
 # read one girder's internal forces off the solved model
@@ -69,29 +62,6 @@ def girder_forces(model, girder_index, ops):
             torsion[e + 1] = f[T_J]
             moment[e + 1] = f[MZ_J]
     return GirderForces(stations_m, moment, shear, torsion, axial, composite_lever_arm_m=model.composite_lever_arm_m())
-
-
-# read one girder's deflections off the solved model
-def girder_deflections(model, girder_index, ops):
-    n_stations = model.mesh.stations_along_span
-    stations_m = np.array(model.mesh.length_mesh_m, float)
-    vertical = np.zeros(n_stations)
-    for i in range(n_stations):
-        node = model.girder_nodes[girder_index, i]
-        vertical[i] = ops.nodeDisp(node, 2)
-    return GirderDeflections(stations_m, vertical)
-
-
-# support reactions at both ends of every girder
-def reactions(model, ops):
-    ops.reactions()
-    n_stations = model.mesh.stations_along_span
-    result = {}
-    for k in range(model.bridge.girders.count):
-        for i in [0, n_stations - 1]:
-            node = model.girder_nodes[k, i]
-            result[node] = np.array(ops.nodeReaction(node))
-    return result
 
 
 # solve one load case and read every girder's forces
@@ -119,9 +89,10 @@ STAGE_IS_FACTORED_AS = {"construction": DEAD, "superimposed": DEAD, "surfacing":
 
 
 class DeadLoadForces:
-    # girder forces from each dead load stage, and their total
-    def __init__(self, stages):
+    # girder forces from each dead load stage, their total, and every stage's element forces and displacements for OsdagBridge
+    def __init__(self, stages, dataset):
         self.stages = stages
+        self.dataset = dataset
         self.total = self.factored({DEAD: 1.0, SURFACING: 1.0})
 
     # stages added up, each with its dead or surfacing factor
@@ -155,7 +126,10 @@ def dead_load_forces(bridge, ops=None):
     ops = import_opensees() if ops is None else ops
     steel = build_bridge_model(bridge, ops, composite=False)
     construction = analyze_load_case(steel, construction_stage_load(steel, ops), ops)
+    datasets = [result_dataset(steel, ops, "dead, construction")]
     composite = build_bridge_model(bridge, ops, load_duration=LONG_TERM)
     superimposed = analyze_load_case(composite, superimposed_dead_load(composite), ops)
+    datasets.append(result_dataset(composite, ops, "dead, superimposed"))
     surfacing = analyze_load_case(composite, surfacing_load(composite), ops)
-    return DeadLoadForces({"construction": construction, "superimposed": superimposed, "surfacing": surfacing})
+    datasets.append(result_dataset(composite, ops, "dead, surfacing"))
+    return DeadLoadForces({"construction": construction, "superimposed": superimposed, "surfacing": surfacing}, merge_datasets(datasets))

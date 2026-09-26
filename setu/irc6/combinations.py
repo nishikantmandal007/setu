@@ -18,11 +18,6 @@ class Combination:
         self.factors = factors
         self.leading = leading
 
-    # plain dict for the JSON output
-    def to_dict(self):
-        return self.__dict__
-
-
 # every Annex B combination, one variable load leading at a time
 def irc6_combinations(wind_speed_at_deck_mps=None):
     combinations = []

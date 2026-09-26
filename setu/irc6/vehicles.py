@@ -1,5 +1,7 @@
 from setu.errors import VehicleDefinitionError, VehicleNotFoundError
-from setu.utils.constants import GRAVITY_KN_PER_TONNE, REVERSED_SUFFIX
+from setu.utils.constants import GRAVITY_KN_PER_TONNE
+
+REVERSED_SUFFIX = "_reversed"
 
 # n axles need n - 1 spacings
 def check_axle_and_spacing_counts_match(vehicle):
@@ -34,7 +36,7 @@ def check_all_measurements_positive(vehicle):
 
 class AxleVehicle:
     # a wheeled vehicle: axle loads, spacings, gauge and clearances
-    def __init__(self, name, axle_loads_t, axle_spacing_m, transverse_gauge_m, lead_clearance_m, trail_clearance_m, min_nose_to_tail_m, overall_width_m=None):
+    def __init__(self, name, axle_loads_t, axle_spacing_m, transverse_gauge_m, lead_clearance_m, trail_clearance_m, min_nose_to_tail_m):
         self.name = name
         self.axle_loads_t = axle_loads_t
         self.axle_spacing_m = axle_spacing_m
@@ -42,7 +44,6 @@ class AxleVehicle:
         self.lead_clearance_m = lead_clearance_m
         self.trail_clearance_m = trail_clearance_m
         self.min_nose_to_tail_m = min_nose_to_tail_m
-        self.overall_width_m = overall_width_m
         check_axle_and_spacing_counts_match(self)
         check_all_measurements_positive(self)
 
@@ -61,10 +62,6 @@ class AxleVehicle:
     def total_load_t(self):
         return sum(self.axle_loads_t)
 
-    # plain dict for the JSON output
-    def to_dict(self):
-        return self.__dict__
-
 class TrackedVehicle:
     # a tracked vehicle: load per track and the track size
     def __init__(self, name, load_per_track_t, track_length_m, track_width_m, transverse_gauge_m, min_nose_to_tail_m, lead_clearance_m=0.0, trail_clearance_m=0.0):
@@ -82,19 +79,9 @@ class TrackedVehicle:
     def length_m(self):
         return self.track_length_m
 
-    # track load spread over its contact area
-    def contact_pressure_kpa(self):
-        load_kn = self.load_per_track_t * GRAVITY_KN_PER_TONNE
-        contact_area_m2 = self.track_length_m * self.track_width_m
-        return load_kn / contact_area_m2
-
     # both tracks
     def total_load_t(self):
         return 2.0 * self.load_per_track_t
-
-    # plain dict for the JSON output
-    def to_dict(self):
-        return self.__dict__
 
 CLASS_70R_WHEELED = AxleVehicle(
     name="Class_70R_Wheeled",
@@ -121,32 +108,9 @@ CLASS_A = AxleVehicle(
     lead_clearance_m=0.6,
     trail_clearance_m=0.9,
     min_nose_to_tail_m=18.5,
-    overall_width_m=2.3,
 )
 IRC_VEHICLES = {
     vehicle.name: vehicle for vehicle in (CLASS_70R_WHEELED, CLASS_70R_TRACKED, CLASS_A)
-}
-NEVER_FORMS_A_TRAIN_M = 1000.0
-FATIGUE_VEHICLE = AxleVehicle(
-    name="Fatigue_Vehicle",
-    axle_loads_t=(12.0, 14.0, 14.0),
-    axle_spacing_m=(4.50, 1.40),
-    transverse_gauge_m=1.68,
-    lead_clearance_m=0.0,
-    trail_clearance_m=0.0,
-    min_nose_to_tail_m=NEVER_FORMS_A_TRAIN_M,
-)
-SPECIAL_VEHICLE = AxleVehicle(
-    name="Special_Vehicle",
-    axle_loads_t=(6.0, 9.5, 9.5) + (18.0,) * 20,
-    axle_spacing_m=(3.200, 1.370, 5.389) + (1.500,) * 19,
-    transverse_gauge_m=1.8,
-    lead_clearance_m=0.0,
-    trail_clearance_m=0.0,
-    min_nose_to_tail_m=NEVER_FORMS_A_TRAIN_M,
-)
-VEHICLES_OUTSIDE_LANE_ARRANGEMENTS = {
-    vehicle.name: vehicle for vehicle in (FATIGUE_VEHICLE, SPECIAL_VEHICLE)
 }
 VEHICLES_ALLOWED_IN_BLOCK = {
     "class_a": ("Class_A",),
@@ -158,16 +122,10 @@ def class_of(vehicle):
     return vehicle.name.removesuffix(REVERSED_SUFFIX)
 
 # vehicle by name, or an error listing the known ones
-def find_vehicle(name, vehicles=None):
-    known = IRC_VEHICLES if vehicles is None else vehicles
-    if name not in known:
-        raise VehicleNotFoundError(f"no vehicle named {name!r}; known vehicles are {sorted(known)}")
-    return known[name]
-
-# add a vehicle to the known list
-def register_vehicle(vehicle, vehicles=None):
-    known = IRC_VEHICLES if vehicles is None else vehicles
-    known[vehicle.name] = vehicle
+def find_vehicle(name):
+    if name not in IRC_VEHICLES:
+        raise VehicleNotFoundError(f"no vehicle named {name!r}; known vehicles are {sorted(IRC_VEHICLES)}")
+    return IRC_VEHICLES[name]
 
 # the same vehicle driven the other way; a track is the same both ways
 def facing_backwards(vehicle):
@@ -181,7 +139,6 @@ def facing_backwards(vehicle):
         lead_clearance_m=vehicle.trail_clearance_m,
         trail_clearance_m=vehicle.lead_clearance_m,
         min_nose_to_tail_m=vehicle.min_nose_to_tail_m,
-        overall_width_m=vehicle.overall_width_m,
     )
 
 # vehicle by name, reversed ones included
@@ -193,30 +150,16 @@ def find_vehicle_or_its_reverse(name):
         return facing_backwards(IRC_VEHICLES[facing_forwards])
     return find_vehicle(name)
 
-# the vehicle, and its reverse when that is allowed and different
-def both_directions_of(vehicle, allow_reversed_vehicles):
-    if not allow_reversed_vehicles:
-        return [vehicle]
+# the vehicle, and its reverse when that is different
+def both_directions_of(vehicle):
     reversed_vehicle = facing_backwards(vehicle)
     if reversed_vehicle is vehicle:
         return [vehicle]
     return [vehicle, reversed_vehicle]
 
 # which vehicles may go in a Class A lane and in a 70R zone
-def vehicles_allowed_in_each_block(vehicles, allow_reversed_vehicles):
-    known = IRC_VEHICLES if vehicles is None else vehicles
-    permitted = {}
-    for block, names in VEHICLES_ALLOWED_IN_BLOCK.items():
-        choices = []
-        for name in names:
-            if name not in known:
-                continue
-            vehicle = find_vehicle(name, known)
-            choices.extend(both_directions_of(vehicle, allow_reversed_vehicles))
-        if not choices:
-            raise ValueError(f"no vehicle available for a {block!r} lane block; expected one of {list(names)} among {sorted(known)}")
-        permitted[block] = choices
-    return permitted
+def vehicles_allowed_in_each_block():
+    return {block: [both_ways for name in names for both_ways in both_directions_of(find_vehicle(name))] for block, names in VEHICLES_ALLOWED_IN_BLOCK.items()}
 
 # front to front distance of two vehicles in a train
 def pitch_between_vehicles_m(vehicle):

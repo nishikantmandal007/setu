@@ -9,11 +9,6 @@ class GirderSection:
         self.elastic_modulus_kpa = elastic_modulus_kpa
         self.shear_modulus_kpa = shear_modulus_kpa
 
-    # plain dict for the JSON output
-    def to_dict(self):
-        return self.__dict__
-
-
 class PlateGirderSection:
     # an I girder by its plates, as OsdagBridge sizes it
     def __init__(self, top_flange_width_m, top_flange_thickness_m, bottom_flange_width_m, bottom_flange_thickness_m, web_height_m, web_thickness_m):

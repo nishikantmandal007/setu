@@ -1,7 +1,7 @@
 # Constants shared by more than one module. Values taken from a design code live in
 # setu/irc6/irc_constants.py; a constant only one module uses stays in that module.
 
-# ── Units (materials, lanes, wind_loads, irc_constants) ─────────────────────────
+# ── Units, all conversions in one place (materials, lanes, wind_loads, irc_constants, cli) ──
 GRAVITY_KN_PER_TONNE = 9.81
 KPA_PER_KG_M2 = GRAVITY_KN_PER_TONNE / 1000.0
 KPA_PER_MPA = 1000.0
@@ -23,11 +23,9 @@ KERB_PREFIX = "kerb"
 MEDIAN_PREFIX = "median"
 CRASH_BARRIER_PREFIX = "crash_barrier"
 
-# ── Lanes and vehicles (lanes, along_span, critical_position, resultant_centring) ──
+# ── Lane blocks and wheel offset columns (lanes, across_carriageway, along_span, wheel_loads) ──
 CLASS_A_LANE = "class_a"
 ZONE_70R = "zone_70r"
-NO_LANE_REDUCTION = 1.0
-REVERSED_SUFFIX = "_reversed"
 # columns of a wheel offset row: where the wheel sits from the vehicle's front and centreline, and its load
 OFFSET_DX_M = 0
 OFFSET_DZ_M = 1

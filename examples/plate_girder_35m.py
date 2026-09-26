@@ -5,13 +5,10 @@ Run it::
     python examples/plate_girder_35m.py
 
 One call does it all: dead load in its IRC:22 construction stages, the worst legal
-IRC:6 traffic for each girder (with braking), wind (209), seismic (IRC:SP:114-2018),
-temperature (215) and a user load, combined per IRC:6 Annex B. It then checks the
-bridge stands up under its own weight.
+IRC:6 traffic for each girder (with braking), wind (209), seismic (IRC:SP:114-2018)
+and temperature (215), combined per IRC:6 Annex B.
 """
 
-
-import openseespy.opensees as ops
 
 from setu import (
     AddedDeadLoads,
@@ -25,13 +22,12 @@ from setu import (
     PlateGirderSection,
     Steel,
     SurfacingLayer,
-    apply_dead_loads,
-    build_bridge_model,
 )
 from setu.helpers import enable_reports
 from setu.models.site import SeismicSite, TemperatureSite, WindSite
 from setu.postprocess.design_values import girder_design_values
 from setu.utils.constants import (
+    KPA_PER_MPA,
     BASIC,
     BIGGER_IS_WORSE,
     MIDSPAN_MOMENT,
@@ -86,31 +82,6 @@ BRIDGE = BridgeInput(
 )
 
 
-def check_it_stands_up(applied_kn: float) -> None:
-    """Solves the dead load case and checks the supports carry what was applied."""
-    ops.system("UmfPack")
-    ops.numberer("RCM")
-    ops.constraints("Transformation")
-    ops.integrator("LoadControl", 1.0)
-    ops.algorithm("Linear")
-    ops.analysis("Static")
-    ops.analyze(1)
-    ops.reactions()
-
-    vertical_kn = sum(ops.nodeReaction(node, 2) for node in ops.getNodeTags())
-    sideways_kn = sum(ops.nodeReaction(node, 3) for node in ops.getNodeTags())
-    out_of_balance = abs(vertical_kn - applied_kn) / applied_kn * 100
-
-    print()
-    print("=" * 72)
-    print("STATICS CHECK")
-    print("=" * 72)
-    print(f"  Dead load applied      = {applied_kn:12.3f} kN")
-    print(f"  Vertical reactions     = {vertical_kn:12.3f} kN")
-    print(f"  Sideways reactions     = {sideways_kn:12.3f} kN")
-    print(f"  Out of balance         = {out_of_balance:12.4f} %")
-
-
 WIND = WindSite(basic_wind_speed_mps=39.0, terrain=PLAIN_TERRAIN, height_m=12.0, funnelling=False, solid_barrier_height_m=1.1)
 SEISMIC = SeismicSite(zone="IV", soil="II", importance_factor=1.2, period_s=0.5, response_reduction=1.0)
 TEMPERATURE = TemperatureSite(shade_max_c=45.0, shade_min_c=2.0)
@@ -135,8 +106,8 @@ def print_design_values(results) -> None:
         print(f"  Governing {title}: girder {girder}, {governing.value:.1f} ({governing.combination})")
     thermal = results.thermal
     positive = thermal["positive difference"]
-    print(f"  Temperature: no girder force (free bearing); slab top {positive.slab_top_kpa / 1000:.2f} MPa, "
-          f"steel bottom {positive.steel_bottom_kpa / 1000:.2f} MPa; bearing movement {thermal['free bearing movement m'] * 1000:.1f} mm")
+    print(f"  Temperature: no girder force (free bearing); slab top {positive.slab_top_kpa / KPA_PER_MPA:.2f} MPa, "
+          f"steel bottom {positive.steel_bottom_kpa / KPA_PER_MPA:.2f} MPa; bearing movement {thermal['free bearing movement m'] * 1000:.1f} mm")
 
 
 def main() -> None:
@@ -144,10 +115,6 @@ def main() -> None:
 
     results = girder_design_values(BRIDGE, wind=WIND, seismic=SEISMIC, temperature=TEMPERATURE)
     print_design_values(results)
-
-    model = build_bridge_model(BRIDGE)
-    dead_load = apply_dead_loads(model)
-    check_it_stands_up(dead_load.total_kn)
 
 
 if __name__ == "__main__":

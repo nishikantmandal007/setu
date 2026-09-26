@@ -4,7 +4,9 @@
 import numpy as np
 import pytest
 
+from setu.helpers import DEFAULT_SAMPLING
 from setu.irc6 import (
+    cells_where_it_hurts,
     needs_residual_udl,
     response_to_area_load,
     strips_beside_class_a,
@@ -27,9 +29,8 @@ def test_table_8_lane_reduction(loaded_lanes, factor):
 
 
 def test_the_figure_9_curve_for_class_a():
-    """Clause 208.2: i = 9 / (13.5 + L) for steel, 4.5 / (6 + L) for concrete."""
-    assert class_a_impact_fraction(35.0, "steel") == pytest.approx(9.0 / 48.5)
-    assert class_a_impact_fraction(35.0, "rc") == pytest.approx(4.5 / 41.0)
+    """Clause 208.2: i = 9 / (13.5 + L) for a steel bridge."""
+    assert class_a_impact_fraction(35.0) == pytest.approx(9.0 / 48.5)
 
 
 def test_the_figure_9_curve_is_held_at_its_ends():
@@ -96,13 +97,10 @@ def test_only_the_adverse_area_is_loaded(sagging_surface, hogging_surface):
     """
     strips = [(2.0, 11.5)]
 
-    everywhere = response_to_area_load(
-        hogging_surface, strips, "minimum", adverse_area_only=False
-    )
-    only_where_it_hurts = response_to_area_load(
-        hogging_surface, strips, "minimum", adverse_area_only=True
-    )
+    cells = cells_where_it_hurts(hogging_surface, *strips[0], "minimum", DEFAULT_SAMPLING)
+    everywhere = RESIDUAL_UDL_KPA * float((cells.ordinates * cells.areas_m2).sum())
+    only_where_it_hurts = response_to_area_load(hogging_surface, strips, "minimum", RESIDUAL_UDL_KPA, DEFAULT_SAMPLING)
     assert only_where_it_hurts <= everywhere + 1e-9
 
-    one_sign = response_to_area_load(sagging_surface, strips, "maximum")
+    one_sign = response_to_area_load(sagging_surface, strips, "maximum", RESIDUAL_UDL_KPA, DEFAULT_SAMPLING)
     assert one_sign > 0

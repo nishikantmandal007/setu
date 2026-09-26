@@ -16,6 +16,3 @@ class CustomLoad:
         self.x_end_m = x_end_m
         self.z_end_m = z_end_m
 
-    # plain dict for the JSON output
-    def to_dict(self):
-        return self.__dict__
