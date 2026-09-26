@@ -32,6 +32,12 @@ def test_70r_wheeled_is_the_tabulated_vehicle():
     assert len(CLASS_70R_WHEELED.axle_positions_m()) == 7
 
 
+def test_70r_wheel_lines_are_centred_on_their_tyre_groups():
+    """IRC:6-2017 Fig. 1: 2.79 m over the tyres, 0.86 m tyre groups; 2.90 m over 0.84 m tracks."""
+    assert CLASS_70R_WHEELED.transverse_gauge_m == pytest.approx(2.79 - 0.86)
+    assert CLASS_70R_TRACKED.transverse_gauge_m == pytest.approx(2.90 - 0.84)
+
+
 def test_every_axle_becomes_two_wheels():
     offsets = wheel_load_offsets(CLASS_A, 0.0, DEFAULT_SAMPLING)
 

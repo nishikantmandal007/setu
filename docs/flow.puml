@@ -45,8 +45,8 @@ partition "4  Design values" {
   <size:11><color:#777>irc6.combinations</color></size>;
   :Governing value for every girder; IRC:22 deflections
   <size:11><color:#777>postprocess.design_values</color></size>;
-  :MIDAS loads and OsdagBridge dataset
-  <size:11><color:#777>midas_loads, result_dataset</color></size>;
+  :Vehicle positions and OsdagBridge dataset
+  <size:11><color:#777>critical_positions.csv, result_dataset</color></size>;
 }
 stop
 @enduml

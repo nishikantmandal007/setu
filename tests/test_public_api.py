@@ -4,7 +4,7 @@ EXPLICITLY_CALLED = [
     "AddedDeadLoads", "BridgeInput", "DeckSlab", "Girders", "Bracing", "MeshSettings", "DeckCrossSection",
     "Steel", "Concrete", "SurfacingLayer", "PlateGirderSection", "SeismicSite", "TemperatureSite", "WindSite", "CustomLoad",
     "build_mesh", "build_bridge_model", "InfluenceSolver", "find_critical_position", "rank_all_positions", "custom_combination",
-    "applied_live_loads", "live_load", "girder_design_values", "midas_loads", "analyze_load_case", "dead_load_forces",
+    "applied_live_loads", "live_load", "girder_design_values", "analyze_load_case", "dead_load_forces",
     "result_dataset", "merge_datasets",
 ]
 

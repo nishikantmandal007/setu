@@ -72,20 +72,19 @@ uv run python cli.py examples/bridge.toml          # add --plot to pop up the pl
 
 - `analysis_results/result.json` contains:
   - every critical position (each girder; maximum composite moment, support shear and bearing reaction in both directions; midspan deflection), each with:
-    - the vehicles, and every wheel with its x, z, load, impact and lane reduction;
-    - every residual UDL and footway patch (only where it makes the response worse), with its pressure and four corners;
+    - the vehicles (name, centre z, front x of each in the train, impact), the lane pattern and reduction, the residual UDL and footway strips;
     - the same load solved in OpenSees as a check;
   - the design values for every girder and limit state (moment, shear, bearing reaction), with the station each governs at, plus the governing ones;
   - the dead load by construction stage: midspan moment, support shear, bearing reaction and midspan deflection;
   - the IRC:22 deflections (live load with impact, each dead stage, total) and their L/800 and L/600 limits;
   - the clause 204.6 fatigue moment and shear ranges, with the truck line and impact, and the live-load shear range;
   - the wind, seismic and temperature numbers (heating and cooling primary stresses in every girder on its IRC:22 effective width).
-- `analysis_results/midas/` has one CSV per critical position: every wheel, then every UDL/footway patch, with global coordinates (x along the span from the first bearing line, skew included; z across from the left edge). Type them into MIDAS as static loads to check the numbers. They are exactly the loads the OpenSees check solves, because both are built by `applied_live_loads`.
+- `analysis_results/critical_positions.csv` lists where every vehicle stands for each girder's maximum bending moment: vehicle, facing, centre z, front x of each vehicle in the train, impact, lane reduction and the live moment.
 - `analysis_results/girder_results.nc` holds the girder element forces (`Vx_i … Mz_j`) and node displacements of every dead load stage and every critical live load, as an xarray Dataset in OsdagBridge's layout (`forces(Loadcase, Element, Component)`, `displacements(Loadcase, Node, Component)`), in kN, kN·m and m.
 - `analysis_results/plots/` holds the design dashboard and the critical position of every girder.
 - To write the bridge file, open `examples/form.html` in a browser: fill it in, download `bridge.toml`. The TOML format is shown in `examples/bridge.toml`.
 
-The CLI only calls setu's public API. OsdagBridge uses setu as a library: `girder_design_values`, `midas_loads` and `dead_load_forces(...).dataset` / `result_dataset` are the calls it needs.
+The CLI only calls setu's public API. OsdagBridge uses setu as a library: `girder_design_values`, `applied_live_loads` and `dead_load_forces(...).dataset` / `result_dataset` are the calls it needs.
 
 ## Structure
 
@@ -99,7 +98,7 @@ setu/
 ├── loads/        dead loads in construction stages, live load, load cases
 ├── solver/       OpenSees FE backend and stiffness matrices
 ├── analysis/     influence surfaces, along-span and across-carriageway search, critical position
-├── postprocess/  girder response, dead load by stage, design values, MIDAS loads, the xarray result dataset
+├── postprocess/  girder response, dead load by stage, design values, the xarray result dataset
 └── utils/        constants.py: constants more than one module uses, one section per topic
 ```
 

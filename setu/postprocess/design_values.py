@@ -75,11 +75,6 @@ class DesignValues:
         return max(((girder, by_response[response][limit_state][adverse]) for girder, by_response in self.girders.items()), key=lambda pair: abs(pair[1].value))
 
 
-# every critical position's wheels and UDL/footway patches, keyed (girder, response, adverse), to rebuild the live load in MIDAS
-def midas_loads(bridge, design_values):
-    return {key: applied_live_loads(bridge, critical, design_values.surfaces[key]) for key, critical in design_values.criticals.items()}
-
-
 # every load on every girder, combined per IRC:6 Annex B, at every place a design value is read
 def girder_design_values(bridge, wind=None, seismic=None, temperature=None, custom_loads=(), custom_combinations=(), ops=None):
     ops = import_opensees() if ops is None else ops

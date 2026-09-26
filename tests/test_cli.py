@@ -35,19 +35,22 @@ def test_everything_lands_in_one_folder(run):
     assert sorted(p.name for p in (out / "plots").iterdir()) == ["critical_girder_0.png", "critical_girder_1.png", "critical_girder_2.png", "critical_girder_3.png", "critical_girder_4.png", "design.png"]
 
 
-def test_every_critical_position_gets_a_midas_csv_and_osdagbridge_gets_the_dataset(run):
+def test_the_vehicle_positions_csv_and_the_osdagbridge_dataset(run):
+    import csv
     import xarray as xr
 
     out, result = run
-    csvs = sorted((out / "midas").iterdir())
+    rows = list(csv.DictReader((out / "critical_positions.csv").open()))
     dataset = xr.open_dataset(out / "girder_results.nc")
 
-    # moment, shear and reaction both ways, and the deflection, for 5 girders
-    assert len(csvs) == 5 * (3 * 2 + 1)
-    assert "wheel_load_kn" in csvs[0].read_text() and "pressure_kpa" in csvs[0].read_text()
+    assert {row["girder"] for row in rows} == {"0", "1", "2", "3", "4"}
+    for row in rows:
+        position = result["critical_positions"][f"girder {row['girder']}"]["maximum composite moment"]["maximum"]
+        assert float(row["live_moment_kn_m"]) == pytest.approx(position["live_load_response"], abs=0.01)
+        assert any(abs(v["centre_z_m"] - float(row["centre_z_m"])) < 1e-3 for v in position["vehicles"])
     assert dataset["forces"].dims == ("Loadcase", "Element", "Component")
+    # moment, shear and reaction both ways, and the deflection, for 5 girders, after the 4 dead stages
     assert len(dataset["Loadcase"]) == 4 + 5 * (3 * 2 + 1)
-    assert result["critical_positions"]["girder 0"]["maximum composite moment"]["maximum"]["udl_and_footway_patches"]
 
 
 def test_every_critical_position_is_there_and_matches_opensees(run):
@@ -61,14 +64,7 @@ def test_every_critical_position_is_there_and_matches_opensees(run):
             assert set(by_direction) == ({"maximum"} if response == "midspan deflection" else {"maximum", "minimum"})
             for position in by_direction.values():
                 assert position["solved_in_opensees"] == pytest.approx(position["live_load_response"], rel=1e-5, abs=1e-3)
-                assert position["vehicles"] and position["wheels"]
-
-
-def test_each_wheel_carries_impact_and_lane_reduction(run):
-    _, result = run
-    for wheel in result["critical_positions"]["girder 1"]["maximum composite moment"]["maximum"]["wheels"]:
-        assert wheel["applied_kn"] == pytest.approx(wheel["wheel_load_kn"] * wheel["impact_factor"] * wheel["lane_reduction"], rel=1e-5)
-        assert isinstance(wheel["on_span"], bool)
+                assert position["vehicles"]
 
 
 def test_mirror_girders_match(run):

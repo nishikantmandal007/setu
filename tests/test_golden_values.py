@@ -181,7 +181,7 @@ GOLDEN_ANSWERS = [
         lane_pattern='class_a + class_a + class_a + class_a',
         footway_response=0.0,
         residual_udl_applied=False,
-        total_over_all_cases=85439.35756627322,
+        total_over_all_cases=85466.56593931039,  # moved when the 70R wheeled gauge became 1.93 m (Fig. 1)
         vehicles=[
             ('Class_A', 1.75, 12.0, (12.0,)),
             ('Class_A_reversed', 5.25, 4.2, (4.2,)),

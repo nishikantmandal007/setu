@@ -1,4 +1,4 @@
-"""setu end to end from one bridge file - for testing the numbers and comparing with MIDAS.
+"""setu end to end from one bridge file.
 
     python cli.py examples/bridge.toml            everything, written to analysis_results/
     python cli.py examples/bridge.toml --plot     the same, and pop up the plots
@@ -8,8 +8,8 @@ analysis_results/result.json holds every critical position (every girder, moment
 both directions: vehicles, wheels with their loads, lanes, UDL and footway strips, and the
 same load solved in OpenSees), the design values for every girder and limit state, the dead
 loads by stage, and the wind, seismic and temperature numbers. Plots go to analysis_results/plots/.
-analysis_results/midas/ has one CSV per critical position (every wheel and UDL/footway patch with
-its coordinates) to rebuild the load in MIDAS. analysis_results/girder_results.nc holds the girder
+analysis_results/critical_positions.csv lists where every vehicle stands for each girder's maximum
+bending moment. analysis_results/girder_results.nc holds the girder
 element forces and displacements of every dead load stage and critical live load, in OsdagBridge's
 xarray layout.
 
@@ -48,7 +48,7 @@ from setu.models.custom_load import CustomLoad
 from setu.models.materials import Concrete, Steel
 from setu.models.site import SeismicSite, TemperatureSite, WindSite
 from setu.loads.load_builders import applied_live_loads
-from setu.postprocess.design_values import girder_design_values, midas_loads
+from setu.postprocess.design_values import girder_design_values
 from setu.postprocess.result_dataset import merge_datasets, result_dataset
 from setu.postprocess.girder_response import analyze_load_case
 from setu.utils.constants import (
@@ -67,7 +67,7 @@ from setu.utils.constants import (
 )
 
 BAD_INPUT = 2
-WHEEL_COLUMNS = ("vehicle", "train", "x_m", "z_m", "wheel_load_kn", "impact_factor", "lane_reduction", "applied_kn", "on_span")
+CRITICAL_POSITION_COLUMNS = ("girder", "section_x_m", "vehicle", "facing", "centre_z_m", "front_x_m_of_each_in_train", "impact_factor", "lane_reduction", "live_moment_kn_m")
 BRIDGE_KEYS = {"span_m", "skew", "wearing_course_unit_weight_kn_m3"}
 # the direction each response is printed and plotted in
 WORSE_WAY = {MAX_MOMENT: BIGGER_IS_WORSE, SUPPORT_SHEAR: SMALLER_IS_WORSE, BEARING_REACTION: BIGGER_IS_WORSE, MIDSPAN_DEFLECTION: BIGGER_IS_WORSE}
@@ -198,7 +198,7 @@ def analyse(bridge, loads):
 # ── result.json ───────────────────────────────────────────────────────────────
 
 # one critical position for result.json
-def critical_to_dict(critical, solved, wheels, patches):
+def critical_to_dict(critical, solved):
     return {
         "live_load_response": critical.response,
         "solved_in_opensees": solved,
@@ -211,20 +211,18 @@ def critical_to_dict(critical, solved, wheels, patches):
         "footway_strips_m_kpa": critical.footway_strips,
         "vehicles": [{"vehicle": v.vehicle_name, "centre_z_m": v.z_centre_m, "front_x_m": v.x_front_m, "impact_factor": v.impact_factor,
                       "train_front_x_m": list(v.train_x_front_m)} for v in critical.vehicles],
-        "wheels": wheels,
-        "udl_and_footway_patches": patches,
     }
 
 
 # everything for result.json
-def result_to_dict(bridge, loads, found, wind, results, midas):
+def result_to_dict(bridge, loads, found, wind, results):
     dead = results.dead
     midspan = len(dead.total[0].moment_kn_m) // 2
     critical = {}
     for (girder, response, adverse), (_, position, solved) in found.items():
         critical.setdefault(f"girder {girder}", {}).setdefault(response, {})[adverse] = {
             "at_m": float(dead.total[girder].stations_m[results.stations[girder, response, adverse]]),
-            **critical_to_dict(position, solved, *midas[girder, response, adverse])}
+            **critical_to_dict(position, solved)}
     design = {f"girder {girder}": {response: {limit: {adverse: value.to_dict() for adverse, value in by_direction.items()}
                                               for limit, by_direction in by_limit.items()}
                                    for response, by_limit in by_response.items()}
@@ -274,20 +272,20 @@ def result_to_dict(bridge, loads, found, wind, results, midas):
     return result
 
 
-# one CSV per critical position (clearing any left from an earlier run): every wheel, then every UDL/footway patch, ready to type into MIDAS
-def write_midas_csvs(folder, midas):
-    folder.mkdir(parents=True, exist_ok=True)
-    for old_file in folder.glob("*.csv"):
-        old_file.unlink()
-    for (girder, response, adverse), (wheels, patches) in midas.items():
-        with open(folder / f"girder{girder}_{response.replace(' ', '_')}_{adverse}.csv", "w", newline="") as file:
-            rows = csv.writer(file)
-            rows.writerow(["# wheels: x along the span from the first bearing line (skew included), z across from the left edge"])
-            rows.writerow(WHEEL_COLUMNS)
-            rows.writerows([wheel[column] for column in WHEEL_COLUMNS] for wheel in wheels)
-            rows.writerow(["# patches: residual UDL and footway where they make the response worse, four corners (x, z) in m"])
-            rows.writerow(["kind", "pressure_kpa", "x1_m", "z1_m", "x2_m", "z2_m", "x3_m", "z3_m", "x4_m", "z4_m"])
-            rows.writerows([patch["kind"], patch["pressure_kpa"], *(value for corner in patch["corners_x_z_m"] for value in corner)] for patch in patches)
+# each girder's maximum-moment critical position, one row per vehicle: where every vehicle of the train stands
+def write_critical_positions_csv(path, results):
+    with open(path, "w", newline="") as file:
+        rows = csv.writer(file)
+        rows.writerow(CRITICAL_POSITION_COLUMNS)
+        for (girder, response, adverse), critical in results.criticals.items():
+            if response != MAX_MOMENT or adverse != BIGGER_IS_WORSE:
+                continue
+            at_m = float(results.dead.total[girder].stations_m[results.stations[girder, response, adverse]])
+            for vehicle in critical.vehicles:
+                facing = "reversed" if vehicle.vehicle_name.endswith("_reversed") else "forward"
+                rows.writerow([girder, round(at_m, 3), vehicle.vehicle_name.removesuffix("_reversed"), facing, round(vehicle.z_centre_m, 4),
+                               " ".join(f"{x_m:.4f}" for x_m in vehicle.train_x_front_m), round(vehicle.impact_factor, 4),
+                               critical.lane_reduction, round(critical.response, 2)])
 
 
 # ── what the screen shows ─────────────────────────────────────────────────────
@@ -462,12 +460,11 @@ def main(argv=None):
     print_results(bridge, found, results)
     out = Path(arguments.out)
     out.mkdir(parents=True, exist_ok=True)
-    midas = midas_loads(bridge, results)
-    (out / "result.json").write_text(json.dumps(result_to_dict(bridge, loads, found, wind, results, midas), indent=1, default=float))
-    write_midas_csvs(out / "midas", midas)
+    (out / "result.json").write_text(json.dumps(result_to_dict(bridge, loads, found, wind, results), indent=1, default=float))
+    write_critical_positions_csv(out / "critical_positions.csv", results)
     dataset.to_netcdf(out / "girder_results.nc")
     save_plots(bridge, found, results, out, arguments.plot)
-    print(f"Everything written to {out}/ (result.json, midas/, girder_results.nc and plots/)")
+    print(f"Everything written to {out}/ (result.json, critical_positions.csv, girder_results.nc and plots/)")
     return 0
 
 

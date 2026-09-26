@@ -12,7 +12,7 @@ RESIDUAL_UDL = "residual UDL"
 FOOTWAY = "footway"
 
 
-# every load a critical position puts on the deck, as rows you can type into MIDAS:
+# every load a critical position puts on the deck, as plain rows another program can take in:
 # one row per wheel, and one row per patch of residual UDL or footway load where it makes the response worse.
 # x is global (along the first bearing line, skew included), z is across from the left edge.
 def applied_live_loads(bridge, critical_position, surface, sampling=DEFAULT_SAMPLING):
