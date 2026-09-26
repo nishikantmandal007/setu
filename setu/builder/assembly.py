@@ -12,8 +12,7 @@ DECK_SECTION = 1
 GIRDER_TRANSFORM = 1
 BRACE_MATERIAL = 10
 BEARING_MATERIAL = 11
-# a bearing is a vertical spring this stiff: rigid for the analysis, and it makes the reaction an element force with an exact influence surface
-BEARING_VERTICAL_STIFFNESS_KN_PER_M = 1.0e10
+BEARING_VERTICAL_STIFFNESS_KN_PER_M = 1.0e9
 VERTICAL_DOF = 2
 ALL_FIXED = (1, 1, 1, 1, 1, 1)
 DIMENSIONS = 3
