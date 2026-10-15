@@ -36,7 +36,9 @@ Each value tells its story:
 | `surfaces[...]`, `stations[...]` | The influence surface and the station behind each critical position. |
 | `dead` | Girder forces from each construction stage (`dead.stages`) and their total (`dead.total`). |
 | `deflections[girder]` | `live_m` (traffic with impact, no footway), `dead_m` by stage, `total_m`. |
-| `fatigue[girder][response]` | Fatigue `range`, `largest`, `smallest`, and where the truck stood. |
+| `fatigue_stresses_mpa[girder][face]` | Nominal longitudinal steel fatigue stress `range`, `largest`, `smallest` (MPa), `at_m`, truck centre z, front x at each extreme, and impact multiplier. Faces: `"steel top"`, `"steel bottom"`. |
+| `fatigue[girder][response]` | Original fatigue force ranges: moment in kN·m and shear in kN, retained for existing callers. |
+| `combinations[girder][response][name][adverse]` | Each individual combination's envelope, with the same value, station and factored shares as a governing result. |
 | `live_shear_range_kn[girder]` | Live shear range at the support. |
 | `thermal` | Effective temperature range, bearing movement, and heating/cooling stresses per girder. |
 

@@ -115,3 +115,31 @@ def test_a_fatigue_range_on_a_sagging_surface_is_its_largest_value(sagging_surfa
     assert found.smallest == 0.0
     assert found.range == pytest.approx(found.largest)
     assert found.range > 0
+
+
+@pytest.mark.parametrize("skew", [0.0, 0.2])
+def test_fatigue_stress_extremes_match_the_truck_solved_in_opensees(skew):
+    from setu.models.bridge import BridgeInput
+    from setu.loads.load_builders import as_a_load_case, share_between_nodes
+    from setu.postprocess.design_values import fatigue_stress_ranges
+
+    bridge = BridgeInput(**{**BRIDGE.__dict__, "skew": skew})
+    model = build_bridge_model(bridge)
+    solver = InfluenceSolver(model.as_deck_model())
+    stresses = fatigue_stress_ranges(solver, 1, places_to_design(model), bridge, model)
+    section = model.girder
+    for face, stress in stresses.items():
+        y_m = section.depth_m if face == "steel top" else 0.0
+        station = int(np.argmin(abs(model.mesh.length_mesh_m - stress.at_m)))
+        for front, expected in ((stress.x_front_at_largest_m, stress.largest), (stress.x_front_at_smallest_m, stress.smallest)):
+            nodal = {}
+            for dx, dz, load in fatigue_truck_offsets():
+                share_between_nodes(model, front + dx, stress.z_centre_m + dz, load * stress.impact_factor, nodal)
+            forces = analyze_load_case(model, as_a_load_case(model, nodal, "fatigue truck"), ops)[1]
+            directly_mpa = (forces.axial_kn[station] / section.area_m2
+                            + forces.moment_kn_m[station] * (section.neutral_axis_from_bottom_m - y_m) / section.strong_axis_inertia_m4) / 1000
+
+            assert directly_mpa == pytest.approx(expected, rel=1e-6, abs=1e-8)
+        assert stress.range == pytest.approx(stress.largest - stress.smallest)
+        assert stress.range > 0
+        assert stress.impact_factor == pytest.approx(fatigue_impact_factor(bridge.span_m))

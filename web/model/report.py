@@ -1,4 +1,5 @@
 from setu.irc6.seismic import horizontal_seismic_coefficient, vertical_seismic_coefficient
+from setu.postprocess.thermal_stresses import effective_slab_width_m
 from setu.utils.constants import (BASIC, BEARING_REACTION, BIGGER_IS_WORSE, MAX_MOMENT, RARE, SEISMIC_COMBINATION, SMALLER_IS_WORSE,
                                   SUPPORT, SUPPORT_SHEAR)
 
@@ -18,15 +19,23 @@ GOVERNING = (
 def build(bridge, loads, results, checks, wind, live_forces):
     girders = range(bridge.girders.count)
     return {
-        "bridge": {"span_m": bridge.span_m, "skew": bridge.skew, "girders": bridge.girders.count, "deck_width_m": bridge.width_m()},
+        "bridge": {"span_m": bridge.span_m, "skew": bridge.skew, "girders": bridge.girders.count, "deck_width_m": bridge.width_m(),
+                   "girder_spacing_m": (bridge.width_m() - 2 * bridge.deck.overhang_m) / (bridge.girders.count - 1),
+                   "effective_slab_widths_m": {f"girder {g}": effective_slab_width_m(bridge, g) for g in girders},
+                   "grades": {"girder": bridge.steel.grade, "cross bracing": bridge.bracing.steel_grade,
+                              "end diaphragm": bridge.bracing.end_diaphragm_steel_grade, "concrete": bridge.concrete.grade},
+                   "steel_modulus_mpa": bridge.steel.elastic_modulus_mpa, "concrete_modulus_mpa": bridge.concrete.elastic_modulus_mpa},
         "design_values": {f"girder {g}": {response: {limit: {adverse: value.to_dict() for adverse, value in by_direction.items()} for limit, by_direction in by_limit.items()}
                                           for response, by_limit in results.girders[g].items()} for g in girders},
         "governing": governing(results),
+        "combinations": {f"girder {g}": {response: {name: {adverse: value.to_dict() for adverse, value in directions.items()} for name, directions in by_name.items()}
+                                          for response, by_name in results.combinations[g].items()} for g in girders},
         "dead_loads_unfactored": dead_loads(bridge, results),
         "deflections_m": {f"girder {g}": results.deflections[g] for g in girders},
         "deflection_limits_m": {"live_load_and_impact": bridge.span_m / 800, "total": bridge.span_m / 600},
         "fatigue_ranges": {f"girder {g}": {response: {"range": r.range, "largest": r.largest, "smallest": r.smallest, "at_m": r.at_m}
                                            for response, r in results.fatigue[g].items()} for g in girders},
+        "fatigue_stresses_mpa": {f"girder {g}": {face: vars(stress) for face, stress in results.fatigue_stresses_mpa[g].items()} for g in girders},
         "checks": [{"girder": g, "response": response, "adverse": adverse, "searched": results.criticals[g, response, adverse].response, "solved": solved}
                    for (g, response, adverse), solved in checks.items()],
         "site": site_loads(loads, results, wind),

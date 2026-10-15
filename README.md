@@ -13,7 +13,7 @@ Built as the analysis backend for [OsdagBridge](https://github.com/osdag-admin/O
 
 ## Install
 
-Requires Python 3.12+ and [uv](https://docs.astral.sh/uv/).
+Requires Python 3.12 and [uv](https://docs.astral.sh/uv/). The project pins 3.12 for OpenSeesPy native-library compatibility; `uv sync` selects it automatically.
 
 ```bash
 uv sync
@@ -95,7 +95,7 @@ for vehicle in critical.vehicles:
 
 # IRC:22 deflections, IRC:6 cl. 204.6 fatigue, IRC:6 cl. 215 temperature
 print(results.deflections[0])                      # live_m, dead_m by stage, total_m
-print(results.fatigue[0][MAX_MOMENT].range)        # moment range of one fatigue truck passage
+print(results.fatigue_stresses_mpa[0]["steel bottom"].range)  # nominal fatigue stress range in MPa
 print(results.thermal["free bearing movement m"])  # temperature gives no girder force on a free bearing
 for kind, stresses in results.thermal["girders"][0].items():
     print(kind, stresses.slab_top_kpa, stresses.steel_bottom_kpa)

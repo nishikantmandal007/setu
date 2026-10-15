@@ -21,7 +21,7 @@ class Job:
         girders = bridge.girders.count
         places = len(design_values.places_to_design(SimpleNamespace(mesh=build_mesh(bridge))))
         self.totals = {"Dead load stages": 1, "Influence surfaces": girders * places, "Searching traffic": girders * (2 * places + 1),
-                       "Fatigue truck": girders * places, "Checking in OpenSees": girders * 7}
+                       "Fatigue truck": girders * (3 * (places - 2) + 1), "Checking in OpenSees": girders * 7}
         self.done = {step: 0 for step in self.totals}
         self.step, self.result, self.results, self.error, self.started = "Starting", None, None, None, time.time()
 

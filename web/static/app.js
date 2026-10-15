@@ -16,6 +16,9 @@ function field(f, value, onChange) {
     input = el("select");
     f.choices.forEach(c => input.append(el("option", { value: String(c), textContent: String(c), selected: String(c) === String(value) })));
     input.onchange = () => onChange(input.value === "true" ? true : input.value === "false" ? false : isNaN(input.value) ? input.value : Number(input.value));
+  } else if (f.type === "text") {
+    input = el("input", { type: "text", value, maxLength: 80, placeholder: "Not specified" });
+    input.oninput = () => onChange(input.value);
   } else {
     input = el("input", { type: "number", step: f.integer ? 1 : "any", value, required: true });
     if (f.min !== undefined) input.min = f.min;
@@ -99,59 +102,62 @@ function updateProgress(s) {
 
 // ── results ─────────────────────────────────────────────────────────────────
 const girderName = g => `Girder ${g}${g === 0 || g === result.bridge.girders - 1 ? " (edge)" : ""}`;
-const design = (g, response, limit, adverse) => result.design_values[`girder ${g}`]?.[response]?.[limit]?.[adverse]?.value;
 const girders = () => [...Array(result.bridge.girders).keys()];
+const deadDeflection = g => Object.values(result.deflections_m[`girder ${g}`].dead_m).reduce((a, b) => a + b, 0);
+const fatigueStress = g => Object.entries(result.fatigue_stresses_mpa[`girder ${g}`]).reduce((a, b) => b[1].range > a[1].range ? b : a);
 const css = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 const PALETTE = ["#2458d3", "#e4572e", "#1f8a4c", "#9b5de5", "#f2a007", "#00a6a6", "#c2185b", "#6d4c41", "#546e7a", "#7cb342", "#3949ab", "#d81b60"];
 let tab = "positions", plotCase = null, plotGirder = "all", plotQty = "m", addDead = false;
 
-// one line of the summary: label, value and unit, a small chip (girder or pass/fail), and the explanation on hover
-function row(label, value, unit, chip, explain, tone = "") {
-  return el("div", { className: "row-kv", title: explain },
+// Explain a design value beside the number, including on touch screens.
+function row(label, value, unit, chip, explain) {
+  return el("div", { className: "row-kv" },
     el("span", { className: "k", textContent: label }),
     el("span", { className: "v" }, value, el("small", { textContent: ` ${unit}` })),
-    el("span", { className: `chip ${tone}`, textContent: chip }));
+    el("span", { className: "chip", textContent: chip }),
+    el("p", { className: "meaning", textContent: explain }));
 }
 
-function group(title, rows) {
-  return el("div", { className: "group" }, el("h3", { textContent: title }), ...rows.filter(Boolean));
+function movementCheck(label, valueMm, limitMm, g, explanation, rule) {
+  const within = valueMm <= limitMm;
+  return el("div", { className: "movement-check" },
+    el("div", { className: "check-heading" }, el("h3", {}, label), el("span", { className: `chip ${within ? "ok" : "bad"}`, textContent: within ? "Within limit" : "Above limit" })),
+    el("div", { className: "movement-value" }, fmt(valueMm, 1), el("small", {}, " mm")),
+    el("p", { className: "check-limit" }, `Allowed: ${fmt(limitMm, 1)} mm · ${girderName(g)}`),
+    el("p", { className: "meaning" }, explanation),
+    el("small", { className: "check-rule", textContent: rule }));
 }
 
 function showResults() {
-  const g = result.governing, L = result.bridge.span_m, site = result.site;
+  const g = result.governing, L = result.bridge.span_m;
   const worst = key => girders().reduce((a, b) => (result.deflections_m[`girder ${b}`][key] > result.deflections_m[`girder ${a}`][key] ? b : a), 0);
   const live = worst("live_m"), total = worst("total_m");
   const liveMm = 1000 * result.deflections_m[`girder ${live}`].live_m, totalMm = 1000 * result.deflections_m[`girder ${total}`].total_m;
   const liveLimit = 1000 * L / 800, totalLimit = 1000 * L / 600;
-  const fatigue = girders().reduce((a, b) => (result.fatigue_ranges[`girder ${b}`][M].range > result.fatigue_ranges[`girder ${a}`][M].range ? b : a), 0);
-  const trucks = result.drawing.max_moment[g["ULS sagging"].girder];
-  const pass = (v, limit) => v <= limit ? ["✓ ≤ " + fmt(limit, 1), "ok"] : ["✗ > " + fmt(limit, 1), "bad"];
-  const [liveChip, liveTone] = pass(liveMm, liveLimit), [totalChip, totalTone] = pass(totalMm, totalLimit);
-  const summary = el("div", { className: "card summary" },
-    group("Strength (ULS)", [
-      row("Bending moment", fmt(g["ULS sagging"].value), "kN·m", `G${g["ULS sagging"].girder}`,
-        `Design (ULS) value in ${girderName(g["ULS sagging"].girder)}, ${fmt(g["ULS sagging"].at_m, 1)} m from the bearing, under ${describeTraffic(trucks)}.`),
-      row("Support shear", fmt(Math.abs(g["ULS shear"].value)), "kN", `G${g["ULS shear"].girder}`, `Design (ULS) value in ${girderName(g["ULS shear"].girder)}, at the bearing.`),
-      row("Bearing reaction", fmt(g["ULS reaction"].value), "kN", `G${g["ULS reaction"].girder}`, `Design (ULS) value in ${girderName(g["ULS reaction"].girder)}. Use it to size the bearing.`),
-      site.seismic && row("Seismic moment", fmt(g["ULS seismic"].value), "kN·m", `G${g["ULS seismic"].girder}`, `ULS seismic combination, Ah = ${fmt(site.seismic.horizontal_coefficient, 3)} (IRC:SP:114).`),
-    ]),
-    group("Serviceability", [
-      row("Traffic deflection", fmt(liveMm, 1), "mm", liveChip, `Live load with impact, no footway, ${girderName(live)}. Limit span/800 (IRC:22).`, liveTone),
-      row("Total deflection", fmt(totalMm, 1), "mm", totalChip, `Dead load, surfacing and traffic, ${girderName(total)}. Limit span/600 before camber (IRC:22).`, totalTone),
-      row("Fatigue range", fmt(result.fatigue_ranges[`girder ${fatigue}`][M].range), "kN·m", `G${fatigue}`, `One 40 t fatigue truck passing over, ${girderName(fatigue)} (IRC:6 204.6).`),
-    ]),
-    group("Site loads", [
-      site.temperature && row("Bearing movement", fmt(1000 * site.temperature.free_bearing_movement_m, 1), "mm", "free bearing",
-        `Effective temperature ${fmt(site.temperature.effective_range_c[0])} to ${fmt(site.temperature.effective_range_c[1])} °C (IRC:6 215). No girder force.`),
-      site.wind && row("Wind at deck", fmt(site.wind.speed_at_deck_mps, 1), "m/s", `${fmt(site.wind.forces_kn.transverse)} kN`, "Hourly mean speed at deck level and the transverse force on the deck (IRC:6 209)."),
-      site.seismic && row("Seismic Ah", fmt(site.seismic.horizontal_coefficient, 3), "", `zone ${site.seismic.zone}`, "Design horizontal seismic coefficient (IRC:SP:114 5.2.1)."),
-      !site.temperature && !site.wind && !site.seismic && el("p", { className: "sub", textContent: "No wind, seismic or temperature included." }),
-    ]));
+  const fatigue = girders().reduce((a, b) => fatigueStress(b)[1].range > fatigueStress(a)[1].range ? b : a, 0);
+  const within = liveMm <= liveLimit && totalMm <= totalLimit;
+  const forces = el("details", { className: "design-summary" }, el("summary", {}, "See design forces & fatigue stress"),
+    el("p", { className: "sub" }, "Forces to use when sizing members and bearings. Member strength and fatigue resistance need separate checks."),
+    row("Bending moment", fmt(g["ULS sagging"].value), "kN·m", `Girder ${g["ULS sagging"].girder}`,
+      `The turning effect that bends the girder. Largest factored demand, ${fmt(g["ULS sagging"].at_m, 1)} m from the first bearing.`),
+    row("Shear at the support", fmt(Math.abs(g["ULS shear"].value)), "kN", `Girder ${g["ULS shear"].girder}`, "The force that tends to shear the girder near its support. Includes design load factors."),
+    row("Load on the bearing", fmt(g["ULS reaction"].value), "kN", `Girder ${g["ULS reaction"].girder}`, "The upward force carried by a bearing. Use this factored demand to size the bearing."),
+    ...(result.site.seismic ? [row("Earthquake bending moment", fmt(g["ULS seismic"].value), "kN·m", `Girder ${g["ULS seismic"].girder}`, "The bending demand under the earthquake design combination.")] : []),
+    row("Fatigue stress range", fmt(fatigueStress(fatigue)[1].range, 2), "MPa", `Girder ${fatigue}`, "The change in steel stress during one 40 t truck passage. Compare it with the resistance of the fatigue detail."));
+  const summary = el("div", { className: "card pad result-overview" },
+    el("p", { className: "sub bridge-context" }, `${fmt(L, 1)} m span · ${fmt(result.bridge.deck_width_m, 2)} m wide · ${result.bridge.girders} girders`),
+    el("h2", {}, "How much does the bridge move?"),
+    el("p", { className: `check-status ${within ? "pass" : "fail"}` }, within ? "Both movement checks are within their limits." : "Movement needs attention — see the check marked above limit."),
+    el("p", { className: "sub" }, "Largest downward movement (deflection) at the middle of the span. Each check uses its own worst traffic position."),
+    el("div", { className: "movement-checks" },
+      movementCheck("From traffic", liveMm, liveLimit, live, "Movement caused by vehicles, including impact. Pedestrians are excluded from this check.", "IRC:22 limit: span ÷ 800"),
+      movementCheck("From all loads", totalMm, totalLimit, total, "Movement from bridge weight, road surfacing and traffic, before allowing for camber (the upward curve built into the bridge).", "IRC:22 limit: span ÷ 600, before camber")),
+    forces);
   girder = g["ULS sagging"].girder;
   plotCase = `Live · largest moment in G${girder}`;
-  const tabs = el("div", { className: "big-tabs", id: "big-tabs" }, ...[["positions", "Critical positions"], ["replay", "Search replay"], ["diagrams", "Girder diagrams"], ["model", "3D model"], ["site", "Site loads"]]
+  const tabs = el("div", { className: "big-tabs", id: "big-tabs" }, ...[["positions", "Traffic positions"], ["replay", "Search replay"], ["diagrams", "Girder diagrams"], ["model", "3D model"], ["site", "Wind, earthquake & temperature"]]
     .map(([key, label]) => { const b = el("button", { textContent: label }); b.dataset.tab = key; b.onclick = () => { tab = key; showTab(); }; return b; }));
-  $("#out").replaceChildren(summary, tabs, el("div", { id: "panel" }), tableCard());
+  $("#out").replaceChildren(summary, verificationCard(), tabs, el("div", { id: "panel" }), tableCard());
   showTab();
 }
 
@@ -248,6 +254,7 @@ function deckCard() {
   return el("div", { className: "card pad deck" },
     el("h2", { id: "deck-title" }),
     el("p", { className: "sub", id: "deck-caption" }), el("div", { id: "place-tabs" }), el("div", { id: "girder-tabs" }), el("div", { id: "deck" }),
+    el("details", {}, el("summary", {}, "See vehicle positions & impact factors"), el("div", { id: "vehicle-positions", className: "scroll" })),
     el("div", { className: "legend" },
       el("span", {}, el("i", { style: "background:var(--asphalt)" }), "carriageway"), el("span", {}, el("i", { style: "background:var(--footpath)" }), "footpath"),
       el("span", {}, el("i", { style: "background:var(--kerb)" }), "kerb / median"),
@@ -280,6 +287,13 @@ function drawDeck() {
   $("#deck").replaceChildren(svg);
   $("#deck-caption").textContent = `${girderName(girder)}: ${describeTraffic(c)}. Live load ${p.label.toLowerCase()} ${fmt(c.value, place === "deflection" ? 2 : 0)} ${p.unit}`
     + ` (impact included, lane reduction ${fmt(c.lane_reduction, 2)}${place === "deflection" ? ", footway left out as IRC:22 allows" : ""}). Hover a vehicle for its details.`;
+  $("#vehicle-positions").replaceChildren(el("table", {},
+    el("tr", {}, ...["Vehicle", "Carriageway", "Centre z (m)", "From left kerb (m)", "Front x (m)", "Impact multiplier"].map(t => el("th", { textContent: t }))),
+    ...c.vehicles.map(v => {
+      const strip = result.drawing.strips.find(s => s.name.startsWith("carriageway") && v.z_m >= s.from_m && v.z_m <= s.to_m);
+      return el("tr", {}, ...[`${v.name} ${v.heading > 0 ? "→" : "←"}`, strip?.name || "—", fmt(v.z_m, 3), strip ? fmt(v.z_m - strip.from_m, 3) : "—",
+        fmt(v.x_m, 3), `${fmt(v.impact_factor, 4)} (i = ${fmt(v.impact_factor - 1, 4)})`].map(t => el("td", { textContent: t })));
+    }), el("caption", { textContent: "z is measured from the left deck edge; the kerb offset is to the vehicle centre from its carriageway's left boundary. x is the global front-axle coordinate, including skew. Each train vehicle has a row." })));
 }
 
 // ── search replay: every vehicle rolled along every lane, then Setu's best arrangements ──
@@ -570,17 +584,70 @@ function drawSite() {
     { displaylogo: false, responsive: true });
 }
 
+function verificationCard() {
+  const b = result.bridge;
+  const table = rows => el("table", { className: "kv" }, ...rows.map(([label, value]) => el("tr", {}, el("td", { textContent: label }), el("td", { textContent: value }))));
+  const materials = [["Girder steel", b.grades.girder], ["Cross bracing steel", b.grades["cross bracing"]], ["End diaphragm steel", b.grades["end diaphragm"]], ["Deck concrete", b.grades.concrete]];
+  const stageNames = { "steel self weight": "Steel girders & bracing", "wet slab": "Wet concrete slab", "superimposed": "Footpaths, kerbs & other fixed loads", "surfacing": "Road surfacing" };
+  const selected = el("select", {}, ...girders().map(g => el("option", { value: g, textContent: girderName(g), selected: g === girder })));
+  const stages = el("div");
+  const drawStages = () => {
+    const g = Number(selected.value), dead = result.deflections_m[`girder ${g}`].dead_m;
+    stages.replaceChildren(table([...Object.entries(dead).map(([stage, value]) => [stageNames[stage] || stage, `${fmt(1000 * value, 2)} mm`]), ["Total from bridge weight", `${fmt(1000 * deadDeflection(g), 2)} mm`]]));
+  };
+  selected.onchange = drawStages;
+  drawStages();
+  return el("details", { className: "card pad verification" },
+    el("summary", {}, el("span", {}, "Check bridge inputs", el("small", {}, "Geometry, materials, slab widths & bridge weight"))),
+    el("div", { className: "verification-section" }, el("h3", {}, "Bridge geometry"),
+      table([["Total width, edge to edge", `${fmt(b.deck_width_m, 3)} m`], ["Gap between girder centres", `${fmt(b.girder_spacing_m, 3)} m`]]),
+      el("p", { className: "meaning" }, "Girders are numbered from 0 at the left edge of the deck.")),
+    el("details", {}, el("summary", {}, "Material grades & stiffness"),
+      table(materials.map(([label, grade]) => [label, grade || "Grade not entered"])),
+      table([["Steel stiffness (E), all members", `${fmt(b.steel_modulus_mpa)} MPa`], ["Concrete stiffness (Ecm)", `${fmt(b.concrete_modulus_mpa)} MPa`]]),
+      el("p", { className: "meaning" }, "Grades record your specification. Entered stiffness, Poisson's ratio and unit weight control the analysis. End diaphragms use the end brace lines and the same steel elastic properties.")),
+    el("details", {}, el("summary", {}, "Slab width acting with each girder"),
+      el("p", { className: "meaning" }, "Effective slab width: the width of concrete slab considered to act with one girder. Edge and interior girders can have different widths (IRC:22 cl. 603.2.1)."),
+      table(girders().map(g => [girderName(g), `${fmt(b.effective_slab_widths_m[`girder ${g}`], 3)} m`]))),
+    el("details", {}, el("summary", {}, "Movement from bridge weight, stage by stage"),
+      el("p", { className: "meaning" }, "Downward movement at midspan as each permanent load is added. Values are unfactored and before camber; road surfacing is included."),
+      el("div", { className: "controls" }, el("label", {}, "Choose a girder", selected)), stages));
+}
+
 function tableCard() {
-  const head = ["Girder", "ULS moment kN·m", "SLS rare moment kN·m", "ULS shear kN", "ULS reaction kN", "Traffic deflection mm", "Total deflection mm", "Fatigue range kN·m"];
-  const rows = girders().map(k => {
-    const df = result.deflections_m[`girder ${k}`];
-    return el("tr", {}, el("td", { textContent: girderName(k) }), ...[design(k, M, ULS, "maximum"), design(k, M, RARE, "maximum"), design(k, V, ULS, "minimum"),
-      design(k, R, ULS, "maximum")].map(v => el("td", { textContent: v === undefined ? "—" : fmt(v) })),
-      el("td", { textContent: fmt(1000 * df.live_m, 1) }), el("td", { textContent: fmt(1000 * df.total_m, 1) }), el("td", { textContent: fmt(result.fatigue_ranges[`girder ${k}`][M].range) }));
-  });
-  return el("div", { className: "card pad" }, el("h2", {}, "Design values, all girders"),
+  const choice = el("select", {}, el("option", { value: "", textContent: "Worst combination for each check" }),
+    ...Object.keys(result.combinations["girder 0"][M]).map(name => el("option", { value: name, textContent: name })));
+  const body = el("div"), trace = el("details", {}, el("summary", {}, "Combination and load shares"));
+  const draw = () => {
+    const combo = choice.value;
+    const columns = combo ? [["Moment kN·m", M, ULS, "maximum"], ["Shear kN", V, ULS, "minimum"], ["Reaction kN", R, ULS, "maximum"]]
+      : [["ULS moment kN·m", M, ULS, "maximum"], ["SLS rare moment kN·m", M, RARE, "maximum"], ["ULS shear kN", V, ULS, "minimum"], ["ULS reaction kN", R, ULS, "maximum"]];
+    const valueAt = (g, [, response, limit, adverse]) => combo ? result.combinations[`girder ${g}`][response][combo][adverse] : result.design_values[`girder ${g}`][response][limit][adverse];
+    const head = ["Girder", ...columns.map(c => c[0]), "Dead deflection mm", "Traffic deflection mm", "Total deflection mm", "Fatigue stress range MPa"];
+    body.replaceChildren(el("div", { className: "scroll" }, el("table", {}, el("tr", {}, ...head.map(t => el("th", { textContent: t }))),
+      ...girders().map(g => {
+        const df = result.deflections_m[`girder ${g}`];
+        return el("tr", {}, el("td", { textContent: girderName(g) }), ...columns.map(c => el("td", { textContent: fmt(valueAt(g, c).value) })),
+          ...[1000 * deadDeflection(g), 1000 * df.live_m, 1000 * df.total_m, fatigueStress(g)[1].range].map(v => el("td", { textContent: fmt(v, 2) })));
+      })),
+      el("p", { className: "sub" }, "The combination selector changes moment, shear and reaction. Each is an independent envelope over its checked stations and load alternatives. Deflections and fatigue are separate unfactored checks.")));
+    trace.replaceChildren(el("summary", {}, "Combination and load shares"), el("div", { className: "scroll" }, el("table", {},
+      el("tr", {}, ...["Girder", "Response", "Combination", "Station x (m)", "Factored load shares (kN·m or kN)"].map(t => el("th", { textContent: t }))),
+      ...girders().flatMap(g => columns.map(c => {
+        const v = valueAt(g, c);
+        return el("tr", {}, ...[girderName(g), c[0], v.combination, fmt(v.at_m, 3), Object.entries(v.shares).map(([group, share]) => `${group}: ${fmt(share, 2)}`).join("; ")].map(t => el("td", { textContent: t })));
+      })))));
+  };
+  choice.onchange = draw;
+  draw();
+  const fatigue = el("details", {}, el("summary", {}, "Fatigue stresses and truck positions"), el("div", { className: "scroll" }, el("table", {},
+    el("tr", {}, ...["Girder", "Steel face", "Range MPa", "Max MPa", "Min MPa", "Station (m)", "Truck z (m)", "Front x at max (m)", "Front x at min (m)", "Impact multiplier"].map(t => el("th", { textContent: t }))),
+    ...girders().flatMap(g => Object.entries(result.fatigue_stresses_mpa[`girder ${g}`]).map(([face, f]) => el("tr", {},
+      ...[girderName(g), face, fmt(f.range, 2), fmt(f.largest, 2), fmt(f.smallest, 2), fmt(f.at_m, 3), fmt(f.z_centre_m, 3), fmt(f.x_front_at_largest_m, 3), fmt(f.x_front_at_smallest_m, 3), fmt(f.impact_factor, 4)].map(t => el("td", { textContent: t })))))),
+    el("p", { className: "sub" }, "Nominal longitudinal stress N/A + M·y/I at the top and bottom steel faces, tension positive, from the composite FE model's steel forces. Each face is searched independently near midspan. One IRC:6 cl. 204.6 truck, including the empty bridge and half the normal impact increment; no fatigue resistance or life check.")));
+  return el("details", { className: "card pad detailed-results" }, el("summary", {}, el("span", {}, "Detailed results by girder", el("small", {}, "Load combinations, design forces & fatigue"))),
     el("p", { className: "sub" }, "ULS = strength check with load factors; SLS rare = working loads. Shear is negative by Setu's sign convention."),
-    el("div", { className: "scroll" }, el("table", {}, el("tr", {}, ...head.map(t => el("th", { textContent: t }))), ...rows)));
+    el("div", { className: "controls" }, el("label", {}, "Load combination", choice)), body, trace, fatigue);
 }
 
 // ── start ───────────────────────────────────────────────────────────────────

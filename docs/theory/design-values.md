@@ -45,6 +45,14 @@ IRC:22 cl. 604.3.2. Live deflection is the worst ranked arrangement on the defle
 
 IRC:6 cl. 204.6 (`setu/analysis/fatigue.py`). The 40 t fatigue truck runs along every line on each carriageway that keeps the outer tyre edge 150 mm from the kerb, with half the cl. 208 impact. For each line the range of one passage is $\max(R_{\max}, 0) - \min(R_{\min}, 0)$: the empty bridge counts. The worst line is kept, for the moment near midspan and the shear at the support.
 
+The web report shows the **nominal longitudinal steel stress range in MPa**. For each checked section near midspan, stress influence surfaces are formed at the top and bottom steel faces using the composite FE model's steel axial force and steel bending moment:
+
+$$\sigma(y) = \frac{1}{1000}\left[\frac{N}{A_s} + \frac{M_s(y_{NA}-y)}{I_s}\right].$$
+
+Here $y$ is measured upward from the bottom steel face, $N$ is tension positive (kN), $M_s$ is the steel moment (kN·m), and section properties are in metres. Each face is searched independently for its worst truck passage, including the unloaded zero. The displayed range is the larger of the two face ranges, with each face's extrema and truck coordinates available for verification. The original force ranges remain available in the API.
+
+This uses the steel forces already produced by the composite shell-and-beam model, rather than treating its total composite moment as a bare-steel moment. Nominal stress ranges are the input to a separate fatigue resistance assessment; detail categories, local stress concentrations and fatigue life are not checked here. See the [FHWA fatigue reference manual](https://www.fhwa.dot.gov/bridge/steel/pubs/nhi16016.pdf) for the distinction between calculating stress ranges and checking fatigue resistance; Setu retains its IRC truck and impact rules.
+
 ## Braking
 
 IRC:6 cl. 211. 20 % of the first train in a lane plus 10 % of those following, plus 5 % of the load in lanes beyond two, from the vehicles actually on the span. It acts along the road 1.2 m above the surface, applied at the deck nodes under the vehicles in proportion to their wheel loads, as a force and the matching moment.

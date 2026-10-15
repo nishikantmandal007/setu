@@ -52,6 +52,26 @@ def test_a_design_value_is_the_sum_of_its_shares(results):
     assert governing.shares[DEAD] > 0 and governing.shares[LIVE] > 0
 
 
+def test_individual_combinations_reproduce_the_governing_envelopes(results):
+    for girder, by_response in results.girders.items():
+        for response, by_limit in by_response.items():
+            for by_direction in by_limit.values():
+                for adverse, governing in by_direction.items():
+                    selected = results.combinations[girder][response][governing.combination][adverse]
+                    assert selected.to_dict() == governing.to_dict()
+            for by_direction in results.combinations[girder][response].values():
+                for value in by_direction.values():
+                    assert value.value == pytest.approx(sum(value.shares.values()))
+
+
+def test_fatigue_retains_force_ranges_and_adds_stress_ranges(results):
+    for girder in results.girders:
+        assert results.fatigue[girder][MAX_MOMENT].range > 0
+        for stress in results.fatigue_stresses_mpa[girder].values():
+            assert stress.range == pytest.approx(stress.largest - stress.smallest)
+            assert stress.range > 0
+
+
 def test_sagging_is_governed_by_live_load_leading(results):
     """For midspan sagging on this deck, live load (1.5) outweighs wind leading (1.5 on a much smaller effect)."""
     assert results.girders[1][MAX_MOMENT][BASIC][BIGGER_IS_WORSE].combination.endswith("live leading")

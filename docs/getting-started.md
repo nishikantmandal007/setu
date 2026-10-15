@@ -2,7 +2,7 @@
 
 ## Install
 
-You need Python 3.12 or newer and [uv](https://docs.astral.sh/uv/).
+You need Python 3.12 and [uv](https://docs.astral.sh/uv/). The project pins this version for OpenSeesPy native-library compatibility; `uv sync` selects it automatically, including when an existing environment uses 3.13.
 
 ```bash
 git clone https://github.com/nishikantmandal007/setu

@@ -26,7 +26,16 @@ def test_nothing_is_assumed(cls):
 @pytest.mark.parametrize("cls", [Steel, Concrete])
 def test_a_misspelt_key_is_refused(cls):
     with pytest.raises(TypeError, match="unexpected keyword"):
-        cls(elastic_modulus_mpa=200000.0, poissons_ratio=0.3, unit_weight_kn_m3=78.5, grade="M35")
+        cls(elastic_modulus_mpa=200000.0, poissons_ratio=0.3, unit_weight_kn_m3=78.5, grad="M35")
+
+
+@pytest.mark.parametrize("cls,grade", [(Steel, "E350"), (Concrete, "M35")])
+def test_grade_labels_preserve_the_entered_elastic_properties(cls, grade):
+    material = cls(elastic_modulus_mpa=32000, poissons_ratio=0.2, unit_weight_kn_m3=25, grade=grade)
+
+    assert material.grade == grade
+    assert material.elastic_modulus_kpa == 32e6
+    assert cls(elastic_modulus_mpa=32000, poissons_ratio=0.2, unit_weight_kn_m3=25).grade is None
 
 
 def test_short_term_modular_ratio_never_below_7_5():

@@ -26,10 +26,12 @@ class Girders:
 
 class Bracing:
     # cross bracing: its arrangement, how many stations along the span, and the member area
-    def __init__(self, arrangement, station_count, area_m2):
+    def __init__(self, arrangement, station_count, area_m2, steel_grade=None, end_diaphragm_steel_grade=None):
         self.arrangement = arrangement
         self.station_count = station_count
         self.area_m2 = area_m2
+        self.steel_grade = steel_grade
+        self.end_diaphragm_steel_grade = end_diaphragm_steel_grade
 
     # K, KT
     @property

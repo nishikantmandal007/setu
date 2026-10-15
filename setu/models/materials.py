@@ -8,10 +8,11 @@ CONCRETE_STIFFNESS_THAT_STAYS = {SHORT_TERM: 1.0, LONG_TERM: CREEP_FACTOR}
 
 class Steel:
     # structural steel as OsdagBridge gives it: E in MPa, unit weight in kN/m3
-    def __init__(self, elastic_modulus_mpa, poissons_ratio, unit_weight_kn_m3):
+    def __init__(self, elastic_modulus_mpa, poissons_ratio, unit_weight_kn_m3, grade=None):
         self.elastic_modulus_mpa = elastic_modulus_mpa
         self.poissons_ratio = poissons_ratio
         self.unit_weight_kn_m3 = unit_weight_kn_m3
+        self.grade = grade
 
     # E in kN/m2, the unit the solver works in
     @property
@@ -26,10 +27,11 @@ class Steel:
 
 class Concrete:
     # deck concrete as OsdagBridge gives it: Ecm in MPa, unit weight in kN/m3
-    def __init__(self, elastic_modulus_mpa, poissons_ratio, unit_weight_kn_m3):
+    def __init__(self, elastic_modulus_mpa, poissons_ratio, unit_weight_kn_m3, grade=None):
         self.elastic_modulus_mpa = elastic_modulus_mpa
         self.poissons_ratio = poissons_ratio
         self.unit_weight_kn_m3 = unit_weight_kn_m3
+        self.grade = grade
 
     # Ecm in kN/m2, the unit the solver works in
     @property

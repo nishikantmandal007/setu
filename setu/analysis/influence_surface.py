@@ -89,6 +89,14 @@ class InfluenceSolver:
         self.backend.solve_with_loads(adjoint_loads)
         return self.surface_from_solved_deck(name)
 
+    # nominal longitudinal steel stress, tension positive: N/A + M(y_NA - y)/I, in MPa
+    def for_girder_stress_mpa(self, name, element, section, y_from_bottom_m):
+        self.check_nothing_else_is_loading_the_model()
+        moment_weight = (section.neutral_axis_from_bottom_m - y_from_bottom_m) / section.strong_axis_inertia_m4 / 1000
+        weighted_dofs = [(N_I, 1 / section.area_m2 / 1000), (moment_dof_for(self.deck.girder_local_axis), moment_weight)]
+        self.backend.solve_with_loads(self.adjoint_loads_for_girder_force(element, weighted_dofs))
+        return self.surface_from_solved_deck(name)
+
     # influence surface of the downward deflection of a node: the deflections under a unit load at that node
     def for_deflection(self, name, node):
         self.check_nothing_else_is_loading_the_model()

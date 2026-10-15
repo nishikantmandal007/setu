@@ -39,12 +39,16 @@ A strip's **name tells Setu what it is**: it must start with `footpath`, `kerb`,
 
 Girders are spaced evenly between the two overhangs.
 
+`Bracing` also accepts optional `steel_grade` and `end_diaphragm_steel_grade` labels. End diaphragms are represented by the end brace lines; all steel members use the entered `Steel` elastic properties.
+
 ## Materials
 
 | Class | Fields |
 |---|---|
 | `Steel` | `elastic_modulus_mpa`, `poissons_ratio`, `unit_weight_kn_m3` |
 | `Concrete` | `elastic_modulus_mpa` (Ecm), `poissons_ratio`, `unit_weight_kn_m3` |
+
+Both materials accept an optional `grade` label, for example `"E350"` or `"M35"`. Labels record the specification and appear in the web verification report; they do not infer E, strength or density. Omitted labels are reported as **Not specified**.
 
 ## Superimposed dead load
 

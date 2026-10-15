@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "setu"
 version = "1.0.0"
 description = "Find the worst legal IRC:6 vehicle placement on a bridge deck."
-requires-python = ">=3.12"
+requires-python = ">=3.12,<3.13"
 dependencies = [
     "numpy==2.5.2",
     "openseespy==3.8.0.0",
