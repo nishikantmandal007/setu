@@ -102,3 +102,19 @@ def test_braking_either_way(braking):
     _, cases = braking
 
     assert [load[1] for load in cases["backwards"].nodal_loads] == pytest.approx([-load[1] for load in cases["forwards"].nodal_loads])
+
+
+@pytest.mark.parametrize("height", [0., 1.2, 2.5])
+def test_custom_braking_height_is_above_deck_top(height):
+    model = build_bridge_model(BRIDGE)
+    cases = braking_load_cases(model, _lanes((5.,)), height_above_deck_m=height)
+    for direction, sign in (("forwards", 1.), ("backwards", -1.)):
+        loads = cases[direction].nodal_loads
+        assert sum(load[1] for load in loads) == pytest.approx(sign * cases.force_kn)
+        assert sum(load[6] for load in loads) == pytest.approx(-sign * cases.force_kn * (height + BRIDGE.deck.thickness_m / 2))
+
+
+@pytest.mark.parametrize("height", [-1., float("nan"), float("inf")])
+def test_invalid_braking_height_is_rejected(height):
+    with pytest.raises(ValueError, match="height_above_deck_m"):
+        braking_load_cases(None, None, height_above_deck_m=height)

@@ -137,3 +137,47 @@ def test_the_seismic_weight_is_the_whole_dead_load(seismic):
     nodal_kn = -sum(fy for _, _, fy, *_ in steel_stage.nodal_loads + wet_slab_load(model).nodal_loads + superimposed_dead_load(model).nodal_loads + surfacing_load(model).nodal_loads)
 
     assert cases.dead_weight_kn == pytest.approx(element_kn + nodal_kn, rel=1e-9)
+
+
+def test_explicit_effective_coefficients_and_full_weight_overrides():
+    model = build_bridge_model(BRIDGE)
+    site = SeismicSite("II", "I", 1., .5, 2., horizontal_coefficient=.1, vertical_coefficient=.05,
+                       dead_weight_kn=1000., live_weight_kn=500.)
+    cases = seismic_load_cases(model, site, ONE_CLASS_A)
+    assert cases.horizontal_coefficient == .1
+    assert cases.vertical_coefficient == .05
+    assert cases.dead_weight_kn == pytest.approx(1000.)
+    assert cases.live_weight_kn == pytest.approx(100.)
+    assert sum(load[1] for load in cases["longitudinal"].nodal_loads) == pytest.approx(100.)
+    assert sum(load[3] for load in cases["transverse"].nodal_loads) == pytest.approx(110.)
+    assert sum(load[2] for load in cases["vertical"].nodal_loads) == pytest.approx(-55.)
+
+
+def test_zero_overrides_are_not_replaced_by_automatic_values():
+    model = build_bridge_model(BRIDGE)
+    site = SeismicSite("IV", "II", 1., .5, 1., horizontal_coefficient=0., vertical_coefficient=0.,
+                       dead_weight_kn=0., live_weight_kn=0.)
+    cases = seismic_load_cases(model, site, ONE_CLASS_A)
+    assert cases.horizontal_coefficient == cases.vertical_coefficient == 0.
+    assert cases.dead_weight_kn == cases.live_weight_kn == 0.
+    assert all(not any(load[1:]) for case in cases.values() for load in case.nodal_loads)
+
+
+def test_custom_live_weight_without_traffic_has_a_defined_distribution():
+    model = build_bridge_model(BRIDGE)
+    site = SeismicSite("II", "I", 1., .5, 1., horizontal_coefficient=.1, dead_weight_kn=0., live_weight_kn=500.)
+    cases = seismic_load_cases(model, site)
+    assert sum(load[3] for load in cases["transverse"].nodal_loads) == pytest.approx(10.)
+    assert cases.live_weight_kn == pytest.approx(100.)
+
+
+def test_vertical_policy_can_be_requested_or_disabled_explicitly():
+    assert SeismicSite("II", "I", 1., .5, 1., include_vertical=True).include_vertical
+    assert not SeismicSite("IV", "I", 1., .5, 1., vertical_coefficient=.1, include_vertical=False).include_vertical
+
+
+@pytest.mark.parametrize("field", ["horizontal_coefficient", "vertical_coefficient", "dead_weight_kn", "live_weight_kn"])
+@pytest.mark.parametrize("value", [-1., float("nan"), float("inf")])
+def test_invalid_seismic_overrides_are_rejected(field, value):
+    with pytest.raises(ValueError, match=field):
+        SeismicSite("IV", "II", 1., .5, 1., **{field: value})

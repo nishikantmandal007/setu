@@ -139,3 +139,13 @@ def test_seismic_is_symmetric_too(results):
     last = results.girders[BRIDGE.girders.count - 1][MAX_MOMENT][SEISMIC_COMBINATION][BIGGER_IS_WORSE].value
 
     assert first == pytest.approx(last, rel=1e-6)
+
+
+def test_high_level_braking_height_reaches_the_live_effect():
+    from setu.models.bridge import BridgeInput, Bracing, MeshSettings
+    bridge = BridgeInput(**{**vars(BRIDGE), "bracing": Bracing("XT", 3, .01), "mesh": MeshSettings(2, 1.5)})
+    zero = girder_design_values(bridge, braking_height_above_deck_m=0.)
+    high = girder_design_values(bridge, braking_height_above_deck_m=3.)
+    differences = [abs(zero.girders[k][SUPPORT_SHEAR][BASIC][SMALLER_IS_WORSE].shares[LIVE]
+                       - high.girders[k][SUPPORT_SHEAR][BASIC][SMALLER_IS_WORSE].shares[LIVE]) for k in zero.girders]
+    assert max(differences) > 1e-3
