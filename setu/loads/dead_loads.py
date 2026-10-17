@@ -56,10 +56,8 @@ def girder_tributary_width_m(model, girder):
 
 # girder self weight as element loads
 def girder_weight_on_the_elements(model):
-    weight_kn_per_m = model.bridge.steel.unit_weight_kn_m3 * model.girder.area_m2
-    down_the_local_y_axis = -weight_kn_per_m
-    along_the_local_z_axis = 0.0
-    return [(element, '-beamUniform', (down_the_local_y_axis, along_the_local_z_axis)) for element in model.girder_elements.values()]
+    return [(element, '-beamUniform', (-model.bridge.steel.unit_weight_kn_m3 * model.girders[k].area_m2, 0.0))
+            for (k, _), element in model.girder_elements.items()]
 
 # SIDL on the composite deck: footpath as an area load, kerb / median / crash barrier / railing as line loads along each strip's centre
 def superimposed_dead_load(model):

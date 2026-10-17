@@ -20,9 +20,10 @@ class SeismicLoadCases(dict):
 
 
 # longitudinal, transverse and (zones IV, V) vertical seismic load cases
-def seismic_load_cases(model, site, live_critical, ops=None):
-    dead_kn = dead_weight_at_nodes(model, ops)
-    live_kn = live_weight_at_nodes(model, live_critical)
+def seismic_load_cases(model, site, live_critical=None, ops=None):
+    dead_kn = override_weight(model, dead_weight_at_nodes(model, ops), site.dead_weight_kn)
+    live_total = None if site.live_weight_kn is None else LIVE_LOAD_SEISMIC_FRACTION * site.live_weight_kn
+    live_kn = override_weight(model, live_weight_at_nodes(model, live_critical), live_total)
     with_live_kn = dict(dead_kn)
     for node, weight_kn in live_kn.items():
         with_live_kn[node] = with_live_kn.get(node, 0.0) + weight_kn
@@ -46,8 +47,8 @@ def dead_weight_at_nodes(model, ops=None):
     on_the_deck = deck_loads(model, lambda z_m: slab_kpa) + superimposed_dead_load(model).nodal_loads + surfacing_load(model).nodal_loads
     for node, _, fy, *_ in on_the_deck:
         weights_kn[node] = weights_kn.get(node, 0.0) - fy
-    girder_kn_per_m = bridge.steel.unit_weight_kn_m3 * model.girder.area_m2
-    for (_, i), node in model.girder_nodes.items():
+    for (k, i), node in model.girder_nodes.items():
+        girder_kn_per_m = bridge.steel.unit_weight_kn_m3 * model.girders[k].area_m2
         weights_kn[node] = weights_kn.get(node, 0.0) + girder_kn_per_m * tributary_length_m(model.mesh.length_mesh_m, i)
     for node, weight_kn in bracing_weight_at_its_ends(ops, model):
         weights_kn[node] = weights_kn.get(node, 0.0) + weight_kn
@@ -58,12 +59,25 @@ def dead_weight_at_nodes(model, ops=None):
 def live_weight_at_nodes(model, live_critical):
     bridge = model.bridge
     shares = {}
+    if live_critical is None:
+        return shares
     for placed in live_critical.vehicles:
         vehicle = find_vehicle_or_its_reverse(placed.vehicle_name)
         for x_front_m in placed.train_x_front_m:
             for x_m, z_m, load_kn in wheels_on_the_span(vehicle, x_front_m, placed.z_centre_m, bridge.span_m, bridge.skew, bridge.wearing_course_thickness_m):
                 share_between_nodes(model, x_m, z_m, LIVE_LOAD_SEISMIC_FRACTION * load_kn, shares)
     return {model.deck_nodes[i, j]: weight_kn for (i, j), weight_kn in shares.items()}
+
+
+# Keep the native mass distribution; without a native weight use tributary deck area.
+def override_weight(model, weights_kn, total_kn):
+    if total_kn is None:
+        return weights_kn
+    current_kn = sum(weights_kn.values())
+    if current_kn:
+        return {node: weight * total_kn / current_kn for node, weight in weights_kn.items()}
+    pressure_kpa = total_kn / (model.bridge.span_m * model.bridge.width_m())
+    return {node: -fy for node, _, fy, *_ in deck_loads(model, lambda _: pressure_kpa)}
 
 
 # coefficient times weight at every node, in one direction

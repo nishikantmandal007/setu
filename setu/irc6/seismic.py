@@ -36,12 +36,17 @@ def spectral_acceleration(period_s, soil):
 
 # Ah = Z/2 x I/R x Sa/g, never below the Table 5.2 minimum
 def horizontal_seismic_coefficient(site):
+    # Overrides are effective force/weight coefficients: R is already included.
+    if site.horizontal_coefficient is not None:
+        return site.horizontal_coefficient
     elastic = zone_factor(site.zone) / ZONE_FACTOR_DIVISOR * site.importance_factor / site.response_reduction
     return max(elastic * spectral_acceleration(site.period_s, site.soil), minimum_horizontal_coefficient(site.zone))
 
 
 # Av with 2/3 of Z; OsdagBridge gives no vertical period, so Sa/g is the Fig. 5.1 note's 2.5
 def vertical_seismic_coefficient(site):
+    if site.vertical_coefficient is not None:
+        return site.vertical_coefficient
     vertical_zone_factor = VERTICAL_ZONE_FACTOR_FRACTION * zone_factor(site.zone)
     return vertical_zone_factor / ZONE_FACTOR_DIVISOR * site.importance_factor / site.response_reduction * SA_OVER_G_WITHOUT_A_PERIOD
 

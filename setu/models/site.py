@@ -1,3 +1,4 @@
+import math
 from setu.irc6.irc_constants import VERTICAL_ALWAYS_IN_ZONES
 
 
@@ -21,17 +22,34 @@ class WindSite:
 
 class SeismicSite:
     # IRC:SP:114 inputs as OsdagBridge gives them: zone, soil, I, T and R
-    def __init__(self, zone, soil, importance_factor, period_s, response_reduction):
+    def __init__(self, zone, soil, importance_factor, period_s, response_reduction, *,
+                 horizontal_coefficient=None, vertical_coefficient=None, dead_weight_kn=None, live_weight_kn=None,
+                 include_vertical=None):
+        for name, value in (("horizontal_coefficient", horizontal_coefficient), ("vertical_coefficient", vertical_coefficient),
+                            ("dead_weight_kn", dead_weight_kn), ("live_weight_kn", live_weight_kn)):
+            if value is not None and (not math.isfinite(value) or value < 0):
+                raise ValueError(f"{name} must be finite and nonnegative, or None for automatic")
+        if include_vertical is not None and not isinstance(include_vertical, bool):
+            raise ValueError("include_vertical must be True, False or None for automatic")
+        if not math.isfinite(response_reduction) or response_reduction <= 0:
+            raise ValueError("response_reduction must be finite and positive")
         self.zone = zone
         self.soil = soil
         self.importance_factor = importance_factor
         self.period_s = period_s
         self.response_reduction = response_reduction
+        self.horizontal_coefficient = horizontal_coefficient
+        self.vertical_coefficient = vertical_coefficient
+        self.dead_weight_kn = dead_weight_kn
+        self.live_weight_kn = live_weight_kn
+        self._include_vertical = include_vertical
 
     # clause 4.2.1: vertical shaking is always taken in zones IV and V
     @property
     def include_vertical(self):
-        return self.zone in VERTICAL_ALWAYS_IN_ZONES
+        if self._include_vertical is not None:
+            return self._include_vertical
+        return self.vertical_coefficient is not None or self.zone in VERTICAL_ALWAYS_IN_ZONES
 
 class TemperatureSite:
     # IRC:6 clause 215 inputs: the site's highest and lowest shade air temperature

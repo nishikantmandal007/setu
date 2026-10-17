@@ -73,19 +73,19 @@ class InfluenceSolver:
         self._model_was_checked = False
 
     # influence surface of a girder's composite moment: steel moment plus axial couple
-    def for_girder_composite_moment(self, name, element):
+    def for_girder_composite_moment(self, name, element, *, end="i"):
         self.check_nothing_else_is_loading_the_model()
         moment_dof = moment_dof_for(self.deck.girder_local_axis)
-        steel_moment_and_axial_couple = [(moment_dof, 1.0), (N_I, self.deck.composite_lever_arm_m)]
-        adjoint_loads = self.adjoint_loads_for_girder_force(element, steel_moment_and_axial_couple)
+        steel_moment_and_axial_couple = [(moment_dof, 1.0), (N_I, self.deck.lever_arm_for_element(element))]
+        adjoint_loads = self.adjoint_loads_for_girder_force(element, steel_moment_and_axial_couple, end=end)
         self.backend.solve_with_loads(adjoint_loads)
         return self.surface_from_solved_deck(name)
 
     # influence surface of a girder's shear
-    def for_girder_shear(self, name, element):
+    def for_girder_shear(self, name, element, *, end="i"):
         self.check_nothing_else_is_loading_the_model()
         response_dof = shear_dof_for(self.deck.girder_local_axis)
-        adjoint_loads = self.adjoint_loads_for_girder_force(element, [(response_dof, 1.0)])
+        adjoint_loads = self.adjoint_loads_for_girder_force(element, [(response_dof, 1.0)], end=end)
         self.backend.solve_with_loads(adjoint_loads)
         return self.surface_from_solved_deck(name)
 
@@ -110,16 +110,20 @@ class InfluenceSolver:
         return self.surface_from_solved_deck(name, bearing_stiffness_kn_per_m)
 
     # the nodal loads whose deflections are the girder force's influence surface
-    def adjoint_loads_for_girder_force(self, element, weighted_dofs):
+    def adjoint_loads_for_girder_force(self, element, weighted_dofs, *, end="i"):
+        if end not in ("i", "j"):
+            raise ValueError("element end must be 'i' or 'j'")
         deck = self.deck
         node_i, node_j = self.backend.element_nodes(element)
         start = np.array(self.backend.node_coordinates(node_i), float)
-        end = np.array(self.backend.node_coordinates(node_j), float)
-        element_length_m = float(np.linalg.norm(end - start))
-        stiffness = beam_stiffness_matrix(element_length_m, deck.girder_section)
+        finish = np.array(self.backend.node_coordinates(node_j), float)
+        element_length_m = float(np.linalg.norm(finish - start))
+        stiffness = beam_stiffness_matrix(element_length_m, deck.section_for_element(element))
         rotation = element_rotation_matrix(deck.girder_local_axis)
-        response_row = sum(weight * stiffness[:, dof] for dof, weight in weighted_dofs)
-        nodal_forces = END_I_FORCE_TO_INTERNAL_FORCE * (rotation.T @ response_row)
+        offset = 0 if end == "i" else 6
+        response_row = sum(weight * stiffness[:, dof + offset] for dof, weight in weighted_dofs)
+        sign = END_I_FORCE_TO_INTERNAL_FORCE if end == "i" else 1.0
+        nodal_forces = sign * (rotation.T @ response_row)
         return [(node_i, nodal_forces[NODE_I_COMPONENTS].tolist()), (node_j, nodal_forces[NODE_J_COMPONENTS].tolist())]
 
     # refuse to start if some other load is still on the model

@@ -1,3 +1,4 @@
+import math
 from setu.irc6.braking import braking_force_kn, wheels_on_the_span
 from setu.irc6.irc_constants import BRAKING_ACTS_ABOVE_ROAD_M
 from setu.irc6.vehicles import find_vehicle_or_its_reverse
@@ -16,7 +17,9 @@ class BrakingLoadCases(dict):
 
 
 # braking force spread over the wheels of the critical position, both directions
-def braking_load_cases(model, critical_position):
+def braking_load_cases(model, critical_position, *, height_above_deck_m=None):
+    if height_above_deck_m is not None and (not math.isfinite(height_above_deck_m) or height_above_deck_m < 0):
+        raise ValueError("braking height_above_deck_m must be finite and nonnegative")
     bridge = model.bridge
     force_kn = braking_force_kn(critical_position, bridge.span_m, bridge.skew)
     wheels = []
@@ -28,7 +31,8 @@ def braking_load_cases(model, critical_position):
     shares = {}
     for x_m, z_m, load_kn in wheels:
         share_between_nodes(model, x_m, z_m, load_kn / weight_kn, shares)
-    above_deck_nodes_m = bridge.deck.thickness_m / 2 + bridge.wearing_course_thickness_m + BRAKING_ACTS_ABOVE_ROAD_M
+    height = bridge.wearing_course_thickness_m + BRAKING_ACTS_ABOVE_ROAD_M if height_above_deck_m is None else height_above_deck_m
+    above_deck_nodes_m = bridge.deck.thickness_m / 2 + height
     cases = {name: along_the_road(model, shares, direction * force_kn, above_deck_nodes_m, f"braking, {name}")
              for name, direction in (("forwards", FORWARDS), ("backwards", BACKWARDS))}
     return BrakingLoadCases(cases, force_kn)

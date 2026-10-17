@@ -31,7 +31,7 @@ def wind_load_cases(model, site):
     span_m = bridge.span_m
     speed_mps, pressure_pa = hourly_mean_wind(site.height_m, site.terrain, site.basic_wind_speed_mps, site.funnelling)
     pressure_kpa = pressure_pa * KPA_PER_PA
-    girder_depth_m = model.girder.depth_m
+    girder_depth_m = max(girder.depth_m for girder in model.girders)
     exposed_area_m2 = site.exposed_area_m2
     if exposed_area_m2 is None:
         exposed_area_m2 = span_m * (girder_depth_m + bridge.deck.thickness_m + site.solid_barrier_height_m)
