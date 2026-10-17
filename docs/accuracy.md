@@ -12,10 +12,17 @@ Tested on a 35 m bridge with five plate girders, a 13.5 m deck and a 0.23 m slab
 
 ## What Setu covers
 
-- Simply supported, single span, steel plate girders with a composite RC deck.
+- Simply supported, single span, steel plate girders with a composite RC deck; individual sections may differ across the width.
 - Un-propped construction.
 - IRC Class A, 70R wheeled and 70R tracked vehicles, footway load, braking, fatigue truck.
 - Wind, seismic (seismic coefficient method), temperature, custom loads.
+
+Different-depth girders share a common top-of-steel level. Automatic wind uses the greatest girder depth
+as the projected depth envelope and as the reference depth for drag and application height. This is an
+idealization, not a general aerodynamic assessment of unequal girders; existing wind area and coefficient
+overrides remain available. Bracing still has one arrangement and area across the model. Per-pair bracing
+and independent end-diaphragm arrangements require a separately supported model, even when an external
+application permits different member-design selections.
 
 ## Known limits, being worked on
 
