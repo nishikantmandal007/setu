@@ -4,7 +4,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-import openseespy.opensees as ops  # noqa: E402
+from setu.solver.backend import log_file  # noqa: E402
 from flask import Flask  # noqa: E402
 
 import routes  # noqa: E402
@@ -18,5 +18,5 @@ def create_app():
 
 
 if __name__ == "__main__":
-    ops.logFile(os.devnull, "-noEcho")
+    log_file(os.devnull)
     create_app().run(port=int(os.environ.get("PORT", 5000)), threaded=True)

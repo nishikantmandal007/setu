@@ -6,8 +6,8 @@ from types import SimpleNamespace
 import setu.postprocess.design_values as design_values
 import setu.postprocess.girder_response as girder_response
 from setu import build_mesh
+from setu.analysis.critical_position import rank_all_positions
 from setu.analysis.influence_surface import InfluenceSolver
-import re
 from setu.models.sections import girder_properties
 from setu.utils.constants import MAX_MOMENT, SUPPORT_SHEAR
 
@@ -94,25 +94,27 @@ class Job:
 # count every call of a setu function against a progress step, without changing setu
 def counted(module, name, step):
     original = getattr(module, name)
+    traffic = name in ("rank_all_positions", "find_critical_position")
 
     # the original call, counted for the running job
     def wrapper(*args, **kwargs):
         job = _running
+        context = {}
         if job is not None:
-            context = {}
             if name == "surface_for":
                 context = {"girder": args[2], "response": args[3][0], "station_m": float(args[1].mesh.length_mesh_m[args[3][1]])}
-            elif name in ("rank_all_positions", "fatigue_range"):
+            elif traffic or name == "fatigue_range":
                 context = {"target": args[0].name}
-            job.phase(step, {"surface_for": "Solving an influence field", "rank_all_positions": "Evaluating traffic layouts",
+            job.phase(step, {"surface_for": "Solving an influence field", "rank_all_positions": "Evaluating traffic layouts", "find_critical_position": "Evaluating traffic layouts",
                             "fatigue_range": "Evaluating a fatigue range", "dead_load_forces": "Solving construction loads"}.get(name, name), **context)
-        if job is not None and name == "rank_all_positions":
+        if job is not None and traffic:
             with search_trace.recording() as record:
-                value = original(*args, **kwargs)
-            job.traces[(args[0].name, args[3])] = (record, value)
+                ranked = original(*args, **kwargs) if name == "rank_all_positions" else rank_all_positions(*args, **kwargs)
+            value = ranked if name == "rank_all_positions" else ranked[0]
+            job.traces[(args[0].name, args[3])] = (record, ranked)
             job.traffic_tick("searches")
             work = job.traffic_work["searches"]
-            job.show(step, search_trace.preview(record, value, args[0].name, progress.response_unit(args[0].name),
+            job.show(step, search_trace.preview(record, ranked, args[0].name, progress.response_unit(args[0].name),
                                                args[3], work["count"], work["of"]))
         else:
             value = original(*args, **kwargs)
@@ -125,7 +127,7 @@ def counted(module, name, step):
                 if name != "dead_load_forces":
                     job.tick(step)
         if job is not None:
-            job.phase(step, {"surface_for": "Solved an influence field", "rank_all_positions": "Searched traffic layouts",
+            job.phase(step, {"surface_for": "Solved an influence field", "rank_all_positions": "Searched traffic layouts", "find_critical_position": "Searched traffic layouts",
                              "fatigue_range": "Evaluated a fatigue range", "dead_load_forces": "Solved construction loads"}.get(name, name), **context)
         return value
     setattr(module, name, wrapper)
@@ -134,6 +136,7 @@ def counted(module, name, step):
 counted(design_values, "dead_load_forces", "Dead load stages")
 counted(design_values, "surface_for", "Influence surfaces")
 counted(design_values, "rank_all_positions", "Searching traffic")
+counted(design_values, "find_critical_position", "Searching traffic")
 counted(design_values, "fatigue_range", "Fatigue truck")
 
 
@@ -142,16 +145,16 @@ _solve_load_case = girder_response.analyze_load_case
 
 
 # publish construction totals before and after each existing solve
-def show_construction_loads(model, load_case, ops, *args, **kwargs):
+def show_construction_loads(model, load_case, *args, **kwargs):
     job = _running if _running is not None and _running.step == "Dead load stages" else None
     if job is not None:
         job.phase("Dead load stages", "Applying " + load_case.name)
-        row = {"name": load_case.name, "total_downward_kn": progress.applied_loads(model, load_case, ops), "solved": False}
+        row = {"name": load_case.name, "total_downward_kn": progress.applied_loads(model, load_case), "solved": False}
         job.construction_loads[load_case.name] = row
         job.show("Dead load stages", {"kind": "loading", "stages": list(job.construction_loads.values())})
-    value = _solve_load_case(model, load_case, ops, *args, **kwargs)
+    value = _solve_load_case(model, load_case, *args, **kwargs)
     if job is not None:
-        job.construction_loads[load_case.name] = {**row, "solved": True}
+        job.construction_loads[load_case.name] = {**job.construction_loads[load_case.name], "solved": True}
         job.tick("Dead load stages")
         job.phase("Dead load stages", "Solved " + load_case.name)
         job.show("Dead load stages", {"kind": "loading", "stages": list(job.construction_loads.values())})
@@ -174,7 +177,7 @@ def observe_deflection_field(self, name, node):
     if job is not None:
         x, _, z = self.backend.node_coordinates(node)
         job.show("Influence surfaces", {"kind": "surface", "surface": progress.surface(value),
-                 "girder": int(re.search(r"girder (\d+)", name).group(1)), "station_m": float(x-self.deck.skew*z)})
+                 "girder": int(name.split(",")[0].removeprefix("girder ")), "station_m": float(x-self.deck.skew*z)})
         job.tick("Influence surfaces")
     return value
 

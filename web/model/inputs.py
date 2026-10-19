@@ -114,9 +114,9 @@ def bridge_from_form(form):
         if isinstance(height, bool) or not isinstance(height, (int, float)) or not math.isfinite(height) or height < 0:
             raise InputError("braking_height_above_deck_m must be finite and nonnegative")
         loads["braking_height_above_deck_m"] = height
-    if loads["wind"] is not None:
+    wind = loads["wind"]
+    if isinstance(wind, WindSite):
         depths = [bridge.girders.section_at(g).depth_m for g in range(bridge.girders.count)]
-        wind = loads["wind"]
         if len(set(depths)) > 1 and any(v is None for v in (wind.drag, wind.exposed_area_m2, wind.force_height_above_deck_m)):
             raise InputError("Unequal-depth wind needs engineer-supplied drag, exposed area and force height; fill all three wind overrides or disable wind.")
     return bridge, loads

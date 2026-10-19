@@ -37,52 +37,52 @@ def observe(module, name, capture):
     def wrapped(*args, **kwargs):
         value = original(*args, **kwargs)
         if _trace is not None:
-            capture(args, value)
+            capture(_trace, args, value)
         return value
     setattr(module, name, wrapped)
 
 
 # retain the exact transverse grid used by all vehicle curves
-def grid(args, value):
-    _trace["z_m"] = value
+def grid(trace, args, value):
+    trace["z_m"] = value
 
 
 # retain each carriageway's envelope and the residual curve evaluated inside it
-def envelope(args, value):
+def envelope(trace, args, value):
     carriageway = args[4]
-    _trace["carriageways"].append(carriageway)
-    _trace["envelopes"].append(value)
+    trace["carriageways"].append(carriageway)
+    trace["envelopes"].append(value)
 
 
 # residual UDL belongs to this carriageway, rather than to every Class A envelope
-def residual(args, value):
-    _trace["residuals"][id(args[2])] = value
+def residual(trace, args, value):
+    trace["residuals"][id(args[2])] = value
 
 
 # retain placement objects so each chosen case can be matched by identity
-def placements(args, value):
-    _trace["placements"] = value
+def placements(trace, args, value):
+    trace["placements"] = value
 
 
 # retain the footway response evaluated by setu
-def footway(args, value):
-    _trace["footway"] = value
+def footway(trace, args, value):
+    trace["footway"] = value
 
 
 # start the arrangement when setu has found a layout that fits
-def offsets(args, value):
-    _trace["arrangements"][-1].append({"offsets_m": value, "blocks": []})
+def offsets(trace, args, value):
+    trace["arrangements"][-1].append({"offsets_m": value, "blocks": []})
 
 
 # each block's response and vehicle centres at every tested offset
-def block(args, value):
-    _trace["arrangements"][-1][-1]["blocks"].append(
+def block(trace, args, value):
+    trace["arrangements"][-1][-1]["blocks"].append(
         {"block": args[0], "values": value[0], "centres_m": value[1]})
 
 
 # retain the dynamic program's chosen offset for each block
-def chosen(args, value):
-    _trace["arrangements"][-1][-1].update(response_before_reduction=value[0], chosen=value[1])
+def chosen(trace, args, value):
+    trace["arrangements"][-1][-1].update(response_before_reduction=value[0], chosen=value[1])
 
 
 _cases = across_carriageway.cases_for_one_carriageway
@@ -90,20 +90,21 @@ _cases = across_carriageway.cases_for_one_carriageway
 
 # the returned cases map one to one to arrangements recorded inside this call
 def cases_for_one_carriageway(*args, **kwargs):
-    if _trace is None:
+    trace = _trace
+    if trace is None:
         return _cases(*args, **kwargs)
-    _trace["arrangements"].append([])
+    trace["arrangements"].append([])
     value = _cases(*args, **kwargs)
-    _trace["cases"].append(value)
-    for arrangement, case in zip(_trace["arrangements"][-1], value, strict=True):
+    trace["cases"].append(value)
+    for arrangement, case in zip(trace["arrangements"][-1], value, strict=True):
         arrangement.update(lane_pattern=case.lane_pattern, design_lanes=case.design_lanes,
                            lane_reduction=case.lane_reduction)
     return value
 
 
 # pick original indices for display, keeping all train positions and exact extrema
-def train(args, worst):
-    self, vehicle, responses, x_m, adverse = args
+def train(trace, args, worst):
+    self, vehicle, responses, x_m, _ = args
     if responses.shape[1] <= 1:
         return
     along = np.unique(np.linspace(0, len(x_m)-1, min(120, len(x_m))).round().astype(int))
@@ -114,7 +115,7 @@ def train(args, worst):
         assert np.array_equal(x_m[indices], positions)
         ordinates.append(responses[indices, j])
     factor = impact_factor(class_of(vehicle), self.span_m)
-    _trace["vehicles"].append({"key": vehicle.name, "name": vehicle.name.removesuffix("_reversed").replace("_", " "),
+    trace["vehicles"].append({"key": vehicle.name, "name": vehicle.name.removesuffix("_reversed").replace("_", " "),
                                "heading": drawing.heading_of(vehicle.name), "impact_factor": float(factor),
                                "pitch_m": float(pitch_between_vehicles_m(vehicle)),
                                "x_m": x_m[along], "x_index": along, "z_index": across,

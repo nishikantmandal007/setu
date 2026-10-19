@@ -67,7 +67,7 @@ def deck_drawing(bridge, results):
 def along_girders(forces):
     return {girder: {"m": np.round(f.composite_moment_kn_m, 2).tolist(), "v": np.round(f.shear_kn, 2).tolist(),
                      "d": np.round(1000 * f.deflection_m, 3).tolist(), "r": round(f.reaction_kn, 2),
-                     "r_end": None if f.end_reaction_kn is None else round(f.end_reaction_kn, 2)} for girder, f in forces.items()}
+                     "r_end": round(f.end_reaction_kn, 2)} for girder, f in forces.items()}
 
 
 # moment, shear and deflection along every girder for each dead stage and each critical live load (the live ones solved in OpenSees)

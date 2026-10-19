@@ -1,6 +1,7 @@
 """JSON previews of completed analysis operations; no extra solver runs."""
 
 import numpy as np
+from setu.solver import backend
 
 from setu.irc6.irc_constants import FATIGUE_TRUCK_AXLE_LOADS_T, FATIGUE_TRUCK_AXLE_SPACING_M, FATIGUE_TRUCK_OVERALL_WIDTH_M, FATIGUE_TRUCK_TYRE_PAIR_WIDTH_M
 from setu.utils.constants import MAX_MOMENT, MIDSPAN_DEFLECTION, SUPPORT_SHEAR, BEARING_REACTION
@@ -85,10 +86,10 @@ def completed(name, value, args):
 
 
 # total downward load in the exact construction case
-def applied_loads(model, load_case, ops):
+def applied_loads(model, load_case):
     total = sum(-fy for _, _, fy, *_ in load_case.nodal_loads)
     for element, kind, parameters in load_case.element_loads:
         if kind == "-beamUniform":
-            ends = [ops.nodeCoord(node) for node in ops.eleNodes(element)]
+            ends = [backend.node_coordinates(node) for node in backend.element_nodes(element)]
             total -= parameters[0] * float(np.linalg.norm(np.subtract(*ends)))
     return float(total)

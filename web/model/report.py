@@ -69,7 +69,7 @@ def dead_loads(bridge, results):
 
 # wind, seismic and temperature: the numbers behind them and what they add; None for a load left out
 def site_loads(loads, results, wind):
-    site = {"wind": None, "seismic": None, "temperature": None}
+    site: dict[str, dict | None] = {"wind": None, "seismic": None, "temperature": None}
     if wind is not None:
         site["wind"] = {"basic_speed_mps": loads["wind"].basic_wind_speed_mps, "speed_at_deck_mps": wind.speed_at_deck_mps, "forces_kn": wind.forces_kn}
     if loads["seismic"] is not None:
