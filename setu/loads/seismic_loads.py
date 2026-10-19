@@ -1,5 +1,5 @@
+from functools import lru_cache
 from setu.builder.mesh import tributary_length_m
-from setu.helpers import import_opensees
 from setu.irc6.braking import wheels_on_the_span
 from setu.irc6.irc_constants import LIVE_LOAD_SEISMIC_FRACTION
 from setu.irc6.seismic import horizontal_seismic_coefficient, vertical_seismic_coefficient
@@ -20,8 +20,8 @@ class SeismicLoadCases(dict):
 
 
 # longitudinal, transverse and (zones IV, V) vertical seismic load cases
-def seismic_load_cases(model, site, live_critical=None, ops=None):
-    dead_kn = override_weight(model, dead_weight_at_nodes(model, ops), site.dead_weight_kn)
+def seismic_load_cases(model, site, live_critical=None):
+    dead_kn = override_weight(model, dead_weight_at_nodes(model), site.dead_weight_kn)
     live_total = None if site.live_weight_kn is None else LIVE_LOAD_SEISMIC_FRACTION * site.live_weight_kn
     live_kn = override_weight(model, live_weight_at_nodes(model, live_critical), live_total)
     with_live_kn = dict(dead_kn)
@@ -38,9 +38,9 @@ def seismic_load_cases(model, site, live_critical=None, ops=None):
     return SeismicLoadCases(cases, sum(dead_kn.values()), sum(live_kn.values()), ah, av)
 
 
-# the whole dead weight lumped at the nodes: slab, SIDL, surfacing, girders and bracing
-def dead_weight_at_nodes(model, ops=None):
-    ops = import_opensees() if ops is None else ops
+# the whole dead weight lumped at the nodes: slab, SIDL, surfacing, girders and bracing; worked out once per model and only read after
+@lru_cache(maxsize=2)
+def dead_weight_at_nodes(model):
     bridge = model.bridge
     slab_kpa = bridge.concrete.unit_weight_kn_m3 * bridge.deck.thickness_m
     weights_kn = {}
@@ -50,7 +50,7 @@ def dead_weight_at_nodes(model, ops=None):
     for (k, i), node in model.girder_nodes.items():
         girder_kn_per_m = bridge.steel.unit_weight_kn_m3 * model.girders[k].area_m2
         weights_kn[node] = weights_kn.get(node, 0.0) + girder_kn_per_m * tributary_length_m(model.mesh.length_mesh_m, i)
-    for node, weight_kn in bracing_weight_at_its_ends(ops, model):
+    for node, weight_kn in bracing_weight_at_its_ends(model):
         weights_kn[node] = weights_kn.get(node, 0.0) + weight_kn
     return weights_kn
 
