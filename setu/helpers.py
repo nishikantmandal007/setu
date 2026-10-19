@@ -1,6 +1,5 @@
 import logging
 import numpy as np
-from setu.errors import BackendError
 from setu.utils.constants import BIGGER_IS_WORSE, SMALLER_IS_WORSE
 
 
@@ -72,10 +71,3 @@ def report(title, rows):
         log.info(f"{label:<{label_width}} = {value}")
     log.info(rule)
 
-# openseespy, or a clear error if it isn't installed
-def import_opensees():
-    try:
-        import openseespy.opensees as ops
-        return ops
-    except ImportError as e:
-        raise BackendError("openseespy is not installed") from e

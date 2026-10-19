@@ -15,6 +15,12 @@ class FatigueRange:
         self.x_front_at_largest_m = x_front_at_largest_m
         self.x_front_at_smallest_m = x_front_at_smallest_m
         self.impact_factor = impact_factor
+        self.at_m = None
+
+    # record the station of the design section this range was found for
+    def located_at(self, at_m):
+        self.at_m = at_m
+        return self
 
 
 # clause 204.6: run the truck along every line it may take on each carriageway; the range of one pass (0 when it is off

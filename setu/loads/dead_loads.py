@@ -1,5 +1,5 @@
 import numpy as np
-from setu.helpers import import_opensees
+from setu.solver import backend
 from setu.builder.mesh import tributary_length_m
 from setu.loads.load_builders import as_a_load_case, share_between_nodes
 from setu.loads.load_cases import LoadCase
@@ -16,23 +16,22 @@ def downward_force(load_kn):
     return (force_x, force_y, force_z, moment_x, moment_y, moment_z)
 
 # half of each brace member's weight at each end
-def bracing_weight_at_its_ends(ops, model):
+def bracing_weight_at_its_ends(model):
     unit_weight_kn_m3 = model.bridge.steel.unit_weight_kn_m3
     area_m2 = model.bridge.bracing.area_m2
     ends = []
     for element in model.brace_elements.values():
-        start, end = ops.eleNodes(element)
-        start_m = np.array(ops.nodeCoord(start))
-        end_m = np.array(ops.nodeCoord(end))
+        start, end = backend.element_nodes(element)
+        start_m = np.array(backend.node_coordinates(start))
+        end_m = np.array(backend.node_coordinates(end))
         length_m = float(np.linalg.norm(end_m - start_m))
         half_of_it_kn = area_m2 * unit_weight_kn_m3 * length_m / 2
         ends += [(start, half_of_it_kn), (end, half_of_it_kn)]
     return ends
 
 # construction stage 1 on the bare steel: girder and bracing self weight
-def steel_self_weight_load(model, ops=None):
-    ops = import_opensees() if ops is None else ops
-    nodal_loads = [(node, *downward_force(load_kn)) for node, load_kn in bracing_weight_at_its_ends(ops, model)]
+def steel_self_weight_load(model):
+    nodal_loads = [(node, *downward_force(load_kn)) for node, load_kn in bracing_weight_at_its_ends(model)]
     return LoadCase(name='steel self weight', nodal_loads=nodal_loads, element_loads=girder_weight_on_the_elements(model))
 
 # construction stage 2 on the bare steel: the wet slab, each girder carrying its share of the deck width

@@ -1,8 +1,5 @@
 import numpy as np
-from setu.errors import BackendError, OtherLoadsStillActiveError
-from setu.solver.backend import configure_linear_static
-from setu.loads.load_cases import apply_load_case
-from setu.helpers import import_opensees
+from setu.solver import backend
 from setu.postprocess.result_dataset import merge_datasets, result_dataset
 from setu.builder.assembly import BEARING_VERTICAL_STIFFNESS_KN_PER_M, VERTICAL_DOF, build_bridge_model
 from setu.loads.dead_loads import steel_self_weight_load, superimposed_dead_load, surfacing_load, wet_slab_load
@@ -27,9 +24,8 @@ from setu.utils.constants import (
 
 class GirderForces:
 
-    # one girder's internal forces and downward deflection along it, and the reaction on its bearing at x = 0
-    def __init__(self, stations_m, moment_kn_m, shear_kn, torsion_kn_m, axial_kn, composite_lever_arm_m, deflection_m, reaction_kn,
-                 *, end_reaction_kn=None):
+    # one girder's internal forces and downward deflection along it, and the reactions on its bearings at x = 0 and at the far end
+    def __init__(self, stations_m, moment_kn_m, shear_kn, torsion_kn_m, axial_kn, composite_lever_arm_m, deflection_m, reaction_kn, end_reaction_kn):
         self.stations_m = np.asarray(stations_m, float)
         self.moment_kn_m = np.asarray(moment_kn_m, float)
         self.shear_kn = np.asarray(shear_kn, float)
@@ -38,7 +34,7 @@ class GirderForces:
         self.composite_lever_arm_m = composite_lever_arm_m
         self.deflection_m = np.asarray(deflection_m, float)
         self.reaction_kn = float(reaction_kn)
-        self.end_reaction_kn = None if end_reaction_kn is None else float(end_reaction_kn)
+        self.end_reaction_kn = float(end_reaction_kn)
 
     # steel moment plus the axial couple about the slab
     @property
@@ -47,7 +43,7 @@ class GirderForces:
 
 
 # read one girder's forces, deflection and bearing reaction off the solved model
-def girder_forces(model, girder_index, ops):
+def girder_forces(model, girder_index):
     n_stations = model.mesh.stations_along_span
     n_elements = n_stations - 1
     stations_m = np.array(model.mesh.length_mesh_m, float)
@@ -56,7 +52,7 @@ def girder_forces(model, girder_index, ops):
     torsion = np.zeros(n_stations)
     axial = np.zeros(n_stations)
     for e in range(n_elements):
-        f = ops.eleResponse(model.girder_elements[girder_index, e], "localForce")
+        f = backend.element_local_forces(model.girder_elements[girder_index, e])
         axial[e] = END_I_FORCE_TO_INTERNAL_FORCE * f[N_I]
         shear[e] = END_I_FORCE_TO_INTERNAL_FORCE * f[VY_I]
         torsion[e] = END_I_FORCE_TO_INTERNAL_FORCE * f[T_I]
@@ -66,51 +62,31 @@ def girder_forces(model, girder_index, ops):
             shear[e + 1] = f[VY_J]
             torsion[e + 1] = f[T_J]
             moment[e + 1] = f[MZ_J]
-    deflection_m = [-ops.nodeDisp(model.girder_nodes[girder_index, i], VERTICAL_DOF) for i in range(n_stations)]
-    reaction_kn = -BEARING_VERTICAL_STIFFNESS_KN_PER_M * ops.nodeDisp(model.bearings[girder_index, 0], VERTICAL_DOF)
-    end_reaction_kn = -BEARING_VERTICAL_STIFFNESS_KN_PER_M * ops.nodeDisp(model.bearings[girder_index, n_stations - 1], VERTICAL_DOF)
+    deflection_m = [-backend.node_displacement(model.girder_nodes[girder_index, i], VERTICAL_DOF) for i in range(n_stations)]
+    reaction_kn = -BEARING_VERTICAL_STIFFNESS_KN_PER_M * backend.node_displacement(model.bearings[girder_index, 0], VERTICAL_DOF)
+    end_reaction_kn = -BEARING_VERTICAL_STIFFNESS_KN_PER_M * backend.node_displacement(model.bearings[girder_index, n_stations - 1], VERTICAL_DOF)
     return GirderForces(stations_m, moment, shear, torsion, axial, model.composite_lever_arm_m(girder_index), deflection_m, reaction_kn,
                         end_reaction_kn=end_reaction_kn)
 
 # Upward vertical spring reactions, keyed by (girder index, bearing station index).
-def bearing_reactions(model, ops):
-    return {key: -BEARING_VERTICAL_STIFFNESS_KN_PER_M * ops.nodeDisp(node, VERTICAL_DOF)
+def bearing_reactions(model):
+    return {key: -BEARING_VERTICAL_STIFFNESS_KN_PER_M * backend.node_displacement(node, VERTICAL_DOF)
             for key, node in model.bearings.items()}
 
 
 # Axial truss force in kN, tension positive, keyed by (girder pair index, station index, role).
-def brace_forces(model, ops):
-    return {key: float(ops.eleResponse(element, "axialForce")[0]) for key, element in model.brace_elements.items()}
+def brace_forces(model):
+    return {key: backend.truss_axial_force(element) for key, element in model.brace_elements.items()}
 
 
 # solve one load case and read every girder's forces
-def analyze_load_case(model, load_case, ops, pattern_tag=None, *, on_solved=None):
+def analyze_load_case(model, load_case, pattern_tag=None, *, on_solved=None):
     tag = pattern_tag if pattern_tag is not None else LOAD_CASE_PATTERN_BASE
-    already_loading = ops.getPatterns()
-    if already_loading:
-        raise OtherLoadsStillActiveError(f"load patterns {already_loading} are still on the model, so they would be added into {load_case.name!r}. Remove them, or combine them into this load case, first.")
-    ops.reset()
-    ops.setTime(0.0)
-    try:
-        apply_load_case(load_case, ops, pattern_tag=tag)
-        if not getattr(model, "analysis_is_set_up", False):
-            configure_linear_static(ops)
-            model.analysis_is_set_up = True
-        status = ops.analyze(1)
-        if status != 0:
-            raise BackendError(f"analysis of {load_case.name!r} failed with OpenSees status {status}")
-        forces = {k: girder_forces(model, k, ops) for k in range(model.bridge.girders.count)}
+    with backend.solved(load_case.nodal_loads, load_case.element_loads, pattern=tag):
+        forces = {k: girder_forces(model, k) for k in range(model.bridge.girders.count)}
         if on_solved is not None:
             on_solved(forces)
         return forces
-    except Exception:
-        model.analysis_is_set_up = False
-        ops.reset()
-        ops.setTime(0.0)
-        raise
-    finally:
-        ops.remove("loadPattern", tag)
-        ops.remove("timeSeries", tag)
 
 
 STEEL_SELF_WEIGHT = "steel self weight"
@@ -121,10 +97,11 @@ STAGE_IS_FACTORED_AS = {STEEL_SELF_WEIGHT: DEAD, WET_SLAB: DEAD, SUPERIMPOSED: D
 
 
 class DeadLoadForces:
-    # girder forces from each dead load stage, their total, and every stage's element forces and displacements for OsdagBridge
-    def __init__(self, stages, dataset):
+    # girder and brace forces from each dead load stage, their total, and every stage's element forces and displacements for OsdagBridge
+    def __init__(self, stages, dataset, brace_stages):
         self.stages = stages
         self.dataset = dataset
+        self.brace_stages = brace_stages
         self.total = self.factored({DEAD: 1.0, SURFACING: 1.0})
 
     # stages added up, each with its dead or surfacing factor
@@ -136,8 +113,7 @@ class DeadLoadForces:
 # girder forces times a factor
 def scaled(forces, factor):
     return GirderForces(forces.stations_m, factor * forces.moment_kn_m, factor * forces.shear_kn, factor * forces.torsion_kn_m, factor * forces.axial_kn,
-                        forces.composite_lever_arm_m, factor * forces.deflection_m, factor * forces.reaction_kn,
-                        end_reaction_kn=None if forces.end_reaction_kn is None else factor * forces.end_reaction_kn)
+                        forces.composite_lever_arm_m, factor * forces.deflection_m, factor * forces.reaction_kn, factor * forces.end_reaction_kn)
 
 
 # girder forces added up
@@ -153,21 +129,23 @@ def sum_of(girder_forces):
         first.composite_lever_arm_m,
         sum(forces.deflection_m for forces in girder_forces),
         sum(forces.reaction_kn for forces in girder_forces),
-        end_reaction_kn=sum(forces.end_reaction_kn for forces in girder_forces) if all(forces.end_reaction_kn is not None for forces in girder_forces) else None,
+        sum(forces.end_reaction_kn for forces in girder_forces),
     )
 
 
 # un-propped dead load: girders and bracing, then the wet slab, on the bare steel; then SIDL and surfacing on the long-term composite deck
-def dead_load_forces(bridge, ops=None):
-    ops = import_opensees() if ops is None else ops
+def dead_load_forces(bridge):
     stages = {}
+    brace_stages = {}
     datasets = []
-    steel = build_bridge_model(bridge, ops, composite=False)
-    for name, load_case in ((STEEL_SELF_WEIGHT, steel_self_weight_load(steel, ops)), (WET_SLAB, wet_slab_load(steel))):
-        stages[name] = analyze_load_case(steel, load_case, ops)
-        datasets.append(result_dataset(steel, ops, f"dead, {name}"))
-    composite = build_bridge_model(bridge, ops, load_duration=LONG_TERM)
+    steel = build_bridge_model(bridge, composite=False)
+    for name, load_case in ((STEEL_SELF_WEIGHT, steel_self_weight_load(steel)), (WET_SLAB, wet_slab_load(steel))):
+        stages[name] = analyze_load_case(steel, load_case)
+        brace_stages[name] = brace_forces(steel)
+        datasets.append(result_dataset(steel, f"dead, {name}"))
+    composite = build_bridge_model(bridge, load_duration=LONG_TERM)
     for name, load_case in ((SUPERIMPOSED, superimposed_dead_load(composite)), (SURFACING_STAGE, surfacing_load(composite))):
-        stages[name] = analyze_load_case(composite, load_case, ops)
-        datasets.append(result_dataset(composite, ops, f"dead, {name}"))
-    return DeadLoadForces(stages, merge_datasets(datasets))
+        stages[name] = analyze_load_case(composite, load_case)
+        brace_stages[name] = brace_forces(composite)
+        datasets.append(result_dataset(composite, f"dead, {name}"))
+    return DeadLoadForces(stages, merge_datasets(datasets), brace_stages=brace_stages)
