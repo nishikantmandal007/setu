@@ -1,9 +1,9 @@
 import copy
 import itertools
 
-from setu.analysis.critical_position import rank_all_positions
+from setu.analysis.critical_position import find_critical_position, rank_all_positions
 from setu.analysis.fatigue import fatigue_range
-from setu.helpers import DEFAULT_SAMPLING, adverse_sign, import_opensees
+from setu.helpers import DEFAULT_SAMPLING, adverse_sign
 from setu.analysis.influence_surface import InfluenceSolver, response_to_load_case
 from setu.builder.assembly import BEARING_VERTICAL_STIFFNESS_KN_PER_M, build_bridge_model
 from setu.irc6.combinations import design_value, irc6_combinations
@@ -11,7 +11,6 @@ from setu.irc6.seismic import combine_directions
 from setu.irc6.temperature import effective_temperature_range, temperature_difference_profiles
 from setu.loads.braking_loads import braking_load_cases
 from setu.loads.custom_loads import custom_load_cases
-from setu.loads.load_builders import applied_live_loads
 from setu.loads.load_cases import LoadCase
 from setu.loads.seismic_loads import seismic_load_cases
 from setu.loads.wind_loads import wind_load_cases
@@ -57,9 +56,10 @@ class GoverningValue:
 
 class DesignValues:
     # design values for every girder, response and limit state, plus the dead load by stage, deflections, fatigue ranges,
-    # the live shear range, temperature, and the surfaces, critical positions and stations behind the live load
+    # the live shear range, temperature, the surfaces, critical positions and stations behind the live load, and the surface
+    # and critical position at every design place
     def __init__(self, girders, dead, deflections, fatigue, live_shear_range_kn, thermal, surfaces, criticals, stations,
-                 fatigue_stresses_mpa=None, combinations=None, braking=None):
+                 fatigue_stresses_mpa, combinations, braking, place_surfaces, place_criticals):
         self.girders = girders
         self.dead = dead
         self.deflections = deflections
@@ -71,21 +71,67 @@ class DesignValues:
         self.stations = stations
         self.fatigue_stresses_mpa = fatigue_stresses_mpa
         self.combinations = combinations
-        self.braking = braking or {}
+        self.braking = braking
+        self.place_surfaces = place_surfaces
+        self.place_criticals = place_criticals
 
     # the girder with the biggest value for this response and limit state
     def governing(self, response, limit_state, adverse):
         return max(((girder, by_response[response][limit_state][adverse]) for girder, by_response in self.girders.items()), key=lambda pair: abs(pair[1].value))
 
 
-# every load on every girder, combined per IRC:6 Annex B, at every place a design value is read
-def girder_design_values(bridge, wind=None, seismic=None, temperature=None, custom_loads=(), custom_combinations=(), ops=None,
-                         *, braking_height_above_deck_m=None):
-    ops = import_opensees() if ops is None else ops
-    dead = dead_load_forces(bridge, ops)
-    model = build_bridge_model(bridge, ops)
-    girders = range(bridge.girders.count)
+class SharedAnalysis:
+    # what girder and brace design values both read, built once: dead load stages, the composite model and its influence solver,
+    # the wind and custom load cases, and the combinations
+    def __init__(self, dead, model, solver, wind_cases, custom_forces, combinations):
+        self.dead = dead
+        self.model = model
+        self.solver = solver
+        self.wind_forces = dict(wind_cases or {})
+        self.custom_forces = custom_forces
+        self.combinations = combinations
+
+
+# solve the dead load stages, build the composite model and its solver, and make the wind and custom load cases once
+def shared_analysis(bridge, wind, custom_loads, custom_combinations):
+    dead = dead_load_forces(bridge)
+    model = build_bridge_model(bridge)
     solver = InfluenceSolver(model.as_deck_model())
+    wind_cases = wind_load_cases(model, wind) if wind is not None else None
+    custom_forces = custom_load_cases(model, custom_loads)
+    combinations = irc6_combinations(wind_cases.speed_at_deck_mps if wind_cases is not None else None) + list(custom_combinations)
+    return SharedAnalysis(dead, model, solver, wind_cases, custom_forces, combinations)
+
+
+# unfactored effects of every active load group on one target, a girder place or a brace member, read as read(forces, *target);
+# braking details are kept under (*target_key, adverse)
+def load_effects(analysis, dead_stages, live, read, target, target_key, seismic, braking_height_above_deck_m, braking):
+    effects = {
+        DEAD: sum(read(dead_stages[stage], *target) for stage in dead_stages if STAGE_IS_FACTORED_AS[stage] == DEAD),
+        SURFACING: sum(read(dead_stages[stage], *target) for stage in dead_stages if STAGE_IS_FACTORED_AS[stage] == SURFACING),
+        LIVE: [live_with_braking(analysis.model, live[adverse], read, *target, height_above_deck_m=braking_height_above_deck_m,
+                                 details=braking.setdefault((*target_key, adverse), {})) for adverse in BOTH_DIRECTIONS],
+    }
+    if analysis.wind_forces:
+        effects[WIND] = wind_alternatives(analysis.wind_forces, read, *target, with_the_live_load=False)
+    if seismic is not None:
+        own = seismic_load_cases(analysis.model, seismic, live[BIGGER_IS_WORSE])
+        effects[SEISMIC] = combine_directions(*[read(own[name], *target) for name in ("longitudinal", "transverse", "vertical") if name in own])
+    for group, forces in analysis.custom_forces.items():
+        effects[group] = add_to(effects.get(group, NO_EFFECT), read(forces, *target))
+    return effects
+
+
+# every load on every girder, combined per IRC:6 Annex B, at every place a design value is read
+def girder_design_values(bridge, wind=None, seismic=None, temperature=None, custom_loads=(), custom_combinations=(),
+                         *, braking_height_above_deck_m=None):
+    return girder_values(shared_analysis(bridge, wind, custom_loads, custom_combinations), bridge, seismic, temperature, braking_height_above_deck_m)
+
+
+# girder design values from an analysis already set up
+def girder_values(analysis, bridge, seismic, temperature, braking_height_above_deck_m):
+    dead, model, solver = analysis.dead, analysis.model, analysis.solver
+    girders = range(bridge.girders.count)
     places = places_to_design(model)
     surfaces = {(girder, place): surface_for(solver, model, girder, place) for girder in girders for place in places}
     deflection_surfaces = {girder: solver.for_deflection(f"girder {girder}, {MIDSPAN_DEFLECTION}", midspan_deck_node_over(model, girder)) for girder in girders}
@@ -94,30 +140,15 @@ def girder_design_values(bridge, wind=None, seismic=None, temperature=None, cust
     def search(surface, adverse):
         return rank_all_positions(surface, bridge.cross_section, bridge.span_m, adverse, bridge.wearing_course_thickness_m)
 
-    live = {(girder, place, adverse): search(surfaces[girder, place], adverse)[0] for girder in girders for place in places for adverse in BOTH_DIRECTIONS}
+    live = {(girder, place, adverse): find_critical_position(surfaces[girder, place], bridge.cross_section, bridge.span_m, adverse, bridge.wearing_course_thickness_m) for girder in girders for place in places for adverse in BOTH_DIRECTIONS}
     read = reader(surfaces)
-    wind_cases = wind_load_cases(model, wind) if wind is not None else None
-    wind_forces = dict(wind_cases or {})
-    custom_forces = custom_load_cases(model, custom_loads)
-    combinations = irc6_combinations(wind_cases.speed_at_deck_mps if wind_cases is not None else None) + list(custom_combinations)
     by_place, combinations_at_place, braking = {}, {}, {}
     for girder in girders:
         for place in places:
-            effects = {
-                DEAD: sum(read(dead.stages[stage], girder, place) for stage in dead.stages if STAGE_IS_FACTORED_AS[stage] == DEAD),
-                SURFACING: sum(read(dead.stages[stage], girder, place) for stage in dead.stages if STAGE_IS_FACTORED_AS[stage] == SURFACING),
-                LIVE: [live_with_braking(model, live[girder, place, adverse], read, girder, place,
-                                        height_above_deck_m=braking_height_above_deck_m,
-                                        details=braking.setdefault((girder, place, adverse), {})) for adverse in BOTH_DIRECTIONS],
-            }
-            if wind_forces:
-                effects[WIND] = wind_alternatives(wind_forces, read, girder, place, with_the_live_load=False)
-            if seismic is not None:
-                own = seismic_load_cases(model, seismic, live[girder, place, BIGGER_IS_WORSE], ops)
-                effects[SEISMIC] = combine_directions(*[read(own[name], girder, place) for name in ("longitudinal", "transverse", "vertical") if name in own])
-            for group, forces in custom_forces.items():
-                effects[group] = add_to(effects.get(group, NO_EFFECT), read(forces, girder, place))
-            by_place[girder, place], combinations_at_place[girder, place] = governing_by_limit_state(effects, combinations, wind_forces, read, girder, place, model.mesh.length_mesh_m[place[1]])
+            effects = load_effects(analysis, dead.stages, {adverse: live[girder, place, adverse] for adverse in BOTH_DIRECTIONS}, read,
+                                   (girder, place), (girder, place), seismic, braking_height_above_deck_m, braking)
+            by_place[girder, place], combinations_at_place[girder, place] = governing_by_limit_state(
+                effects, analysis.combinations, analysis.wind_forces, read, girder, place, model.mesh.length_mesh_m[place[1]])
     results = {girder: {response: worst_over_places([by_place[girder, place] for place in places if place[0] == response]) for response in RESPONSES} for girder in girders}
     combined = {girder: {response: worst_over_places([combinations_at_place[girder, place] for place in places if place[0] == response]) for response in RESPONSES} for girder in girders}
     surfaces_out, criticals, stations = worst_live_places(live, surfaces, places, girders)
@@ -133,7 +164,7 @@ def girder_design_values(bridge, wind=None, seismic=None, temperature=None, cust
                                      for place in places if place[0] == SUPPORT_SHEAR)
                            for girder in girders}
     return DesignValues(results, dead, deflections, fatigue, live_shear_range_kn, thermal_results(bridge, temperature), surfaces_out, criticals, stations,
-                        fatigue_stresses, combined, braking)
+                        fatigue_stresses, combined, braking, surfaces, live)
 
 
 # (response, station) of every place a design value is read; unequal girders check both ends
@@ -228,8 +259,7 @@ def fatigue_ranges(surfaces, girder, places, bridge, model):
     for response in (MAX_MOMENT, SUPPORT_SHEAR):
         found = [(fatigue_range(surfaces[girder, place], bridge.cross_section, bridge.span_m, DEFAULT_SAMPLING), place) for place in places if place[0] == response]
         worst, place = max(found, key=lambda pair: pair[0].range)
-        worst.at_m = float(model.mesh.length_mesh_m[place[1]])
-        ranges[response] = worst
+        ranges[response] = worst.located_at(float(model.mesh.length_mesh_m[place[1]]))
     return ranges
 
 
@@ -244,8 +274,7 @@ def fatigue_stress_ranges(solver, girder, places, bridge, model):
                 continue
             surface = solver.for_girder_stress_mpa(f"girder {girder}, {face} stress at {model.mesh.length_mesh_m[station]:.3f} m", model.element_of_girder_at(girder, station), section, y_m)
             stress = fatigue_range(surface, bridge.cross_section, bridge.span_m, DEFAULT_SAMPLING)
-            stress.at_m = float(model.mesh.length_mesh_m[station])
-            found.append(stress)
+            found.append(stress.located_at(float(model.mesh.length_mesh_m[station])))
         ranges[face] = max(found, key=lambda stress: stress.range)
     return ranges
 
@@ -255,7 +284,7 @@ def live_with_braking(model, critical, read, girder, place, *, height_above_deck
     cases = braking_load_cases(model, critical, height_above_deck_m=height_above_deck_m)
     responses = {name: read(case, girder, place) for name, case in cases.items()}
     choose = max if critical.adverse == BIGGER_IS_WORSE else min
-    direction = choose(responses, key=responses.get)
+    direction = choose(responses, key=lambda name: responses[name])
     combined = critical.response + responses[direction]
     if details is not None:
         details.update(cases=cases, responses=responses, selected=direction, live=critical.response, combined=combined)
@@ -281,13 +310,19 @@ def add_to(effect, extra):
     return effect + extra
 
 
+# the effects one combination takes at one place: with live load and wind together, wind on the vehicles too
+def effects_in(combination, effects, wind_forces, read, girder, place):
+    in_this_combination = dict(effects)
+    if wind_forces and LIVE in combination.factors and WIND in combination.factors:
+        in_this_combination[WIND] = wind_alternatives(wind_forces, read, girder, place, with_the_live_load=True)
+    return in_this_combination
+
+
 # worst combination in each limit state, both directions, at one place
 def governing_by_limit_state(effects, combinations, wind_forces, read, girder, place, at_m):
     governing, by_combination = {}, {}
     for combination in combinations:
-        in_this_combination = dict(effects)
-        if wind_forces and LIVE in combination.factors and WIND in combination.factors:
-            in_this_combination[WIND] = wind_alternatives(wind_forces, read, girder, place, with_the_live_load=True)
+        in_this_combination = effects_in(combination, effects, wind_forces, read, girder, place)
         for adverse in BOTH_DIRECTIONS:
             value, shares = design_value(in_this_combination, combination, adverse)
             result = GoverningValue(value, combination.name, adverse, shares, float(at_m))
