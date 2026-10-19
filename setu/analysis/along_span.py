@@ -2,24 +2,25 @@ from functools import lru_cache
 
 import numpy as np
 from setu.analysis.influence_surface import cell_containing
-from setu.helpers import adverse_sign, is_worse
+from setu.helpers import adverse_sign
 from setu.irc6.impact import impact_factor
 from setu.irc6.vehicles import class_of, most_vehicles_that_fit, pitch_between_vehicles_m
 from setu.irc6.wheel_loads import split_offsets, wheel_load_offsets
 from setu.utils.constants import OFF_THE_DECK, OFFSET_DX_M, OFFSET_DZ_M, ROUND_TO_DECIMALS, TOLERANCE_M
 
 WHEEL_LINE_WEIGHTS_KEPT = 16  # distinct (mesh, vehicle, grid) sets held at once; each is a few MB
+SURFACES_SEARCHED_TOGETHER = 2  # both directions of one surface are searched one after the other
 
-# running best value and where it was, left to right
+# running best value and where it was, left to right along the last axis
 def best_so_far(values):
     values = np.asarray(values, float)
-    every_position = np.arange(len(values)).reshape((-1,) + (1,) * (values.ndim - 1))
-    best_value_so_far = np.maximum.accumulate(values, axis=0)
+    every_position = np.arange(values.shape[-1])
+    best_value_so_far = np.maximum.accumulate(values, axis=-1)
     beats_everything_before_it = np.empty(values.shape, bool)
-    beats_everything_before_it[0] = True
-    beats_everything_before_it[1:] = values[1:] > best_value_so_far[:-1]
+    beats_everything_before_it[..., 0] = True
+    beats_everything_before_it[..., 1:] = values[..., 1:] > best_value_so_far[..., :-1]
     position_when_it_is_a_new_best = np.where(beats_everything_before_it, every_position, -1)
-    position_of_the_best_so_far = np.maximum.accumulate(position_when_it_is_a_new_best, axis=0)
+    position_of_the_best_so_far = np.maximum.accumulate(position_when_it_is_a_new_best, axis=-1)
     return (best_value_so_far, position_of_the_best_so_far)
 
 class ResponseCurve:
@@ -51,6 +52,7 @@ class VehicleResponses:
         self.wearing_course_thickness_m = float(wearing_course_thickness_m)
         self.sampling = sampling
         self._already_built = {}
+        self._grids = {}
 
     # the vehicle's response curve, built once and remembered
     def for_vehicle(self, vehicle, z_positions_m, adverse):
@@ -60,11 +62,18 @@ class VehicleResponses:
             self._already_built[remembered] = self.build_curve(vehicle, z_positions_m, adverse)
         return self._already_built[remembered]
 
+    # one vehicle's response at every position along and across, worked out once for both directions
+    def grid_for(self, vehicle, z_positions_m):
+        key = (vehicle.name, len(z_positions_m), float(z_positions_m[0]), float(z_positions_m[-1]))
+        if key not in self._grids:
+            wheel_offsets = along_the_mesh(wheel_load_offsets(vehicle, self.wearing_course_thickness_m, self.sampling), self.skew)
+            x_positions_m = with_every_train_spacing(positions_along_span(self.surface, wheel_offsets), vehicle)
+            self._grids[key] = (x_positions_m, response_to_one_vehicle_everywhere(self.surface, wheel_offsets, x_positions_m, z_positions_m, self.sampling))
+        return self._grids[key]
+
     # slide the vehicle, or a train of them, along the span at every position across, keep the worst
     def build_curve(self, vehicle, z_positions_m, adverse):
-        wheel_offsets = along_the_mesh(wheel_load_offsets(vehicle, self.wearing_course_thickness_m, self.sampling), self.skew)
-        x_positions_m = with_every_train_spacing(positions_along_span(self.surface, wheel_offsets), vehicle)
-        response_to_one_vehicle = response_to_one_vehicle_everywhere(self.surface, wheel_offsets, x_positions_m, z_positions_m, self.sampling)
+        x_positions_m, response_to_one_vehicle = self.grid_for(vehicle, z_positions_m)
         worst = self.worst_train_at_each_position(vehicle, response_to_one_vehicle, x_positions_m, adverse)
         factor = impact_factor(class_of(vehicle), self.span_m)
         shift_m = self.skew * z_positions_m
@@ -88,6 +97,11 @@ class VehicleResponses:
             vehicles_in_train[z_index] = worst.vehicles_in_train()
             trains.append(worst.positions_m)
         return WorstAlongSpan(response=response, x_positions_m=leading_x_m, vehicles_in_train=vehicles_in_train, train_x_front_m=trains)
+
+# the vehicle responses for one surface, shared by the searches in both directions that follow each other
+@lru_cache(maxsize=SURFACES_SEARCHED_TOGETHER)
+def vehicle_responses(surface, span_m, wearing_course_thickness_m, sampling):
+    return VehicleResponses(surface.along_the_mesh(), span_m, wearing_course_thickness_m, surface.skew, sampling)
 
 # shift wheel offsets for skew so they line up with the mesh
 def along_the_mesh(wheel_offsets, skew):
@@ -257,15 +271,16 @@ class TrainPlacement:
 def last_position_a_vehicle_in_front_could_take(positions_m, pitch_m):
     return np.searchsorted(positions_m, positions_m - pitch_m, side='right') - 1
 
-# one more vehicle behind the best train so far: its signed total and where the vehicle in front sat, NOWHERE when it has no room
+# one more vehicle behind the best train so far, positions along the last axis: its signed total and where the vehicle
+# in front sat, NOWHERE when it has no room
 def add_a_vehicle(signed_one, signed_total, vehicle_in_front):
     has_room_in_front = vehicle_in_front >= 0
     room_in_front = vehicle_in_front[has_room_in_front]
     best_behind, where_that_best_sat = best_so_far(signed_total)
     with_one_more = np.full_like(signed_one, -np.inf)
-    with_one_more[has_room_in_front] = signed_one[has_room_in_front] + best_behind[room_in_front]
+    with_one_more[..., has_room_in_front] = signed_one[..., has_room_in_front] + best_behind[..., room_in_front]
     came_from = np.full(signed_one.shape, NOWHERE, int)
-    came_from[has_room_in_front] = where_that_best_sat[room_in_front]
+    came_from[..., has_room_in_front] = where_that_best_sat[..., room_in_front]
     return with_one_more, came_from
 
 # worst place for a train of n vehicles, by dynamic programming
@@ -294,37 +309,47 @@ def find_worst_train(response_to_one_vehicle, positions_m, pitch_m, most_vehicle
 # worst train of one up to the most vehicles that fit, for every position across the width in one pass;
 # each length grows the previous one, a longer train wins only if strictly worse, a position stops at its first length that cannot fit
 def find_worst_trains(response_to_one_vehicle, positions_m, pitch_m, most_vehicles, adverse):
-    response_to_one_vehicle = np.asarray(response_to_one_vehicle, float)
+    across_then_along = np.ascontiguousarray(np.asarray(response_to_one_vehicle, float).T)  # one row per position across, so each running best reads memory in order
     positions_m = np.asarray(positions_m, float)
-    signed_one = adverse_sign(adverse) * response_to_one_vehicle
+    signed_one = adverse_sign(adverse) * across_then_along
     vehicle_in_front = last_position_a_vehicle_in_front_could_take(positions_m, pitch_m)
     signed_total = signed_one
     came_from_each_vehicle = []
-    still_fits = np.ones(signed_one.shape[1], bool)
-    worst = [None] * signed_one.shape[1]
+    still_fits = np.ones(signed_one.shape[0], bool)
+    signed_worst = np.full(signed_one.shape[0], -np.inf)
+    worst_train = [None] * signed_one.shape[0]  # (chosen positions of its length, its column among them) of each row's worst train
     for vehicles in range(1, int(most_vehicles) + 1):
         if vehicles > 1:
             signed_total, came_from = add_a_vehicle(signed_one, signed_total, vehicle_in_front)
             came_from_each_vehicle.append(came_from)
-        still_fits &= np.isfinite(signed_total).any(axis=0)
+        still_fits &= np.isfinite(signed_total).any(axis=1)
         columns = np.flatnonzero(still_fits)
         if not len(columns):
             break
         chosen = walk_back_every_column(signed_total, came_from_each_vehicle, columns)
         response = np.zeros(len(columns))  # 0 + first, then left to right, exactly as Python's sum over these numpy values
         for position in chosen:
-            response = response + response_to_one_vehicle[position, columns]
-        for k, column in enumerate(columns):
-            if worst[column] is None or is_worse(response[k], worst[column].response, adverse):
-                worst[column] = TrainPlacement(response=float(response[k]), positions_m=tuple(float(positions_m[position[k]]) for position in chosen))
-    return worst
+            response = response + across_then_along[columns, position]
+        signed_response = adverse_sign(adverse) * response
+        is_worse_here = signed_response > signed_worst[columns]  # strictly worse, so a longer train must beat a shorter one
+        for k in np.flatnonzero(is_worse_here):
+            worst_train[columns[k]] = (chosen, k)
+        signed_worst[columns[is_worse_here]] = signed_response[is_worse_here]
+    return [None if train is None else placed_train(across_then_along, positions_m, train[0], train[1], row) for row, train in enumerate(worst_train)]
 
-# the worst train's positions for the chosen columns, front vehicle first, read back from the last vehicle
+# a row's worst train with its response summed front to back, as it was compared
+def placed_train(across_then_along, positions_m, chosen, k, row):
+    response = 0.0
+    for position in chosen:
+        response = response + across_then_along[row, position[k]]
+    return TrainPlacement(response=float(response), positions_m=tuple(float(positions_m[position[k]]) for position in chosen))
+
+# the worst train's positions for the chosen rows across, front vehicle first, read back from the last vehicle
 def walk_back_every_column(signed_total, came_from_each_vehicle, columns):
-    position = np.argmax(signed_total[:, columns], axis=0)
+    position = np.argmax(signed_total[columns], axis=1)
     chosen = [position]
     for came_from in reversed(came_from_each_vehicle):
-        position = came_from[position, columns]
+        position = came_from[columns, position]
         chosen.append(position)
     chosen.reverse()
     return chosen

@@ -3,7 +3,7 @@ from setu.helpers import DEFAULT_SAMPLING
 from setu.irc6.lanes import footway_loaded_strips, footway_response, strips_beside_class_a
 from setu.irc6.vehicles import vehicles_allowed_in_each_block
 from setu.analysis.results import CriticalPosition, VehiclePlacement
-from setu.analysis.along_span import VehicleResponses, positions_across_width
+from setu.analysis.along_span import positions_across_width, vehicle_responses
 from setu.analysis.across_carriageway import carries_a_residual_udl, envelope_every_block, find_worst_placement
 
 
@@ -20,9 +20,9 @@ def rank_all_positions(surface, cross_section, span_m, adverse, wearing_course_t
 # describe layouts on demand so a winning-only search stops after the first
 def described_positions(surface, cross_section, span_m, adverse, wearing_course_thickness_m, sampling):
     carriageways = cross_section.carriageways()
-    on_the_mesh = surface.along_the_mesh()
+    responses = vehicle_responses(surface, span_m, wearing_course_thickness_m, sampling)
+    on_the_mesh = responses.surface
     permitted = vehicles_allowed_in_each_block()
-    responses = VehicleResponses(on_the_mesh, span_m, wearing_course_thickness_m, surface.skew, sampling)
     every_vehicle = [vehicle for choices in permitted.values() for vehicle in choices]
     z_positions_m = positions_across_width(responses, every_vehicle, min(c.left_m for c in carriageways), max(c.right_m for c in carriageways))
     envelopes = [envelope_every_block(responses, permitted, z_positions_m, adverse, carriageway, on_the_mesh, sampling) for carriageway in carriageways]

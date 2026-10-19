@@ -21,7 +21,7 @@ class SeismicLoadCases(dict):
 
 # longitudinal, transverse and (zones IV, V) vertical seismic load cases
 def seismic_load_cases(model, site, live_critical=None):
-    dead_kn = override_weight(model, dead_weight_at_nodes(model), site.dead_weight_kn)
+    dead_kn, longitudinal = dead_weight_inertia(model, site)
     live_total = None if site.live_weight_kn is None else LIVE_LOAD_SEISMIC_FRACTION * site.live_weight_kn
     live_kn = override_weight(model, live_weight_at_nodes(model, live_critical), live_total)
     with_live_kn = dict(dead_kn)
@@ -30,12 +30,19 @@ def seismic_load_cases(model, site, live_critical=None):
     ah = horizontal_seismic_coefficient(site)
     av = vertical_seismic_coefficient(site)
     cases = {
-        "longitudinal": inertia(dead_kn, ah, 1, "seismic, longitudinal"),
+        "longitudinal": longitudinal,
         "transverse": inertia(with_live_kn, ah, 3, "seismic, transverse"),
     }
     if site.include_vertical:
         cases["vertical"] = inertia(with_live_kn, -av, 2, "seismic, vertical")
     return SeismicLoadCases(cases, sum(dead_kn.values()), sum(live_kn.values()), ah, av)
+
+
+# the dead weight at the nodes and its longitudinal inertia, which no live load joins: worked out once per model and site, only read after
+@lru_cache(maxsize=2)
+def dead_weight_inertia(model, site):
+    dead_kn = override_weight(model, dead_weight_at_nodes(model), site.dead_weight_kn)
+    return dead_kn, inertia(dead_kn, horizontal_seismic_coefficient(site), 1, "seismic, longitudinal")
 
 
 # the whole dead weight lumped at the nodes: slab, SIDL, surfacing, girders and bracing; worked out once per model and only read after

@@ -7,7 +7,7 @@ from setu.errors import SetuError
 from setu.irc6.combinations import design_value
 from setu.loads.load_builders import live_load
 from setu.loads.load_cases import LoadCase
-from setu.postprocess.design_values import BOTH_DIRECTIONS, effects_in, load_effects, reader
+from setu.postprocess.design_values import BOTH_DIRECTIONS, effects_in, load_effects, reader, wind_alternatives, wind_on_the_vehicles
 from setu.postprocess.girder_response import analyze_load_case, scaled, sum_of
 from setu.solver import backend
 
@@ -181,7 +181,8 @@ def replayed_terms(analysis, values, seismic, braking_height_above_deck_m, girde
             for direction in BOTH_DIRECTIONS}
     effects = load_effects(analysis, analysis.dead.stages, live, read, (girder, place), (girder, place), seismic, braking_height_above_deck_m, {})
     combination = next(combination for combination in analysis.combinations if combination.name == value.combination)
-    total, _ = design_value(effects_in(combination, effects, analysis.wind_forces, read, girder, place), combination, adverse)
+    wind_on_traffic = wind_alternatives(analysis.wind_forces, read, girder, place, with_the_live_load=True) if wind_on_the_vehicles(analysis.wind_forces, combination) else None
+    total, _ = design_value(effects_in(combination, effects, wind_on_traffic), combination, adverse)
     if not (isinstance(total, Recipe) and math.isclose(total.value, value.value, rel_tol=REPLAY_REL_TOLERANCE)):
         raise SetuError(f"girder {girder}, {response}, {value.combination}: replayed {value_of(total)} but the design value is {value.value}")
     return total.terms

@@ -38,6 +38,7 @@ NO_EFFECT = 0.0
 # these fractions of the span towards the first bearing. Unequal sections also check the mirrored stations and far bearing.
 MOMENT_SECTIONS_OFF_MIDSPAN = (0.0, 0.02, 0.04, 0.06)
 BOTH_DIRECTIONS = (BIGGER_IS_WORSE, SMALLER_IS_WORSE)
+WIND_SIDES = ("from the left", "from the right")
 
 
 class GoverningValue:
@@ -293,12 +294,15 @@ def live_with_braking(model, critical, read, girder, place, *, height_above_deck
 
 # every mix of wind sides and directions, with wind on the vehicles if asked
 def wind_alternatives(wind_forces, read, girder, place, with_the_live_load):
+    on_the_bridge = ["longitudinal", *(f"{kind} {way}" for kind, ways in (("transverse", WIND_SIDES), ("vertical", ("upward", "downward"))) for way in ways)]
+    on_the_vehicles = ["on live load, longitudinal", *(f"on live load {side}" for side in WIND_SIDES)] if with_the_live_load else []
+    response = {name: read(wind_forces[name], girder, place) for name in on_the_bridge + on_the_vehicles}
     alternatives = []
-    for side, along, vertical in itertools.product(("from the left", "from the right"), BOTH_WAYS, ("upward", "downward")):
-        effect = read(wind_forces[f"transverse {side}"], girder, place) + along * read(wind_forces["longitudinal"], girder, place)
-        effect += read(wind_forces[f"vertical {vertical}"], girder, place)
+    for side, along, vertical in itertools.product(WIND_SIDES, BOTH_WAYS, ("upward", "downward")):
+        effect = response[f"transverse {side}"] + along * response["longitudinal"]
+        effect += response[f"vertical {vertical}"]
         if with_the_live_load:
-            effect += read(wind_forces[f"on live load {side}"], girder, place) + along * read(wind_forces["on live load, longitudinal"], girder, place)
+            effect += response[f"on live load {side}"] + along * response["on live load, longitudinal"]
         alternatives.append(effect)
     return alternatives
 
@@ -310,19 +314,27 @@ def add_to(effect, extra):
     return effect + extra
 
 
+# does this combination put wind on the vehicles: wind is active and the combination carries both live load and wind
+def wind_on_the_vehicles(wind_forces, combination):
+    return bool(wind_forces) and LIVE in combination.factors and WIND in combination.factors
+
+
 # the effects one combination takes at one place: with live load and wind together, wind on the vehicles too
-def effects_in(combination, effects, wind_forces, read, girder, place):
+def effects_in(combination, effects, wind_on_traffic):
     in_this_combination = dict(effects)
-    if wind_forces and LIVE in combination.factors and WIND in combination.factors:
-        in_this_combination[WIND] = wind_alternatives(wind_forces, read, girder, place, with_the_live_load=True)
+    if wind_on_traffic is not None and LIVE in combination.factors and WIND in combination.factors:
+        in_this_combination[WIND] = wind_on_traffic
     return in_this_combination
 
 
 # worst combination in each limit state, both directions, at one place
 def governing_by_limit_state(effects, combinations, wind_forces, read, girder, place, at_m):
     governing, by_combination = {}, {}
+    wind_on_traffic = None
     for combination in combinations:
-        in_this_combination = effects_in(combination, effects, wind_forces, read, girder, place)
+        if wind_on_traffic is None and wind_on_the_vehicles(wind_forces, combination):
+            wind_on_traffic = wind_alternatives(wind_forces, read, girder, place, with_the_live_load=True)
+        in_this_combination = effects_in(combination, effects, wind_on_traffic)
         for adverse in BOTH_DIRECTIONS:
             value, shares = design_value(in_this_combination, combination, adverse)
             result = GoverningValue(value, combination.name, adverse, shares, float(at_m))
