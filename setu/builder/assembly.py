@@ -1,7 +1,8 @@
 import numpy as np
+from setu.solver import backend
 from setu.builder.mesh import DeckModel
 from setu.models.sections import girder_properties
-from setu.helpers import import_opensees, report, log
+from setu.helpers import report, log
 from setu.builder.mesh import build_mesh, station_at
 from setu.utils.constants import SHORT_TERM
 
@@ -12,11 +13,11 @@ DECK_SECTION = 1
 GIRDER_TRANSFORM = 1
 BRACE_MATERIAL = 10
 BEARING_MATERIAL = 11
+STEEL_TRANSLATION_MATERIAL = 12
 BEARING_VERTICAL_STIFFNESS_KN_PER_M = 1.0e9
 VERTICAL_DOF = 2
+LONGITUDINAL_DOF = 1
 ALL_FIXED = (1, 1, 1, 1, 1, 1)
-DIMENSIONS = 3
-DEGREES_OF_FREEDOM_PER_NODE = 6
 GIRDER_LOCAL_AXIS = (0.0, 0.0, 1.0)
 
 # how many deck nodes the mesh makes
@@ -61,19 +62,19 @@ def first_brace_element_tag(bridge, mesh):
     return first_girder_element_tag(mesh) + bridge.girders.count * beams_per_girder
 
 # a deck node at every mesh station, shifted along for skew
-def place_deck_nodes(ops, bridge, mesh):
+def place_deck_nodes(bridge, mesh):
     deck_level_m = 0.0
     nodes = {}
     for i, x_m in enumerate(mesh.length_mesh_m):
         for j, z_m in enumerate(mesh.width_mesh_m):
             tag = DECK_NODE_BASE + i * mesh.stations_across_width + j
             x_skewed = float(x_m) + float(z_m) * bridge.skew
-            ops.node(tag, x_skewed, deck_level_m, float(z_m))
+            backend.add_node(tag, x_skewed, deck_level_m, float(z_m))
             nodes[i, j] = tag
     return nodes
 
 # girder nodes at the girder centroid, below the slab
-def place_girder_nodes(ops, bridge, mesh, girders):
+def place_girder_nodes(bridge, mesh, girders):
     base = first_girder_node_tag(mesh)
     nodes = {}
     for k, z_m in enumerate(mesh.girder_lines_m):
@@ -81,12 +82,12 @@ def place_girder_nodes(ops, bridge, mesh, girders):
         for i, x_m in enumerate(mesh.length_mesh_m):
             tag = base + k * mesh.stations_along_span + i
             x_skewed = float(x_m) + float(z_m) * bridge.skew
-            ops.node(tag, x_skewed, level_m, float(z_m))
+            backend.add_node(tag, x_skewed, level_m, float(z_m))
             nodes[k, i] = tag
     return nodes
 
 # brace nodes at the bottom and top of each girder at every brace line
-def place_brace_nodes(ops, bridge, mesh, girders):
+def place_brace_nodes(bridge, mesh, girders):
     stations = bridge.bracing.station_count
     bottom_base = first_bottom_brace_node_tag(bridge, mesh)
     top_base = first_top_brace_node_tag(bridge, mesh)
@@ -99,15 +100,15 @@ def place_brace_nodes(ops, bridge, mesh, girders):
         for n, x_m in enumerate(mesh.brace_lines_m):
             bottom_tag = bottom_base + k * stations + n
             x_skewed = float(x_m) + float(z_m) * bridge.skew
-            ops.node(bottom_tag, x_skewed, bottom_m, float(z_m))
+            backend.add_node(bottom_tag, x_skewed, bottom_m, float(z_m))
             bottom_nodes[k, n] = bottom_tag
             top_tag = top_base + k * stations + n
-            ops.node(top_tag, x_skewed, top_m, float(z_m))
+            backend.add_node(top_tag, x_skewed, top_m, float(z_m))
             top_nodes[k, n] = top_tag
     return (bottom_nodes, top_nodes)
 
 # the meeting point of each K brace, midway between girders at the bottom
-def place_k_brace_nodes(ops, bridge, mesh, girders):
+def place_k_brace_nodes(bridge, mesh, girders):
     if not bridge.bracing.is_k_braced:
         return {}
     count = bridge.girders.count
@@ -120,7 +121,7 @@ def place_k_brace_nodes(ops, bridge, mesh, girders):
             between_girders_m = 0.5 * (mesh.girder_lines_m[k] + mesh.girder_lines_m[k + 1])
             tag = base + n * (count - 1) + k
             x_skewed = float(x_m) + float(between_girders_m) * bridge.skew
-            ops.node(tag, x_skewed, level_m, float(between_girders_m))
+            backend.add_node(tag, x_skewed, level_m, float(between_girders_m))
             nodes[k, n] = tag
     return nodes
 
@@ -130,41 +131,41 @@ def girder_centroid_level_m(bridge, girder):
     return -(top_of_girder_to_centroid_m + bridge.deck.thickness_m / 2)
 
 # slab shells with the short or long term concrete modulus
-def build_deck_shells(ops, bridge, mesh, deck_nodes, load_duration):
+def build_deck_shells(bridge, mesh, deck_nodes, load_duration):
     slab_modulus_kpa = bridge.concrete.modulus_for(load_duration, bridge.steel.elastic_modulus_kpa)
-    ops.section('ElasticMembranePlateSection', DECK_SECTION, slab_modulus_kpa, bridge.concrete.poissons_ratio, bridge.deck.thickness_m)
+    backend.shell_section(DECK_SECTION, slab_modulus_kpa, bridge.concrete.poissons_ratio, bridge.deck.thickness_m)
     elements = {}
     tag = DECK_ELEMENT_BASE
     for i in range(mesh.stations_along_span - 1):
         for j in range(mesh.stations_across_width - 1):
-            ops.element('ShellMITC4', tag, deck_nodes[i, j], deck_nodes[i + 1, j], deck_nodes[i + 1, j + 1], deck_nodes[i, j + 1], DECK_SECTION)
+            backend.add_shell(tag, deck_nodes[i, j], deck_nodes[i + 1, j], deck_nodes[i + 1, j + 1], deck_nodes[i, j + 1], DECK_SECTION)
             elements[i, j] = tag
             tag += 1
     return elements
 
 # girder beam elements between girder nodes
-def build_girder_beams(ops, bridge, mesh, girders, girder_nodes):
-    ops.geomTransf('Linear', GIRDER_TRANSFORM, *GIRDER_LOCAL_AXIS)
+def build_girder_beams(bridge, mesh, girders, girder_nodes):
+    backend.linear_transform(GIRDER_TRANSFORM, *GIRDER_LOCAL_AXIS)
     tag = first_girder_element_tag(mesh)
     elements = {}
     for k in range(bridge.girders.count):
         girder = girders[k]
         for i in range(mesh.stations_along_span - 1):
-            ops.element('elasticBeamColumn', tag, girder_nodes[k, i], girder_nodes[k, i + 1], girder.area_m2, bridge.steel.elastic_modulus_kpa, bridge.steel.shear_modulus_kpa, girder.torsion_constant_m4, girder.weak_axis_inertia_m4, girder.strong_axis_inertia_m4, GIRDER_TRANSFORM)
+            backend.add_beam(tag, girder_nodes[k, i], girder_nodes[k, i + 1], girder.area_m2, bridge.steel.elastic_modulus_kpa, bridge.steel.shear_modulus_kpa, girder.torsion_constant_m4, girder.weak_axis_inertia_m4, girder.strong_axis_inertia_m4, GIRDER_TRANSFORM)
             elements[k, i] = tag
             tag += 1
     return elements
 
 # truss brace members in every panel between girders
-def build_bracing(ops, bridge, mesh, model):
-    ops.uniaxialMaterial('Elastic', BRACE_MATERIAL, bridge.steel.elastic_modulus_kpa)
+def build_bracing(bridge, mesh, model):
+    backend.elastic_material(BRACE_MATERIAL, bridge.steel.elastic_modulus_kpa)
     tag = first_brace_element_tag(bridge, mesh)
     elements = {}
     for n in range(bridge.bracing.station_count):
         for k in range(bridge.girders.count - 1):
             corners = brace_panel_corners(model, k, n)
             for role, (start, end) in brace_members(bridge, model, corners, k, n):
-                ops.element('corotTruss', tag, start, end, bridge.bracing.area_m2, BRACE_MATERIAL)
+                backend.add_truss(tag, start, end, bridge.bracing.area_m2, BRACE_MATERIAL)
                 elements[k, n, role] = tag
                 tag += 1
     return elements
@@ -191,50 +192,71 @@ def brace_members(bridge, model, corners, k, n):
         members.append(('bottom_chord', (corners['bottom_left'], corners['bottom_right'])))
     return members
 
-# the vertical dof is left to the bearing spring
-PINNED = (1, 0, 1, 0, 0, 0)
-ROLLER = (0, 0, 1, 0, 0, 0)
-FREE_TO_MOVE_WITH_THE_DECK = (1, 0, 0, 1, 1, 1)
+NEAR_LONGITUDINAL_AND_TRANSVERSE_BEARING = (1, 0, 1, 0, 0, 0)
+FAR_TRANSVERSE_BEARING = (0, 0, 1, 0, 0, 0)
+UNUSED_TRUSS_ROTATIONS = (0, 0, 0, 1, 1, 1)
 
 # rigid links from each girder node up to the deck node above
-def tie_deck_to_girders(ops, mesh, deck_nodes, girder_nodes):
+def tie_deck_to_girders(mesh, deck_nodes, girder_nodes):
     for k in range(len(mesh.girder_lines_m)):
         j = mesh.width_station_of_girder(k)
         for i in range(mesh.stations_along_span):
-            ops.rigidLink('beam', girder_nodes[k, i], deck_nodes[i, j])
+            backend.rigid_beam(girder_nodes[k, i], deck_nodes[i, j])
 
 # rigid links from girder nodes to their brace nodes
-def tie_braces_to_girders(ops, bridge, mesh, girder_nodes, bottom_brace_nodes, top_brace_nodes):
+def tie_braces_to_girders(bridge, mesh, girder_nodes, bottom_brace_nodes, top_brace_nodes):
     for k in range(bridge.girders.count):
         for n, x_m in enumerate(mesh.brace_lines_m):
             i = station_at(mesh.length_mesh_m, x_m)
-            ops.rigidLink('beam', girder_nodes[k, i], bottom_brace_nodes[k, n])
-            ops.rigidLink('beam', girder_nodes[k, i], top_brace_nodes[k, n])
+            backend.rigid_beam(girder_nodes[k, i], bottom_brace_nodes[k, n])
+            backend.rigid_beam(girder_nodes[k, i], top_brace_nodes[k, n])
 
-# a stiff vertical bearing spring under each girder end, pinned along the span at one end and free at the other; K brace points move with the deck
-def support_the_girders(ops, bridge, mesh, girder_nodes, k_brace_nodes, first_free_node_tag, first_free_element_tag):
-    ops.uniaxialMaterial('Elastic', BEARING_MATERIAL, BEARING_VERTICAL_STIFFNESS_KN_PER_M)
+# vertical springs everywhere, with only three horizontal rigid-body restraints
+def support_the_girders(bridge, mesh, girder_nodes, first_free_node_tag, first_free_element_tag):
+    backend.elastic_material(BEARING_MATERIAL, BEARING_VERTICAL_STIFFNESS_KN_PER_M)
     near_end = 0
     far_end = mesh.stations_along_span - 1
+    fixed_girder = (bridge.girders.count - 1) // 2
+    backend.fix_node(girder_nodes[fixed_girder, near_end], *NEAR_LONGITUDINAL_AND_TRANSVERSE_BEARING)
+    backend.fix_node(girder_nodes[fixed_girder, far_end], *FAR_TRANSVERSE_BEARING)
     bearings = {}
     for k in range(bridge.girders.count):
-        for end, restraint in ((near_end, PINNED), (far_end, ROLLER)):
+        for end in (near_end, far_end):
             girder_node = girder_nodes[k, end]
             ground = first_free_node_tag + len(bearings)
-            ops.node(ground, *ops.nodeCoord(girder_node))
-            ops.fix(ground, *ALL_FIXED)
-            ops.fix(girder_node, *restraint)
-            ops.element('zeroLength', first_free_element_tag + len(bearings), ground, girder_node, '-mat', BEARING_MATERIAL, '-dir', VERTICAL_DOF)
+            backend.add_node(ground, *backend.node_coordinates(girder_node))
+            backend.fix_node(ground, *ALL_FIXED)
+            backend.add_spring(first_free_element_tag + len(bearings), ground, girder_node, BEARING_MATERIAL, VERTICAL_DOF)
             bearings[k, end] = girder_node
-    for tag in k_brace_nodes.values():
-        ops.fix(tag, *FREE_TO_MOVE_WITH_THE_DECK)
     return bearings
+
+# remove the truss joint's unused DOFs without grounding its longitudinal movement
+def tie_k_braces_to_girders(mesh, girder_nodes, k_brace_nodes):
+    for (k, n), tag in k_brace_nodes.items():
+        i = station_at(mesh.length_mesh_m, mesh.brace_lines_m[n])
+        backend.equal_dofs(girder_nodes[k, i], tag, LONGITUDINAL_DOF)
+        backend.fix_node(tag, *UNUSED_TRUSS_ROTATIONS)
+
+# internal links stabilize bare-steel axial modes without chained rigid-link constraints
+def tie_steel_girder_translations(bridge, girders, girder_nodes):
+    fixed_girder = (bridge.girders.count - 1) // 2
+    axial_stiffness = bridge.steel.elastic_modulus_kpa * girders[fixed_girder].area_m2 / bridge.span_m
+    backend.elastic_material(STEEL_TRANSLATION_MATERIAL, axial_stiffness)
+    tag = max(backend.element_tags()) + 1
+    for k in range(bridge.girders.count):
+        if k != fixed_girder:
+            backend.add_link(tag, girder_nodes[fixed_girder, 0], girder_nodes[k, 0],
+                        STEEL_TRANSLATION_MATERIAL, LONGITUDINAL_DOF,
+                        1.0, 0.0, 0.0, 0.0, 1.0, 0.0)
+            tag += 1
 
 
 class BridgeModel:
     # the built OpenSees model: bridge, mesh, girder and every node and element tag
-    def __init__(self, bridge, mesh, girders, deck_nodes, girder_nodes, bottom_brace_nodes, top_brace_nodes, k_brace_nodes):
+    def __init__(self, bridge, mesh, girders, deck_nodes, girder_nodes, bottom_brace_nodes, top_brace_nodes, k_brace_nodes, load_duration, composite):
         self.bridge = bridge
+        self.load_duration = load_duration
+        self.composite = composite
         self.mesh = mesh
         self.girders = girders
         self.girder = girders[0]  # representative section for existing uniform-model callers
@@ -255,7 +277,8 @@ class BridgeModel:
                          girder_section=sections[0], girder_local_axis=GIRDER_LOCAL_AXIS, girder_elements=self.girder_elements,
                          composite_lever_arm_m=self.composite_lever_arm_m(), skew=self.bridge.skew,
                          girder_sections={tag: sections[k] for (k, _), tag in self.girder_elements.items()},
-                         composite_lever_arms_m={tag: self.composite_lever_arm_m(k) for (k, _), tag in self.girder_elements.items()})
+                         composite_lever_arms_m={tag: self.composite_lever_arm_m(k) for (k, _), tag in self.girder_elements.items()},
+                         brace_area_m2=self.bridge.bracing.area_m2)
 
     # slab mid-plane to girder centroid, for the composite moment
     def composite_lever_arm_m(self, girder=0):
@@ -270,28 +293,28 @@ class BridgeModel:
         return self.element_of_girder_at(girder, self.mesh.stations_along_span // 2)
 
 # build the whole grillage in OpenSees: steel alone or composite
-def build_bridge_model(bridge, ops=None, load_duration=SHORT_TERM, composite=True):
-    ops = import_opensees() if ops is None else ops
+def build_bridge_model(bridge, load_duration=SHORT_TERM, composite=True):
     mesh = build_mesh(bridge)
     girders = [girder_properties(bridge.girders.section_at(k)) for k in range(bridge.girders.count)]
     report_layout(bridge, mesh)
-    ops.wipe()
-    ops.model('basic', '-ndm', DIMENSIONS, '-ndf', DEGREES_OF_FREEDOM_PER_NODE)
-    deck_nodes = place_deck_nodes(ops, bridge, mesh) if composite else {}
-    girder_nodes = place_girder_nodes(ops, bridge, mesh, girders)
-    bottom_brace_nodes, top_brace_nodes = place_brace_nodes(ops, bridge, mesh, girders)
-    k_brace_nodes = place_k_brace_nodes(ops, bridge, mesh, girders)
-    model = BridgeModel(bridge=bridge, mesh=mesh, girders=girders, deck_nodes=deck_nodes, girder_nodes=girder_nodes, bottom_brace_nodes=bottom_brace_nodes, top_brace_nodes=top_brace_nodes, k_brace_nodes=k_brace_nodes)
-    model.load_duration = load_duration
-    model.composite = composite
+    backend.start_model()
+    deck_nodes = place_deck_nodes(bridge, mesh) if composite else {}
+    girder_nodes = place_girder_nodes(bridge, mesh, girders)
+    bottom_brace_nodes, top_brace_nodes = place_brace_nodes(bridge, mesh, girders)
+    k_brace_nodes = place_k_brace_nodes(bridge, mesh, girders)
+    model = BridgeModel(bridge=bridge, mesh=mesh, girders=girders, deck_nodes=deck_nodes, girder_nodes=girder_nodes, bottom_brace_nodes=bottom_brace_nodes, top_brace_nodes=top_brace_nodes, k_brace_nodes=k_brace_nodes,
+                        load_duration=load_duration, composite=composite)
     if composite:
-        model.deck_elements.update(build_deck_shells(ops, bridge, mesh, deck_nodes, load_duration))
-    model.girder_elements.update(build_girder_beams(ops, bridge, mesh, girders, girder_nodes))
+        model.deck_elements.update(build_deck_shells(bridge, mesh, deck_nodes, load_duration))
+    model.girder_elements.update(build_girder_beams(bridge, mesh, girders, girder_nodes))
     if composite:
-        tie_deck_to_girders(ops, mesh, deck_nodes, girder_nodes)
-    tie_braces_to_girders(ops, bridge, mesh, girder_nodes, bottom_brace_nodes, top_brace_nodes)
-    model.brace_elements.update(build_bracing(ops, bridge, mesh, model))
-    model.bearings = support_the_girders(ops, bridge, mesh, girder_nodes, k_brace_nodes, max(ops.getNodeTags()) + 1, max(ops.getEleTags()) + 1)
+        tie_deck_to_girders(mesh, deck_nodes, girder_nodes)
+    tie_braces_to_girders(bridge, mesh, girder_nodes, bottom_brace_nodes, top_brace_nodes)
+    tie_k_braces_to_girders(mesh, girder_nodes, k_brace_nodes)
+    model.brace_elements.update(build_bracing(bridge, mesh, model))
+    if not composite:
+        tie_steel_girder_translations(bridge, girders, girder_nodes)
+    model.bearings = support_the_girders(bridge, mesh, girder_nodes, max(backend.node_tags()) + 1, max(backend.element_tags()) + 1)
     report_what_was_built(model)
     return model
 
