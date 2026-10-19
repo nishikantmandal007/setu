@@ -3,27 +3,28 @@ const el = (tag, attrs = {}, ...kids) => { const n = Object.assign(document.crea
 const svgNS = "http://www.w3.org/2000/svg";
 const sv = (tag, attrs = {}, ...kids) => { const n = document.createElementNS(svgNS, tag); for (const [k, v] of Object.entries(attrs)) n.setAttribute(k, v); n.append(...kids); return n; };
 const fmt = (v, d = 0) => Number(v).toLocaleString("en-IN", { minimumFractionDigits: d, maximumFractionDigits: d });
-const STEPS = ["Dead load stages", "Influence surfaces", "Searching traffic", "Fatigue truck", "Checking in OpenSees", "Preparing the plots"];
 const M = "maximum composite moment", V = "support shear", R = "bearing reaction";
 const ULS = "ultimate, basic", RARE = "serviceability, rare";
 const state = { tables: {}, on: {}, strips: [] };
 let schema, result, job, girder = 0;
+const PROGRESS_PROTOCOL = 10;
+let redrawSections = () => {};
 
 // ── inputs, from the same schema as examples/form.html ──────────────────────
 function field(f, value, onChange) {
   let input;
   if (f.choices) {
     input = el("select");
-    f.choices.forEach(c => input.append(el("option", { value: String(c), textContent: String(c), selected: String(c) === String(value) })));
-    input.onchange = () => onChange(input.value === "true" ? true : input.value === "false" ? false : isNaN(input.value) ? input.value : Number(input.value));
+    f.choices.forEach(c => input.append(el("option", { value: String(c), textContent: c === null ? "Automatic" : String(c), selected: String(c) === String(value) })));
+    input.onchange = () => onChange(input.value === "null" ? null : input.value === "true" ? true : input.value === "false" ? false : isNaN(input.value) ? input.value : Number(input.value));
   } else if (f.type === "text") {
     input = el("input", { type: "text", value, maxLength: 80, placeholder: "Not specified" });
     input.oninput = () => onChange(input.value);
   } else {
-    input = el("input", { type: "number", step: f.integer ? 1 : "any", value, required: true });
+    input = el("input", { type: "number", step: f.integer ? 1 : "any", value: value ?? "", required: !f.nullable, placeholder: f.nullable ? "Automatic" : "" });
     if (f.min !== undefined) input.min = f.min;
     if (f.max !== undefined) input.max = f.max;
-    input.oninput = () => onChange(input.value === "" ? "" : Number(input.value));
+    input.oninput = () => onChange(input.value === "" ? (f.nullable ? null : "") : Number(input.value));
   }
   return el("label", {}, f.label, input);
 }
@@ -38,11 +39,49 @@ function tableGroup(t, open) {
   if (t.optional) {
     state.on[t.table] = true;
     const on = el("input", { type: "checkbox", checked: true });
-    on.onchange = () => { state.on[t.table] = on.checked; box.classList.toggle("off", !on.checked); };
+    on.onchange = () => {
+      state.on[t.table] = on.checked;
+      box.classList.toggle("off", !on.checked);
+      grid.querySelectorAll("input,select").forEach(input => input.disabled = !on.checked);
+    };
     box.append(el("label", { className: "toggle" }, on, "include this load"));
   }
-  t.fields.forEach(f => { state.tables[t.table][f.key] = f.value; grid.append(field(f, f.value, v => state.tables[t.table][f.key] = v)); });
+  t.fields.forEach(f => { state.tables[t.table][f.key] = f.value; grid.append(field(f, f.value, v => {
+    state.tables[t.table][f.key] = v;
+    if (t.table === "girders" && f.key === "count") redrawSections();
+  })); });
   box.append(grid);
+  if (t.table === "analysis") {
+    const mode = el("select", { "ariaLabel": "Braking force height" },
+      el("option", { value: "standard", textContent: "Standard IRC:6 — 1.2 m above road surface" }),
+      el("option", { value: "custom", textContent: "Custom height above deck top" }));
+    const selectMode = () => {
+      const custom = mode.value === "custom";
+      grid.hidden = !custom;
+      const height = custom ? 1.2 + state.tables.deck.wearing_course_thickness_m : null;
+      state.tables.analysis.braking_height_above_deck_m = height;
+      grid.querySelector("input").value = height ?? "";
+      grid.querySelector("input").disabled = !custom;
+      grid.querySelector("input").required = custom;
+    };
+    mode.onchange = selectMode;
+    box.insertBefore(el("label", {}, "Braking force height", mode), grid);
+    selectMode();
+  }
+  if (t.table === "girders.section") {
+    const individual = el("input", { type: "checkbox" }), rows = el("div");
+    redrawSections = () => {
+      const g = state.tables.girders;
+      grid.querySelectorAll("input").forEach(input => input.disabled = individual.checked);
+      if (!individual.checked) { delete g.sections; rows.replaceChildren(); return; }
+      if (!Number.isInteger(g.count) || g.count < 2 || g.count > 12) { rows.textContent = "Choose 2–12 girders first."; return; }
+      g.sections = Array.from({ length: g.count }, (_, k) => g.sections?.[k] ?? { ...state.tables[t.table] });
+      rows.replaceChildren(...g.sections.map((section, k) => el("div", {}, el("h3", {}, `Girder ${k} (left to right)`),
+        el("div", { className: "grid" }, ...t.fields.map(f => field(f, section[f.key], v => section[f.key] = v))))));
+    };
+    individual.onchange = redrawSections;
+    box.append(el("label", { className: "toggle" }, individual, "Use individual sections"), rows);
+  }
   return box;
 }
 
@@ -58,7 +97,7 @@ function stripsGroup(box, t) {
   const add = el("button", { textContent: "+ strip" }); add.style.marginTop = "6px";
   add.onclick = () => { state.strips.push(["carriageway", 3.5]); draw(); };
   draw();
-  box.append(rows, add, el("p", { className: "sub", textContent: "Names start with footpath, kerb, carriageway, median, crash_barrier or railing." }));
+  box.append(rows, add, el("p", { className: "sub", textContent: "Names: footpath, kerb, carriageway, median, crash_barrier, railing" }));
   return box;
 }
 
@@ -70,6 +109,16 @@ function formData() {
 // ── running ─────────────────────────────────────────────────────────────────
 async function analyse() {
   $("#input-error").textContent = "";
+  if(schema.progress_protocol!==PROGRESS_PROTOCOL){
+    $("#input-error").textContent="The Python server is still running the older visualization backend. Restart your existing web/main.py process, refresh this page, then analyse again.";
+    return;
+  }
+  const invalid = $("#fields").querySelector("input:invalid");
+  if (invalid) {
+    for (let parent = invalid.parentElement; parent; parent = parent.parentElement) if (parent.tagName === "DETAILS") parent.open = true;
+    invalid.reportValidity();
+    return;
+  }
   const response = await fetch("/analyse", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(formData()) });
   const reply = await response.json();
   if (!response.ok) { $("#input-error").textContent = reply.error; return; }
@@ -78,26 +127,273 @@ async function analyse() {
   showProgress();
   const events = new EventSource(`/progress/${job}`);
   events.onmessage = async e => {
-    const s = JSON.parse(e.data);
-    updateProgress(s);
-    if (s.error) { events.close(); $("#analyse").disabled = false; $("#progress-error").textContent = s.error; }
-    if (s.finished) { events.close(); result = await (await fetch(`/result/${job}`)).json(); $("#analyse").disabled = false; showResults(); }
+    try {
+      const s = JSON.parse(e.data);
+      updateProgress(s);
+      if (s.error) { events.close(); $("#analyse").disabled = false; }
+      if (s.finished) {
+        events.close();
+        const response=await fetch(`/result/${job}`);
+        if(!response.ok)throw Error(`Result download failed (${response.status})`);
+        result=await response.json();$("#analyse").disabled=false;showResults();
+      }
+    } catch(problem) {
+      $("#progress-error").textContent=`Progress display error: ${problem.message}`;
+      console.error(problem);
+      if(events.readyState===EventSource.CLOSED)$("#analyse").disabled=false;
+    }
+  };
+  // the browser retries a dropped stream by itself; a closed one means the server no longer has this analysis
+  events.onerror=()=>{
+    const lost=events.readyState===EventSource.CLOSED;
+    if($("#progress-error"))$("#progress-error").textContent=lost?"The server no longer has this analysis (it was probably restarted). Press Analyse to run it again.":"Connection to the server dropped; reconnecting…";
+    if(lost)$("#analyse").disabled=false;
   };
 }
 
+const ANALYSIS_STAGES = [
+  { step: "Dead load stages", title: "Solve construction dead loads" },
+  { step: "Influence surfaces", title: "Map the deck’s response" },
+  { step: "Searching traffic", title: "Search traffic & combine actions" },
+  { step: "Fatigue truck", title: "Calculate fatigue ranges" },
+  { step: "Checking in OpenSees", title: "Re-solve the critical positions" },
+  { step: "Preparing the plots", title: "Bring the results together" },
+];
+let progressStage = null;
+let progressPreviewId = null;
+let progressGeometry = null;
+
+// Show each completed preview once.
+function showProgressPreview(geometry, preview, key) {
+  if (key === progressPreviewId) return;
+  progressPreviewId = key;
+  progressPlot(geometry, preview);
+}
+
+const sig = (v, n = 4) => Number(v).toLocaleString("en-IN", { maximumSignificantDigits: n });
+// ordinate values span 1e-9 to 1e6; keep labels short in every range
+const num = v => { const a = Math.abs(Number(v)); return a && (a < 1e-3 || a >= 1e5) ? Number(v).toExponential(2) : sig(v); };
+
+let planSceneId = 0;
+// One fixed frame for every stage, with vehicles clipped to it.
+function planScene(b) {
+  const W = b.width_m, L = b.span_m, s = b.skew, margin = 0.12 * L + 1.6;
+  const x0 = Math.min(0, s * W) - margin, x1 = Math.max(L, L + s * W) + margin;
+  const zTop = -3.4, zBot = W + 4.2, h = zBot - zTop;
+  const svg = sv("svg", { viewBox: `${x0} ${zTop} ${x1 - x0} ${h}`, role: "img", "aria-label": "Top view of the deck with the vehicles placed by the calculation" });
+  SetuVehicles.defs(svg);
+  const clip = `plan-clip-${++planSceneId}`;
+  svg.append(sv("defs", {}, sv("clipPath", { id: clip }, sv("rect", { x: x0, y: zTop + .5, width: x1 - x0, height: h - 1 }))));
+  const at = (x, z) => `${x + s * z},${z}`;
+  const band = (xa, xc, za, zc, fill, extra = {}) => sv("polygon", { points: [at(xa, za), at(xc, za), at(xc, zc), at(xa, zc)].join(" "), fill, ...extra });
+  const deck = sv("g", { class: "plan-deck" });
+  b.strips.forEach(strip => {
+    deck.append(band(0, L, strip.from_m, strip.to_m, stripColour(strip.name), {}, sv("title", {}, `${strip.name.replaceAll("_", " ")} · ${fmt(strip.to_m - strip.from_m, 2)} m`)));
+    if (strip.name.startsWith("carriageway")) [strip.from_m + .12, strip.to_m - .12].forEach(z => deck.append(sv("line", { x1: s * z, y1: z, x2: L + s * z, y2: z, stroke: "#f4f1ea", "stroke-width": .075, opacity: .8 })));
+  });
+  [0, L].forEach(x => deck.append(sv("line", { x1: x, y1: -.7, x2: x + s * W, y2: W + .7, stroke: "var(--ink)", "stroke-width": .13, opacity: .9 }, sv("title", {}, `bearing line at x ${fmt(x, 2)} m`))));
+  b.girder_lines_m.forEach((z, k) => {
+    deck.append(sv("line", { x1: s * z, y1: z, x2: L + s * z, y2: z, stroke: "rgba(255,255,255,.4)","stroke-width": .055, "stroke-dasharray": "0.55 0.35" }, sv("title", {}, `G${k} girder line at z ${fmt(z, 2)} m`)),
+      sv("text", { x: s * z - .4, y: z + .22, "font-size": .55, fill: "var(--muted)", "text-anchor": "end" }, `G${k}`));
+  });
+  const vehicles = sv("g", { "clip-path": `url(#${clip})` });
+  svg.append(deck, vehicles);
+  return { svg, deck, vehicles, x0, x1, zTop, zBot };
+}
+
+// one stat block: the number is the headline, everything else stays quiet
+function stageReadout(unit) {
+  const value = el("strong", { className: "stage-value" }, "–");
+  const label = el("span", { className: "stage-label" });
+  const meta = el("span", { className: "stage-meta" });
+  return { root: el("div", { className: "stage-readout" }, el("div", { className: "stage-metric" }, label, el("span", { className: "stage-number" }, value, el("span", { className: "stage-unit" }, unit)), meta)), value, label, meta };
+}
+
+function spriteFor(v, parent) {
+  const g = vehicleSvg(v);
+  g.setAttribute("transform", `translate(${v.x_m},${v.z_m})`);
+  parent.append(g);
+  return g;
+}
+
+// transpose a [rows=x][cols=z] matrix so Plotly heatmaps draw x horizontally and z vertically
+const transpose = m => (m && m.length ? m[0].map((_, j) => m.map(row => row[j])) : []);
+
+// lane pattern in words: "class_a + class_a | zone_70r" -> "Class A + Class A | 70R"
+const lanePatternText = p => String(p).replaceAll("class_a", "Class A").replaceAll("zone_70r", "70R");
+
+// Live traffic search: the worst layout found for this girder and section, drawn on the deck.
+function progressSearch(b, preview) {
+  const best = preview.ranking[0], scene = planScene(b);
+  best.vehicles.forEach(v => spriteFor(v, scene.vehicles));
+  return el("div", { className: "stage-plan" },
+    scene.svg,
+    el("p", { className: "stage-meta" }, `Worst layout: ${lanePatternText(best.lane_pattern)} → ${num(best.response)} ${preview.unit}`),
+    ...(b.carriageways.some(c => c.design_lanes === 1) ? [el("p", { className: "stage-caption" },
+      "No 70R: carriageway narrower than 5.3 m (IRC:6 Table 6).")] : []));
+}
+
+// Static braking forces at the solved vehicle positions.
+function brakingScene(b, data) {
+  const scene = planScene(b);
+  const forces = sv("g", { class: "braking-forces" });
+  data.vehicles.forEach(v => spriteFor(v, scene.vehicles));
+  scene.vehicles.append(forces);
+  const read = stageReadout(data.unit);
+  const stage = el("div", { className: "stage-plan" }, scene.svg, read.root);
+  const buttons = el("div", { className: "progress-frame-controls" });
+  const labels = { forwards: "+x braking", backwards: "−x braking" };
+  const draw = name => {
+    const d = data.directions[name];
+    const total = d.nodes.reduce((sum, nd) => sum + nd.fx_kn, 0);
+    const direction = total < 0 ? -1 : 1;
+    forces.replaceChildren();
+    const axles = data.vehicles.flatMap(v => v.tracked ? [{ v, x: (v.body_m[0] + v.body_m[1]) / 2, share: 1 }]
+      : v.axles_m.map((x, k) => ({ v, x, share: v.axle_loads_t[k] })));
+    const reach = Math.min(b.span_m * .13, 3.4);
+    axles.forEach(({ v, x, share }) => {
+      const length = reach * share / Math.max(...axles.map(a => a.share));
+      const z = v.z_m, tip = v.x_m + x + direction * length;
+      // arrows along the braking force the tyres drag into the deck (the direction of travel)
+      forces.append(sv("line", { x1: v.x_m + x, y1: z, x2: tip, y2: z, stroke: "#c8402a", "stroke-width": .16, "stroke-linecap": "round" }),
+        sv("polygon", { points: `${tip},${z - .34} ${tip + direction * .3},${z} ${tip},${z + .34}`, fill: "#c8402a" }));
+    });
+    const fitted = Number.isFinite(d.response) ? d.response : Math.abs(total);
+    read.value.textContent = fmt(fitted, 2);
+    read.meta.textContent = `${labels[name]}${name === data.selected ? " governs" : ""} · braking force ${fmt(Math.abs(total), 1)} kN${Number.isFinite(data.live) ? ` · traffic alone ${fmt(data.live, 2)} ${data.unit}` : ""}`;
+    read.label.textContent = `Girder ${data.girder} with braking`;
+    [...buttons.children].forEach(x => x.classList.toggle("on", x.dataset.direction === name));
+  };
+  Object.keys(data.directions).forEach(name => {
+    const button = el("button", { textContent: labels[name], onclick: () => draw(name) });
+    button.dataset.direction = name; buttons.append(button);
+  });
+  draw(data.selected);
+  stage.append(buttons);
+  return stage;
+}
+
+// Truck positions at the two solved fatigue extrema.
+// Fatigue: the one 40 t truck at the two positions that give the largest and smallest stress; range = their difference.
+function progressFatigue(b, preview) {
+  const v = preview.vehicles[0], scene = planScene(b), u = preview.unit;
+  [["A", preview.maximum_front_m], ["B", preview.minimum_front_m]].forEach(([tag, x]) => {
+    spriteFor({ ...v, x_m: x }, scene.vehicles);
+    const mid = Math.min(Math.max(x + (v.body_m[0] + v.body_m[1]) / 2, 0), b.span_m);
+    scene.svg.append(sv("text", { x: mid, y: v.z_m - 1.9, "font-size": .85, "font-weight": 700, "text-anchor": "middle", fill: "var(--ink)", "paint-order": "stroke", stroke: "var(--panel)", "stroke-width": .25 }, tag));
+  });
+  return el("div", { className: "stage-plan" },
+    scene.svg,
+    el("p", { className: "stage-meta" }, `Stress range = A − B = ${num(preview.largest)} − (${num(preview.smallest)}) = ${num(preview.range)} ${u}`));
+}
+
+const DIVERGING_SCALE = [[0, "#2b66b7"], [0.5, "#f4f3ef"], [1, "#c8402a"]];
+
+// Static summaries of completed operations.
+function progressPlot(geometry, preview, host = $("#progress-plot")) {
+  if (!preview) {
+    host.textContent = "Waiting for the first result…";
+    return;
+  }
+  let visual, columns, rows;
+  if (preview.kind === "loading" || preview.kind === "dead") {
+    columns = ["Stage", "Total applied downward load (kN)", "Status"];
+    rows = preview.stages.map(s => [s.name, num(s.total_downward_kn), s.solved ? "solved" : "applied"]);
+  } else if (preview.kind === "surface") {
+    const s = preview.surface, span = Math.max(Math.abs(s.minimum), Math.abs(s.maximum)) || 1;
+    const zg = geometry.girder_lines_m[preview.girder], plot = el("div", { className: "plot" });
+    host.replaceChildren(plot, el("p", { className: "stage-caption" }, `min ${num(s.minimum)} · max ${num(s.maximum)} ${s.unit}`));
+    Plotly.react(plot, [
+      { type: "heatmap", x: s.x_m, y: s.z_m, z: transpose(s.values),
+        zmid: 0, zmin: -span, zmax: span, colorscale: DIVERGING_SCALE,
+        colorbar: { title: { text: s.unit }, thickness: 12 } },
+      { type: "scatter", mode: "lines", x: [s.x_m[0], s.x_m.at(-1)], y: [zg, zg],
+        line: { color: css("--accent"), width: 2, dash: "dash" }, name: `G${preview.girder}` },
+      { type: "scatter", mode: "markers", x: [preview.station_m], y: [zg],
+        marker: { symbol: "x", size: 11, color: css("--bad") }, name: "Checked station" }
+    ], plotLayout({ height: 340, margin: { l: 58, r: 20, t: 24, b: 48 },
+      legend: { orientation: "h", y: 1.1 },
+      xaxis: axis({ title: "Along span, x (m)" }),
+      yaxis: axis({ title: "Across deck, z (m)", autorange: "reversed" })
+    }), { staticPlot: true, displayModeBar: false, responsive: true });
+    return;
+  } else if (preview.kind === "braking") {
+    visual = brakingScene(geometry, preview);
+  } else if (preview.kind === "search") {
+    visual = progressSearch(geometry, preview);
+  } else if (preview.kind === "fatigue") {
+    visual = progressFatigue(geometry, preview);
+  } else if (preview.kind === "check") {
+    columns = ["Girder", "Response", "Adverse", "Influence-surface prediction", "Direct OpenSees solve", "Difference (%)"];
+    rows = preview.rows.map(r => [`G${r.girder}`, r.response, r.adverse, `${num(r.searched)} ${r.unit}`, `${num(r.solved)} ${r.unit}`, r.difference_pct === null ? "—" : num(r.difference_pct)]);
+  } else if (preview.kind === "results") {
+    visual = el("p", {}, `Assembling results: ${preview.combinations} load combinations`);
+  }
+  if (columns) visual = el("div", { className: "scroll" }, el("table", {},
+    el("thead", {}, el("tr", {}, ...columns.map(c => el("th", {}, c)))),
+    el("tbody", {}, ...rows.map(r => el("tr", {}, ...r.map(v => el("td", {}, v)))))));
+  host.replaceChildren(visual);
+}
+
 function showProgress() {
-  $("#out").replaceChildren(el("div", { className: "card pad" },
-    el("h2", {}, "Analysing the bridge"), el("p", { className: "sub", id: "progress-text", textContent: "Starting…" }),
-    el("div", { className: "bar" }, el("div", { id: "progress-bar" })),
-    el("ul", { className: "steps", id: "steps" }, ...STEPS.map(s => el("li", { textContent: s }))),
-    el("div", { className: "error", id: "progress-error" })));
+  progressStage = null;
+  progressPreviewId = null;
+  progressGeometry = null;
+  const R = 32, C = 2 * Math.PI * R;
+  const ring = sv("svg", { class: "progress-ring", id: "analysis-meter", viewBox: "0 0 76 76", role: "progressbar",
+    "aria-label": "Overall analysis progress", "aria-valuemin": "0", "aria-valuemax": "100", "aria-valuenow": "0" },
+    sv("circle", { class: "progress-ring-track", cx: 38, cy: 38, r: R }),
+    sv("circle", { class: "progress-ring-arc", id: "progress-bar", cx: 38, cy: 38, r: R, "stroke-dasharray": C.toFixed(2), "stroke-dashoffset": C.toFixed(2) }),
+    sv("text", { class: "progress-ring-value", id: "progress-percent", x: 38, y: 38, "text-anchor": "middle", "dominant-baseline": "middle" }, "0%"));
+  $("#out").replaceChildren(el("section", { className: "card analysis-progress" },
+    el("header", { className: "progress-topbar" }, ring,
+      el("div", { className: "progress-topblock" },
+        el("h2", { id: "progress-title", "aria-live": "polite" }, "Waiting for the solver"),
+        el("p", { className: "progress-field-caption", id: "progress-task" }, ""))),
+    el("div", { className: "progress-stage" }, el("div", { id: "progress-plot", className: "progress-plot" })),
+    el("div", { className: "progress-operation", id: "progress-operation" }),
+    el("div", { className: "error", id: "progress-error", role: "alert" })));
+  progressPlot(null, null);
 }
 
 function updateProgress(s) {
-  $("#progress-bar").style.width = `${s.percent}%`;
-  $("#progress-text").textContent = `${s.step}${s.of > 1 ? ` · ${s.count} of ${s.of}` : ""} · ${s.percent}% · ${s.seconds} s`;
-  const now = STEPS.indexOf(s.step);
-  [...$("#steps").children].forEach((li, k) => { li.className = s.finished || k < now ? "done" : k === now ? "now" : ""; li.textContent = (li.className === "done" ? "✓ " : "") + STEPS[k]; });
+  if(s.progress_protocol!==PROGRESS_PROTOCOL){
+    $("#progress-error").textContent="Visualization/backend version mismatch. Restart web/main.py and refresh before starting a new analysis.";
+    return;
+  }
+  if (s.geometry) progressGeometry = s.geometry;
+  const now = ANALYSIS_STAGES.findIndex(stage => stage.step === s.step), percent = Math.max(0, Math.min(100, s.percent));
+  const arc = $("#progress-bar"), ring = $("#analysis-meter");
+  const C = Number(arc.getAttribute("stroke-dasharray")) || 2 * Math.PI * 32;
+  arc.style.strokeDashoffset = String(C * (1 - percent / 100));
+  ring.setAttribute("aria-valuenow", String(percent));
+  $("#progress-percent").textContent = `${percent}%`;
+  $(".analysis-progress").classList.toggle("has-error", Boolean(s.error));
+  $(".analysis-progress").dataset.finished = String(Boolean(s.finished));
+  const stageChanged = progressStage !== now;
+  if (stageChanged) {
+    progressStage = now;
+    $("#progress-title").textContent = now < 0 ? "Waiting for the solver" : `Stage ${now + 1} of ${ANALYSIS_STAGES.length} · ${ANALYSIS_STAGES[now].title}`;
+  }
+  const preview = s.preview?.stage === s.step ? s.preview : null;
+  const layoutKey=preview?.id;
+  const previewId = `${now}:${layoutKey ?? 'pending'}:${Boolean(progressGeometry)}`;
+  if (progressGeometry) {
+    if (preview || stageChanged) showProgressPreview(progressGeometry, preview, previewId);
+  } else {
+    $("#progress-plot").textContent = "Waiting for the first result…";
+  }
+  const task=s.activity||{};
+  const target = task.target?.replace(", ", " · ");
+  const details = [task.girder !== undefined ? `girder ${task.girder}` : null,
+    task.response && `${task.response}${task.station_m !== undefined ? ` at ${num(task.station_m)} m` : ""}`].filter(Boolean).join(" · ");
+  const subjects = [preview?.stages?.at(-1)?.name || "construction dead loads", "influence surfaces", "traffic layouts", "fatigue stress ranges", "critical positions", "results"];
+  $("#progress-task").textContent = target || details || subjects[now] || "";
+  $("#progress-error").textContent = s.error || "";
+  const countUnit=["load cases","fields","searches","ranges","load cases","report tasks"][now]||"operations";
+  if(now===2 && s.traffic_work){
+    $("#progress-operation").textContent=Object.entries(s.traffic_work).map(([name,v])=>`${v.count} of ${v.of} ${name}`).join(" · ");
+  } else $("#progress-operation").textContent = s.of ? `${s.count} of ${s.of} ${countUnit}` : "";
 }
 
 // ── results ─────────────────────────────────────────────────────────────────
@@ -109,22 +405,20 @@ const css = name => getComputedStyle(document.documentElement).getPropertyValue(
 const PALETTE = ["#2458d3", "#e4572e", "#1f8a4c", "#9b5de5", "#f2a007", "#00a6a6", "#c2185b", "#6d4c41", "#546e7a", "#7cb342", "#3949ab", "#d81b60"];
 let tab = "positions", plotCase = null, plotGirder = "all", plotQty = "m", addDead = false;
 
-// Explain a design value beside the number, including on touch screens.
+// Design-value explanations are available on the label tooltip.
 function row(label, value, unit, chip, explain) {
   return el("div", { className: "row-kv" },
-    el("span", { className: "k", textContent: label }),
+    el("span", { className: "k", textContent: label, title: explain }),
     el("span", { className: "v" }, value, el("small", { textContent: ` ${unit}` })),
-    el("span", { className: "chip", textContent: chip }),
-    el("p", { className: "meaning", textContent: explain }));
+    el("span", { className: "chip", textContent: chip }));
 }
 
-function movementCheck(label, valueMm, limitMm, g, explanation, rule) {
+function movementCheck(label, valueMm, limitMm, g, rule) {
   const within = valueMm <= limitMm;
   return el("div", { className: "movement-check" },
     el("div", { className: "check-heading" }, el("h3", {}, label), el("span", { className: `chip ${within ? "ok" : "bad"}`, textContent: within ? "Within limit" : "Above limit" })),
     el("div", { className: "movement-value" }, fmt(valueMm, 1), el("small", {}, " mm")),
     el("p", { className: "check-limit" }, `Allowed: ${fmt(limitMm, 1)} mm · ${girderName(g)}`),
-    el("p", { className: "meaning" }, explanation),
     el("small", { className: "check-rule", textContent: rule }));
 }
 
@@ -135,9 +429,7 @@ function showResults() {
   const liveMm = 1000 * result.deflections_m[`girder ${live}`].live_m, totalMm = 1000 * result.deflections_m[`girder ${total}`].total_m;
   const liveLimit = 1000 * L / 800, totalLimit = 1000 * L / 600;
   const fatigue = girders().reduce((a, b) => fatigueStress(b)[1].range > fatigueStress(a)[1].range ? b : a, 0);
-  const within = liveMm <= liveLimit && totalMm <= totalLimit;
   const forces = el("details", { className: "design-summary" }, el("summary", {}, "See design forces & fatigue stress"),
-    el("p", { className: "sub" }, "Forces to use when sizing members and bearings. Member strength and fatigue resistance need separate checks."),
     row("Bending moment", fmt(g["ULS sagging"].value), "kN·m", `Girder ${g["ULS sagging"].girder}`,
       `The turning effect that bends the girder. Largest factored demand, ${fmt(g["ULS sagging"].at_m, 1)} m from the first bearing.`),
     row("Shear at the support", fmt(Math.abs(g["ULS shear"].value)), "kN", `Girder ${g["ULS shear"].girder}`, "The force that tends to shear the girder near its support. Includes design load factors."),
@@ -145,13 +437,10 @@ function showResults() {
     ...(result.site.seismic ? [row("Earthquake bending moment", fmt(g["ULS seismic"].value), "kN·m", `Girder ${g["ULS seismic"].girder}`, "The bending demand under the earthquake design combination.")] : []),
     row("Fatigue stress range", fmt(fatigueStress(fatigue)[1].range, 2), "MPa", `Girder ${fatigue}`, "The change in steel stress during one 40 t truck passage. Compare it with the resistance of the fatigue detail."));
   const summary = el("div", { className: "card pad result-overview" },
-    el("p", { className: "sub bridge-context" }, `${fmt(L, 1)} m span · ${fmt(result.bridge.deck_width_m, 2)} m wide · ${result.bridge.girders} girders`),
-    el("h2", {}, "How much does the bridge move?"),
-    el("p", { className: `check-status ${within ? "pass" : "fail"}` }, within ? "Both movement checks are within their limits." : "Movement needs attention — see the check marked above limit."),
-    el("p", { className: "sub" }, "Largest downward movement (deflection) at the middle of the span. Each check uses its own worst traffic position."),
+    el("h2", {}, "Deflection"),
     el("div", { className: "movement-checks" },
-      movementCheck("From traffic", liveMm, liveLimit, live, "Movement caused by vehicles, including impact. Pedestrians are excluded from this check.", "IRC:22 limit: span ÷ 800"),
-      movementCheck("From all loads", totalMm, totalLimit, total, "Movement from bridge weight, road surfacing and traffic, before allowing for camber (the upward curve built into the bridge).", "IRC:22 limit: span ÷ 600, before camber")),
+      movementCheck("From traffic", liveMm, liveLimit, live, "limit L/800"),
+      movementCheck("From all loads", totalMm, totalLimit, total, "limit L/600")),
     forces);
   girder = g["ULS sagging"].girder;
   plotCase = `Live · largest moment in G${girder}`;
@@ -170,13 +459,6 @@ function showTab() {
   if (tab === "diagrams") { panel.replaceChildren(diagramCard()); drawDiagrams(); }
   if (tab === "model") { panel.replaceChildren(modelCard()); drawModel(); }
   if (tab === "site") { panel.replaceChildren(siteCard()); drawSite(); }
-}
-
-function describeTraffic(d) {
-  const counts = {};
-  d.vehicles.forEach(v => counts[v.name] = (counts[v.name] || 0) + 1);
-  const list = Object.entries(counts).map(([name, n]) => `${n} × ${name}`).join(" and ");
-  return `${list}${d.patches.some(p => p.kind === "residual UDL") ? " plus the residual lane load" : ""}${d.patches.some(p => p.kind === "footway") ? " plus people on the footpath" : ""}`;
 }
 
 // the design places Setu checks on every girder; the page shows one at a time
@@ -204,29 +486,22 @@ function stripColour(name) {
 }
 
 // the deck, bearings and girder lines; returns the svg and a layer to put vehicles in
-function deckSvg(extraXs = []) {
-  const d = result.drawing, W = d.width_m, L = d.span_m, s = d.skew;
-  const xs = [0, L, s * W, L + s * W, ...extraXs];
-  const x0 = Math.max(Math.min(...xs), -0.3 * L) - 1, x1 = Math.min(Math.max(...xs), 1.3 * L + s * W) + 1;
-  const svg = sv("svg", { viewBox: `${x0} -2.2 ${x1 - x0} ${W + 3.6}`, role: "img", "aria-label": "top view of the deck" });
+function deckSvg() {
+  const d = result.drawing, W = d.width_m, L = d.span_m, s = d.skew, margin = 0.12 * L + 1.6;
+  const x0 = Math.min(0, s * W) - margin, x1 = Math.max(L, L + s * W) + margin;
+  const viewBox = `${x0} -2.2 ${x1 - x0} ${W + 4.2}`, svg = sv("svg", { viewBox, role: "img", "aria-label": "top view of the deck" });
   svg.append(sv("defs", {},
     sv("clipPath", { id: "view" }, sv("rect", { x: x0, y: -0.5, width: x1 - x0, height: W + 1 })),
 ));
   SetuVehicles.defs(svg);
   const at = (x, z) => `${x + s * z},${z}`;
   const band = (z0, z1, fill, extra = {}) => sv("polygon", { points: [at(0, z0), at(L, z0), at(L, z1), at(0, z1)].join(" "), fill, ...extra });
-  d.strips.forEach(strip => [[x0, s * strip.from_m, s * strip.to_m, x0], [L + s * strip.from_m, x1, x1, L + s * strip.to_m]].forEach(([a, b, c, e]) =>
-    svg.append(sv("polygon", { points: `${a},${strip.from_m} ${b},${strip.from_m} ${c},${strip.to_m} ${e},${strip.to_m}`, fill: stripColour(strip.name), opacity: 0.4 }))));
   d.strips.forEach(strip => {
     svg.append(band(strip.from_m, strip.to_m, stripColour(strip.name), {}, sv("title", {}, `${strip.name.replaceAll("_", " ")}: ${fmt(strip.to_m - strip.from_m, 2)} m`)));
     if (strip.name.startsWith("carriageway"))
       [strip.from_m + 0.12, strip.to_m - 0.12].forEach(z => svg.append(sv("line", { x1: s * z, y1: z, x2: L + s * z, y2: z, stroke: "#f4f1ea", "stroke-width": 0.08, opacity: 0.8 })));
-    if (strip.name.startsWith("footpath"))
-      for (let x = 0.6; x < L; x += 0.6) svg.append(sv("line", { x1: x + s * strip.from_m, y1: strip.from_m, x2: x + s * strip.to_m, y2: strip.to_m, stroke: "rgba(0,0,0,.07)", "stroke-width": 0.03 }));
   });
   [0, L].forEach(x => svg.append(sv("line", { x1: x, y1: -0.3, x2: x + s * W, y2: W + 0.3, stroke: "var(--ink)", "stroke-width": 0.1 })));
-  svg.append(sv("text", { x: 0, y: -1.2, "font-size": 0.6, fill: "var(--muted)" }, "bearing"), sv("text", { x: L, y: -1.2, "font-size": 0.6, fill: "var(--muted)", "text-anchor": "end" }, "bearing"));
-  svg.append(sv("text", { x: L / 2, y: W + 1.1, "font-size": 0.6, fill: "var(--muted)", "text-anchor": "middle" }, `span ${fmt(L, 1)} m · deck ${fmt(W, 2)} m wide`));
   const loads = sv("g");
   svg.append(loads);
   d.girder_lines_m.forEach((z, k) => {
@@ -252,8 +527,10 @@ function placeVehicle(v, shift = 0) {
 
 function deckCard() {
   return el("div", { className: "card pad deck" },
-    el("h2", { id: "deck-title" }),
-    el("p", { className: "sub", id: "deck-caption" }), el("div", { id: "place-tabs" }), el("div", { id: "girder-tabs" }), el("div", { id: "deck" }),
+    el("div", { className: "card-head" },
+      el("div", { style: "min-width:0" }, el("h2", { id: "deck-title" }), el("p", { className: "sub", id: "deck-caption", style: "margin-top:3px" })),
+      el("div", { className: "card-head-tabs" }, el("div", { id: "place-tabs" }), el("div", { id: "girder-tabs" }))),
+    el("div", { id: "deck" }),
     el("details", {}, el("summary", {}, "See vehicle positions & impact factors"), el("div", { id: "vehicle-positions", className: "scroll" })),
     el("div", { className: "legend" },
       el("span", {}, el("i", { style: "background:var(--asphalt)" }), "carriageway"), el("span", {}, el("i", { style: "background:var(--footpath)" }), "footpath"),
@@ -262,8 +539,7 @@ function deckCard() {
       el("span", {}, el("i", { style: "background:var(--bad)" }), "section checked")),
     el("div", { className: "row" },
       el("button", { className: "primary", textContent: "Export critical loads CSV (this girder, maximum moment)", onclick: () => location.href = `/critical-loads/${job}.csv?girder=${girder}` }),
-      el("button", { textContent: "Export critical loads CSV (all girders, maximum moment)", onclick: () => location.href = `/critical-loads/${job}.csv?girder=all` }),
-      el("span", { className: "sub", style: "margin:0", textContent: "Wheels as point loads (impact and lane reduction included), lane and footpath loads as area loads." })));
+      el("button", { textContent: "Export critical loads CSV (all girders, maximum moment)", onclick: () => location.href = `/critical-loads/${job}.csv?girder=all` })));
 }
 
 function sectionMarker(svg, at_m) {
@@ -271,29 +547,28 @@ function sectionMarker(svg, at_m) {
   const atBearing = at_m < 0.5;
   svg.append(sv("line", { x1: x, y1: zg - 1.1, x2: x, y2: zg + 1.1, stroke: "var(--bad)", "stroke-width": 0.14 }),
     sv("text", { x: atBearing ? x + 0.4 : x, y: atBearing ? d.width_m + 1.1 : -1.2, "font-size": 0.6, fill: "var(--bad)", "text-anchor": atBearing ? "start" : "middle", "font-weight": 700 },
-      atBearing ? "checked at the bearing" : `x = ${fmt(at_m, 2)} m`));
+      `x = ${fmt(at_m, 2)} m`));
 }
 
 function drawDeck() {
   $("#girder-tabs").replaceChildren(girderTabs(drawDeck));
   $("#place-tabs").replaceChildren(placeTabs(drawDeck));
   const c = result.drawing.places[place][girder], p = placeInfo();
-  $("#deck-title").textContent = `Where the traffic stands for the worst ${p.label.toLowerCase()}`;
-  const { svg, layer, loads } = deckSvg(c.vehicles.flatMap(v => [v.from_m, v.to_m]));
+  $("#deck-title").textContent = "Traffic positions";
+  const { svg, layer, loads } = deckSvg();
   c.patches.forEach(p => loads.append(sv("polygon", { points: p.corners.map(([x, z]) => `${x},${z}`).join(" "),
     fill: p.kind === "footway" ? "var(--foot)" : "var(--udl)" }, sv("title", {}, `${p.kind}: ${fmt(p.kpa, 2)} kN/m²`))));
   c.vehicles.forEach(v => layer.append(placeVehicle(v)));
   sectionMarker(svg, c.at_m);
   $("#deck").replaceChildren(svg);
-  $("#deck-caption").textContent = `${girderName(girder)}: ${describeTraffic(c)}. Live load ${p.label.toLowerCase()} ${fmt(c.value, place === "deflection" ? 2 : 0)} ${p.unit}`
-    + ` (impact included, lane reduction ${fmt(c.lane_reduction, 2)}${place === "deflection" ? ", footway left out as IRC:22 allows" : ""}). Hover a vehicle for its details.`;
+  $("#deck-caption").textContent = `G${girder} · ${fmt(c.value, place === "deflection" ? 2 : 0)} ${p.unit} · lane reduction ${fmt(c.lane_reduction, 2)}${place === "deflection" ? " · footway excluded (IRC:22)" : ""}`;
   $("#vehicle-positions").replaceChildren(el("table", {},
     el("tr", {}, ...["Vehicle", "Carriageway", "Centre z (m)", "From left kerb (m)", "Front x (m)", "Impact multiplier"].map(t => el("th", { textContent: t }))),
     ...c.vehicles.map(v => {
       const strip = result.drawing.strips.find(s => s.name.startsWith("carriageway") && v.z_m >= s.from_m && v.z_m <= s.to_m);
       return el("tr", {}, ...[`${v.name} ${v.heading > 0 ? "→" : "←"}`, strip?.name || "—", fmt(v.z_m, 3), strip ? fmt(v.z_m - strip.from_m, 3) : "—",
         fmt(v.x_m, 3), `${fmt(v.impact_factor, 4)} (i = ${fmt(v.impact_factor - 1, 4)})`].map(t => el("td", { textContent: t })));
-    }), el("caption", { textContent: "z is measured from the left deck edge; the kerb offset is to the vehicle centre from its carriageway's left boundary. x is the global front-axle coordinate, including skew. Each train vehicle has a row." })));
+    })));
 }
 
 // ── search replay: every vehicle rolled along every lane, then Setu's best arrangements ──
@@ -302,28 +577,35 @@ let replay = null;
 
 function replayCard() {
   return el("div", { className: "card pad" },
-    el("h2", {}, "How Setu finds the worst place for the traffic"),
-    el("p", { className: "sub" }, "↺ = vehicle turned round, c/w = carriageway. Pick a result and a girder: Setu searches every one. Each vehicle is rolled along each lane; the line shows the effect it makes at that place at every position (read off the girder's influence surface). "
-      + "Then Setu's best lane arrangements are rolled together, and the worst one wins. Arrangement bars include the lane reduction and the lane and footpath loads."),
-    el("div", { id: "place-tabs" }), el("div", { id: "girder-tabs" }),
-    el("div", { id: "replay-deck", className: "deck" }),
+    el("div", { className: "card-head" },
+      el("div", { style: "min-width:0" },
+        el("h2", {}, "Traffic rolled across the span"),
+        el("p", { className: "sub", style: "margin-top:3px" }, "Vehicles alone, then setu's best lane arrangements, rolled along the span.")),
+      el("div", { className: "card-head-tabs" }, el("div", { id: "place-tabs" }), el("div", { id: "girder-tabs" }))),
+    el("div",{className:"progress-frame-controls"},el("button",{id:"replay-traffic-choice",textContent:"Traffic passes",onclick:()=>showReplayBraking(false)}),el("button",{id:"replay-braking-choice",textContent:"Braking checks",onclick:()=>showReplayBraking(true)})),
+    el("div", { id: "replay-deck", className: "deck" }),el("section",{id:"replay-braking",hidden:true}),
     el("div", { className: "player" },
       el("button", { id: "play", className: "primary", textContent: "❚❚ Pause" }),
       el("input", { id: "scrub", type: "range", min: 0, value: 0 }),
       el("select", { id: "speed" }, ...[["0.5", "0.5×"], ["1", "1×"], ["2", "2×"], ["4", "4×"]].map(([v, t]) => el("option", { value: v, textContent: t, selected: v === "1" })))),
     el("div", { className: "now-trying", id: "trying" }),
-    el("div", { className: "charts2" }, el("div", { id: "trace", className: "plot" }), el("div", { id: "race", className: "plot" })));
+    el("div", { className: "charts2",id:"replay-charts" }, el("div", { id: "trace", className: "plot" }), el("div", { id: "race", className: "plot" })));
 }
 
 function startReplay() {
   $("#girder-tabs").replaceChildren(girderTabs(() => { stopReplay(); showTab(); }));
   $("#place-tabs").replaceChildren(placeTabs(() => { stopReplay(); showTab(); }));
   const r = result.replay[place][girder], trials = r.trials;
+  const brakingHost=$("#replay-braking");
+  $("#replay-braking-choice").disabled=!r.braking;
+  if(r.braking){
+    brakingHost.replaceChildren(el("h3",{},"Braking at this critical traffic layout"),
+      brakingScene(result.geometry,r.braking));
+  } else brakingHost.replaceChildren();
   const starts = [];
   let total = 0;
   trials.forEach(t => { starts.push(total); total += t.shifts.length + HOLD; });
-  const all = trials.flatMap(t => t.vehicles.flatMap(v => [v.from_m - Math.max(...t.shifts), v.to_m + Math.max(...t.shifts)]));
-  const { svg, layer } = deckSvg([Math.max(-8, Math.min(...all)), Math.min(result.bridge.span_m + 8, Math.max(...all))]);
+  const { svg, layer } = deckSvg();
   sectionMarker(svg, r.at_m);
   $("#replay-deck").replaceChildren(svg);
   replay = { r, trials, starts, total, frame: 0, playing: true, layer, shown: -1, groups: [], last: performance.now(), raceShown: -1 };
@@ -337,6 +619,15 @@ function startReplay() {
   Plotly.newPlot("race", [], raceLayout(), { displayModeBar: false, responsive: true });
   renderReplay();
   replay.timer = requestAnimationFrame(tickReplay);
+  $("#replay-traffic-choice").classList.add("on");
+}
+
+function showReplayBraking(enabled) {
+  if(!replay)return;
+  replay.playing=false;$("#play").textContent="▶ Play";
+  $("#replay-deck").hidden=enabled;$("#replay-braking").hidden=!enabled;
+  $("#replay-charts").hidden=enabled;$("#trying").hidden=enabled;$("#scrub").closest(".player").hidden=enabled;
+  $("#replay-traffic-choice").classList.toggle("on",!enabled);$("#replay-braking-choice").classList.toggle("on",enabled);
 }
 
 function stopReplay() { if (replay) { cancelAnimationFrame(replay.timer); replay = null; } }
@@ -346,7 +637,7 @@ function tickReplay(now) {
   const speed = Number($("#speed")?.value || 1);
   if (replay.playing) {
     replay.frame = Math.min(replay.total - 1, replay.frame + (now - replay.last) * 0.045 * speed);
-    if (replay.frame >= replay.total - 1) { replay.playing = false; $("#play").textContent = "↺ Replay"; }
+    if (replay.frame >= replay.total - 1) { replay.playing = false; $("#play").textContent = "↺ Replay"; if(replay.r.braking)showReplayBraking(true); }
     renderReplay();
   }
   replay.last = now;
@@ -376,7 +667,10 @@ function renderReplay() {
     replay.layer.replaceChildren(...t.vehicles.map(v => vehicleSvg(v)));
     replay.shown = k;
   }
-  [...replay.layer.children].forEach((g, n) => g.setAttribute("transform", `translate(${t.vehicles[n].x_m + t.vehicles[n].heading * t.shifts[idx]},${t.vehicles[n].z_m})`));
+  const blend=rolling ? replay.frame-f : 0,shift=t.shifts[idx]+blend*((t.shifts[Math.min(idx+1,t.shifts.length-1)]??t.shifts[idx])-t.shifts[idx]);
+  [...replay.layer.children].forEach((g, n) => g.setAttribute("transform", `translate(${t.vehicles[n].x_m + t.vehicles[n].heading * shift},${t.vehicles[n].z_m})`));
+  if(replay.lastPlotFrame===f)return;
+  replay.lastPlotFrame=f;
   const x0 = t.vehicles[0].x_m, h0 = t.vehicles[0].heading;
   const done = trials.slice(0, k).map((p, n) => ({ x: p.shifts.map(s => p.vehicles[0].x_m + p.vehicles[0].heading * s), y: p.moments, mode: "lines", hoverinfo: "skip",
     line: { width: 1.2, color: p.kind === "arrangement" ? "rgba(36,88,211,.35)" : "rgba(128,128,128,.35)" } }));
@@ -400,7 +694,7 @@ function renderReplay() {
       hoverinfo: "text" }], { ...raceLayout(), height: Math.max(260, 60 + 26 * trials.length) });
   }
   $("#trying").replaceChildren(finished
-    ? el("span", {}, el("b", { className: "pass", textContent: "Critical position found: " }), `${t.label.replace("Critical: ", "")} — ${fmt(t.total, place === "deflection" ? 2 : 0)} ${placeInfo().unit} (${placeInfo().label.toLowerCase()}) in G${girder}. This is the layout shown under Critical positions.`)
+    ? el("span", {}, el("b", { className: "pass", textContent: "Critical position found: " }), `${t.label.replace("Critical: ", "")} — ${fmt(t.total, place === "deflection" ? 2 : 0)} ${placeInfo().unit} (${placeInfo().label.toLowerCase()}) in G${girder}.`)
     : el("span", {}, el("b", { textContent: `${k + 1} / ${trials.length} · ` }), `${t.label} — now ${fmt(t.moments[idx], place === "deflection" ? 2 : 0)} ${placeInfo().unit}, best so far ${fmt(Math.max(...running), place === "deflection" ? 2 : 0)} ${placeInfo().unit}`));
 }
 
@@ -432,7 +726,6 @@ function plotControls(redraw, withQty) {
 
 function diagramCard() {
   return el("div", { className: "card pad" }, el("h2", {}, "Bending moment, shear and deflection along the girders"),
-    el("p", { className: "sub" }, "Unfactored forces from Setu's model. Live cases are each girder's critical traffic, solved in OpenSees. Sagging moment is drawn below the axis, as on paper. Hover to read values at any point."),
     plotControls(drawDiagrams, false), el("div", { id: "readout", className: "readout" }), el("div", { id: "diagram", className: "plot tall" }));
 }
 
@@ -469,34 +762,40 @@ function drawDiagrams() {
     const i = x.indexOf(e.points[0].x);
     if (i < 0) return;
     const show = plotGirder === "all" ? [girder] : [plotGirder];
-    $("#readout").textContent = show.map(k => `${girderName(Number(k))} at x = ${fmt(x[i], 2)} m · M = ${fmt(forces[k].m[i])} kN·m · V = ${fmt(forces[k].v[i])} kN · δ = ${fmt(forces[k].d[i], 2)} mm · reaction at the first bearing ${fmt(forces[k].r)} kN`).join("  ");
+    $("#readout").textContent = show.map(k => `${girderName(Number(k))} at x = ${fmt(x[i], 2)} m · M = ${fmt(forces[k].m[i])} kN·m · V = ${fmt(forces[k].v[i])} kN · δ = ${fmt(forces[k].d[i], 2)} mm · bearing reactions: first ${fmt(forces[k].r)} kN, far ${fmt(forces[k].r_end)} kN`).join("  ");
   });
 }
 
 // ── 3D model: deck mesh, girders, braces and force ribbons (like OsdagBridge's 3D view) ──
 function modelCard() {
   return el("div", { className: "card pad" }, el("h2", {}, "3D model with force diagrams"),
-    el("p", { className: "sub" }, "The deck mesh Setu analyses, the girders and braces under it, and the chosen force drawn as a ribbon on each girder. Drag to turn, scroll to zoom. Cones are the wheel loads of a live case."),
     plotControls(drawModel, true), el("div", { id: "model", className: "plot tall" }));
 }
 
 function drawModel() {
   const m = result.mesh, s = m.skew, x = result.diagrams.x_m, forces = caseForces(plotCase), L = result.bridge.span_m, W = result.drawing.width_m;
-  const depth = m.depth_m, line = css("--line"), muted = css("--muted");
+  const depth = m.depth_m, depths = m.girder_depths_m, top = -m.slab_m / 2, line = css("--line"), muted = css("--muted");
   const seg = (pts, arr) => { pts.forEach(p => arr.push(p)); arr.push([null, null, null]); };
   const deck = [], steel = [], braces = [];
   m.x_m.forEach(xi => seg([[xi + s * m.z_m[0], m.z_m[0], 0], [xi + s * m.z_m.at(-1), m.z_m.at(-1), 0]], deck));
   m.z_m.forEach(zi => seg([[s * zi, zi, 0], [L + s * zi, zi, 0]], deck));
-  m.girder_lines_m.forEach(z => { seg([[s * z, z, -depth], [L + s * z, z, -depth]], steel); m.brace_lines_m.forEach(xi => seg([[xi + s * z, z, 0], [xi + s * z, z, -depth]], steel)); });
+  m.girder_lines_m.forEach((z, k) => { seg([[s * z, z, top - depths[k]], [L + s * z, z, top - depths[k]]], steel); m.brace_lines_m.forEach(xi => seg([[xi + s * z, z, top], [xi + s * z, z, top - depths[k]]], steel)); });
   m.brace_lines_m.forEach(xb => m.girder_lines_m.slice(1).forEach((z, k) => {
     const za = m.girder_lines_m[k];
-    seg([[xb + s * za, za, -0.15], [xb + s * z, z, -depth]], braces); seg([[xb + s * za, za, -depth], [xb + s * z, z, -0.15]], braces);
+    const a = [xb + s * za, za, top], b = [xb + s * z, z, top];
+    const ab = [a[0], za, top - depths[k]], bb = [b[0], z, top - depths[k + 1]];
+    if (m.bracing.startsWith("K")) {
+      const mid = ab.map((v, i) => (v + bb[i]) / 2);
+      [a, b, ab, bb].forEach(p => seg([p, mid], braces));
+    } else { seg([a, bb], braces); seg([ab, b], braces); }
+    if (m.bracing.includes("T")) seg([a, b], braces);
+    if (m.bracing.includes("B")) seg([ab, bb], braces);
   }));
   const lines = (pts, colour, width, name) => ({ type: "scatter3d", mode: "lines", name, x: pts.map(p => p[0]), y: pts.map(p => p[1]), z: pts.map(p => p[2]),
     line: { color: colour, width }, hoverinfo: "skip", showlegend: true });
   const traces = [lines(deck, line, 2, "deck mesh"), lines(steel, css("--accent"), 5, "girders"), lines(braces, muted, 2, "braces")];
-  const bearings = m.girder_lines_m.flatMap(z => [[s * z, z], [L + s * z, z]]);
-  traces.push({ type: "scatter3d", mode: "markers", x: bearings.map(b => b[0]), y: bearings.map(b => b[1]), z: bearings.map(() => -depth - 0.15),
+  const bearings = m.girder_lines_m.flatMap((z, k) => [[s * z, z, top - depths[k] - 0.15], [L + s * z, z, top - depths[k] - 0.15]]);
+  traces.push({ type: "scatter3d", mode: "markers", x: bearings.map(b => b[0]), y: bearings.map(b => b[1]), z: bearings.map(b => b[2]),
     marker: { symbol: "diamond", size: 5, color: css("--ink") }, name: "bearings", hoverinfo: "skip" });
   const shown = plotGirder === "all" ? girders() : [Number(plotGirder)];
   const all = shown.flatMap(k => forces[k][plotQty]), big = Math.max(...all.map(Math.abs)) || 1, scale = 0.2 * W / big;
@@ -538,21 +837,19 @@ const GROUP_COLOURS = { dead: "#4a6d91", surfacing: "#3b3f45", live: "#e8792b", 
 
 function siteCard() {
   const site = result.site;
-  const off = name => el("p", { className: "sub", textContent: `${name} was not included. Tick "include this load" in its section of the form to add it.` });
   const kv = rows => el("table", { className: "kv" }, ...rows.map(([k, v]) => el("tr", {}, el("td", { textContent: k }), el("td", { textContent: v }))));
   const wind = site.wind ? [kv([["Basic wind speed", `${fmt(site.wind.basic_speed_mps, 1)} m/s`], ["Hourly mean speed at deck level", `${fmt(site.wind.speed_at_deck_mps, 1)} m/s`],
-    ...Object.entries(site.wind.forces_kn).map(([k, v]) => [`Force, ${k}`, `${fmt(v, 1)} kN`])])] : [off("Wind")];
+    ...Object.entries(site.wind.forces_kn).map(([k, v]) => [`Force, ${k}`, `${fmt(v, 1)} kN`])])] : [];
   const s = site.seismic;
   const seismic = s ? [kv([["Zone / soil", `${s.zone} / ${s.soil}`], ["Importance factor I", fmt(s.importance_factor, 2)], ["Response reduction R", fmt(s.response_reduction, 1)],
     ["Period T", `${fmt(s.period_s, 2)} s`], ["Horizontal coefficient Ah", fmt(s.horizontal_coefficient, 3)], ["Vertical coefficient Av", fmt(s.vertical_coefficient, 3)],
-    ["Vertical motion included", s.vertical_included ? "yes (zones IV and V)" : "no"]])] : [off("Seismic")];
+    ["Vertical motion included", s.vertical_included ? "yes" : "no"]])] : [];
   const t = site.temperature;
   const temperature = t ? [kv([["Shade air temperature", `${fmt(t.shade_min_c)} to ${fmt(t.shade_max_c)} °C`], ["Effective bridge temperature", `${fmt(t.effective_range_c[0])} to ${fmt(t.effective_range_c[1])} °C`],
     ["Free bearing movement", `${fmt(1000 * t.free_bearing_movement_m, 1)} mm`], ["Girder force", "none: simply supported with a free bearing"]]),
-    el("div", { id: "profile", className: "plot" }), el("div", { className: "scroll" }, stressTable(t))] : [off("Temperature")];
+    el("div", { id: "profile", className: "plot" }), el("div", { className: "scroll" }, stressTable(t))] : [];
   return el("div", { className: "card pad" },
     el("h2", {}, "What makes up each design value"),
-    el("p", { className: "sub" }, "Each load group's factored share of the governing design values, from the IRC:6 Annex B combination that governs. Temperature adds nothing to the girder forces here; its effect is the stress through the depth below."),
     el("div", { id: "shares", className: "plot" }),
     el("div", { className: "site-grid" },
       el("div", {}, el("h2", {}, "Wind (IRC:6 209)"), ...wind),
@@ -563,10 +860,10 @@ function siteCard() {
 function stressTable(t) {
   const levels = [["slab_top", "slab top"], ["slab_bottom", "slab bottom"], ["steel_top", "steel top"], ["steel_bottom", "steel bottom"]];
   const kinds = Object.keys(Object.values(t.stresses_kpa)[0]);
-  const head = el("tr", {}, el("th", { textContent: "Girder" }), ...kinds.flatMap(k => levels.map(([, name]) => el("th", { textContent: `${k === "positive difference" ? "Heating" : "Cooling"}, ${name}` }))));
+  const head = el("tr", {}, el("th", { textContent: "Girder" }), ...kinds.flatMap(k => levels.map(([, name]) => el("th", { textContent: `${k === "positive difference" ? "Heating" : "Cooling"}, ${name} (MPa, +tension)` }))));
   const rows = Object.entries(t.stresses_kpa).map(([g, byKind]) => el("tr", {}, el("td", { textContent: g.replace("girder", "Girder") }),
     ...kinds.flatMap(k => levels.map(([key]) => el("td", { textContent: fmt(byKind[k][key] / 1000, 2) })))));
-  return el("table", {}, head, ...rows, el("caption", { textContent: "Primary stresses in MPa (tension positive), Fig. 17b / Table 15B profiles on each girder's IRC:22 effective slab width." }));
+  return el("table", {}, head, ...rows);
 }
 
 function drawSite() {
@@ -598,19 +895,15 @@ function verificationCard() {
   selected.onchange = drawStages;
   drawStages();
   return el("details", { className: "card pad verification" },
-    el("summary", {}, el("span", {}, "Check bridge inputs", el("small", {}, "Geometry, materials, slab widths & bridge weight"))),
+    el("summary", {}, "Check bridge inputs"),
     el("div", { className: "verification-section" }, el("h3", {}, "Bridge geometry"),
-      table([["Total width, edge to edge", `${fmt(b.deck_width_m, 3)} m`], ["Gap between girder centres", `${fmt(b.girder_spacing_m, 3)} m`]]),
-      el("p", { className: "meaning" }, "Girders are numbered from 0 at the left edge of the deck.")),
+      table([["Total width, edge to edge", `${fmt(b.deck_width_m, 3)} m`], ["Gap between girder centres", `${fmt(b.girder_spacing_m, 3)} m`]])),
     el("details", {}, el("summary", {}, "Material grades & stiffness"),
       table(materials.map(([label, grade]) => [label, grade || "Grade not entered"])),
-      table([["Steel stiffness (E), all members", `${fmt(b.steel_modulus_mpa)} MPa`], ["Concrete stiffness (Ecm)", `${fmt(b.concrete_modulus_mpa)} MPa`]]),
-      el("p", { className: "meaning" }, "Grades record your specification. Entered stiffness, Poisson's ratio and unit weight control the analysis. End diaphragms use the end brace lines and the same steel elastic properties.")),
+      table([["Steel stiffness (E), all members", `${fmt(b.steel_modulus_mpa)} MPa`], ["Concrete stiffness (Ecm)", `${fmt(b.concrete_modulus_mpa)} MPa`]])),
     el("details", {}, el("summary", {}, "Slab width acting with each girder"),
-      el("p", { className: "meaning" }, "Effective slab width: the width of concrete slab considered to act with one girder. Edge and interior girders can have different widths (IRC:22 cl. 603.2.1)."),
       table(girders().map(g => [girderName(g), `${fmt(b.effective_slab_widths_m[`girder ${g}`], 3)} m`]))),
     el("details", {}, el("summary", {}, "Movement from bridge weight, stage by stage"),
-      el("p", { className: "meaning" }, "Downward movement at midspan as each permanent load is added. Values are unfactored and before camber; road surfacing is included."),
       el("div", { className: "controls" }, el("label", {}, "Choose a girder", selected)), stages));
 }
 
@@ -620,8 +913,8 @@ function tableCard() {
   const body = el("div"), trace = el("details", {}, el("summary", {}, "Combination and load shares"));
   const draw = () => {
     const combo = choice.value;
-    const columns = combo ? [["Moment kN·m", M, ULS, "maximum"], ["Shear kN", V, ULS, "minimum"], ["Reaction kN", R, ULS, "maximum"]]
-      : [["ULS moment kN·m", M, ULS, "maximum"], ["SLS rare moment kN·m", M, RARE, "maximum"], ["ULS shear kN", V, ULS, "minimum"], ["ULS reaction kN", R, ULS, "maximum"]];
+    const columns = combo ? [["Moment kN·m", M, ULS, "maximum"], ["Shear kN (− = Setu sign)", V, ULS, "minimum"], ["Reaction kN", R, ULS, "maximum"]]
+      : [["ULS moment kN·m", M, ULS, "maximum"], ["SLS rare moment kN·m", M, RARE, "maximum"], ["ULS shear kN (− = Setu sign)", V, ULS, "minimum"], ["ULS reaction kN", R, ULS, "maximum"]];
     const valueAt = (g, [, response, limit, adverse]) => combo ? result.combinations[`girder ${g}`][response][combo][adverse] : result.design_values[`girder ${g}`][response][limit][adverse];
     const head = ["Girder", ...columns.map(c => c[0]), "Dead deflection mm", "Traffic deflection mm", "Total deflection mm", "Fatigue stress range MPa"];
     body.replaceChildren(el("div", { className: "scroll" }, el("table", {}, el("tr", {}, ...head.map(t => el("th", { textContent: t }))),
@@ -629,8 +922,7 @@ function tableCard() {
         const df = result.deflections_m[`girder ${g}`];
         return el("tr", {}, el("td", { textContent: girderName(g) }), ...columns.map(c => el("td", { textContent: fmt(valueAt(g, c).value) })),
           ...[1000 * deadDeflection(g), 1000 * df.live_m, 1000 * df.total_m, fatigueStress(g)[1].range].map(v => el("td", { textContent: fmt(v, 2) })));
-      })),
-      el("p", { className: "sub" }, "The combination selector changes moment, shear and reaction. Each is an independent envelope over its checked stations and load alternatives. Deflections and fatigue are separate unfactored checks.")));
+      }))));
     trace.replaceChildren(el("summary", {}, "Combination and load shares"), el("div", { className: "scroll" }, el("table", {},
       el("tr", {}, ...["Girder", "Response", "Combination", "Station x (m)", "Factored load shares (kN·m or kN)"].map(t => el("th", { textContent: t }))),
       ...girders().flatMap(g => columns.map(c => {
@@ -641,12 +933,10 @@ function tableCard() {
   choice.onchange = draw;
   draw();
   const fatigue = el("details", {}, el("summary", {}, "Fatigue stresses and truck positions"), el("div", { className: "scroll" }, el("table", {},
-    el("tr", {}, ...["Girder", "Steel face", "Range MPa", "Max MPa", "Min MPa", "Station (m)", "Truck z (m)", "Front x at max (m)", "Front x at min (m)", "Impact multiplier"].map(t => el("th", { textContent: t }))),
+    el("tr", {}, ...["Girder", "Steel face", "Range MPa", "Max (MPa, +tension)", "Min (MPa, +tension)", "Station (m)", "Truck z (m)", "Front x at max (m)", "Front x at min (m)", "Impact multiplier"].map(t => el("th", { textContent: t }))),
     ...girders().flatMap(g => Object.entries(result.fatigue_stresses_mpa[`girder ${g}`]).map(([face, f]) => el("tr", {},
-      ...[girderName(g), face, fmt(f.range, 2), fmt(f.largest, 2), fmt(f.smallest, 2), fmt(f.at_m, 3), fmt(f.z_centre_m, 3), fmt(f.x_front_at_largest_m, 3), fmt(f.x_front_at_smallest_m, 3), fmt(f.impact_factor, 4)].map(t => el("td", { textContent: t })))))),
-    el("p", { className: "sub" }, "Nominal longitudinal stress N/A + M·y/I at the top and bottom steel faces, tension positive, from the composite FE model's steel forces. Each face is searched independently near midspan. One IRC:6 cl. 204.6 truck, including the empty bridge and half the normal impact increment; no fatigue resistance or life check.")));
-  return el("details", { className: "card pad detailed-results" }, el("summary", {}, el("span", {}, "Detailed results by girder", el("small", {}, "Load combinations, design forces & fatigue"))),
-    el("p", { className: "sub" }, "ULS = strength check with load factors; SLS rare = working loads. Shear is negative by Setu's sign convention."),
+      ...[girderName(g), face, fmt(f.range, 2), fmt(f.largest, 2), fmt(f.smallest, 2), fmt(f.at_m, 3), fmt(f.z_centre_m, 3), fmt(f.x_front_at_largest_m, 3), fmt(f.x_front_at_smallest_m, 3), fmt(f.impact_factor, 4)].map(t => el("td", { textContent: t }))))))));
+  return el("details", { className: "card pad detailed-results" }, el("summary", {}, "Detailed results by girder"),
     el("div", { className: "controls" }, el("label", {}, "Load combination", choice)), body, trace, fatigue);
 }
 

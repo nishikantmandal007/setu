@@ -6,7 +6,14 @@ class WindSite:
     # IRC:6 clause 209 wind inputs; a coefficient or area left as None is worked out as per IRC:6 (OsdagBridge's "As per IRC 6" mode)
     def __init__(self, basic_wind_speed_mps, terrain, height_m, funnelling, solid_barrier_height_m,
                  gust=None, drag=None, drag_on_live_load=None, lift=None,
-                 exposed_area_m2=None, plan_area_m2=None, live_load_exposed_area_m2=None):
+                 exposed_area_m2=None, plan_area_m2=None, live_load_exposed_area_m2=None,
+                 *, force_height_above_deck_m=None):
+        for name, value in (("exposed_area_m2", exposed_area_m2), ("plan_area_m2", plan_area_m2),
+                            ("live_load_exposed_area_m2", live_load_exposed_area_m2), ("drag", drag)):
+            if value is not None and (not math.isfinite(value) or value < 0):
+                raise ValueError(f"{name} must be finite and nonnegative, or None for automatic")
+        if force_height_above_deck_m is not None and not math.isfinite(force_height_above_deck_m):
+            raise ValueError("force_height_above_deck_m must be finite or None for automatic")
         self.basic_wind_speed_mps = basic_wind_speed_mps
         self.terrain = terrain
         self.height_m = height_m
@@ -19,6 +26,7 @@ class WindSite:
         self.exposed_area_m2 = exposed_area_m2
         self.plan_area_m2 = plan_area_m2
         self.live_load_exposed_area_m2 = live_load_exposed_area_m2
+        self.force_height_above_deck_m = force_height_above_deck_m
 
 class SeismicSite:
     # IRC:SP:114 inputs as OsdagBridge gives them: zone, soil, I, T and R

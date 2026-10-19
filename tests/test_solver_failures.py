@@ -13,6 +13,22 @@ ops = pytest.importorskip("openseespy.opensees")
 from test_design_forces import BRIDGE
 
 
+def test_solved_observer_sees_active_case_and_failure_still_cleans_up():
+    model = build_bridge_model(BRIDGE)
+    case = LoadCase("observed point load", [(model.deck_nodes[3, 5], 0., -100., 0., 0., 0., 0.)])
+
+    def observe(forces):
+        assert ops.getPatterns()
+        assert sum(f.reaction_kn + f.end_reaction_kn for f in forces.values()) == pytest.approx(100.)
+        raise RuntimeError("observer stopped")
+
+    with pytest.raises(RuntimeError, match="observer stopped"):
+        analyze_load_case(model, case, ops, on_solved=observe)
+    assert not ops.getPatterns()
+    forces = analyze_load_case(model, case, ops)
+    assert sum(f.reaction_kn + f.end_reaction_kn for f in forces.values()) == pytest.approx(100.)
+
+
 @pytest.mark.parametrize("raises", [False, True])
 def test_failed_physical_case_cleans_up_and_can_be_followed_by_a_good_solve(monkeypatch, raises):
     model = build_bridge_model(BRIDGE)

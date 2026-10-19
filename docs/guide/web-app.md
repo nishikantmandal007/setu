@@ -1,21 +1,38 @@
 # Web app
 
-A local page that runs the full analysis and shows the results in plain words, with animations and plots.
-
 ```bash
-uv run python web/main.py              # then open http://localhost:5000
+uv run python web/main.py
 ```
 
-Open http://localhost:5000, fill in the bridge and press **Analyse**. A progress bar follows the analysis, then the results appear in plain words:
+Open http://localhost:5000, enter the bridge inputs and press **Analyse**.
+Under **Plate girder section**, select **Use individual sections** to enter each girder left to right.
+Braking height defaults to **Standard IRC:6 — 1.2 m above road surface**;
+**Custom height above deck top** enables a height input measured from the concrete slab top.
 
-- **Movement overview**: traffic and total midspan deflection, each beside its allowed value and a plain-language explanation. “Within limit” applies to that movement check. Open **See design forces & fatigue stress** for member and bearing demands, with a description of each quantity.
-- **Check bridge inputs** (collapsed initially): bridge width and girder spacing, with separate expandable sections for material grades/stiffness, effective slab widths, and dead deflection by construction stage. Choose a girder to read the stage movements vertically, including surfacing, before camber.
-- **Traffic positions**: a scale drawing of the deck with the vehicles where they do the most harm to each girder. Open **See vehicle positions & impact factors** for carriageway, centre z from the deck edge, centre offset from the left carriageway boundary, front x and impact multiplier (1 + i).
-- **Search replay**: the search played as an animation on your bridge's real influence surfaces.
-- **Girder diagrams**: bending moment, shear and deflection along one girder or all of them, for each load case.
-- **3D model**: the deck mesh, girders and braces, with forces drawn on the girders.
-- **Detailed results by girder** (collapsed initially): select the worst combination for each check or an individual load combination, and inspect its station and factored load shares. These are independent response envelopes, not one simultaneous truck layout. The load-case dropdown in Girder diagrams and 3D model selects unfactored solved cases.
-- **Fatigue**: longitudinal steel stress ranges in MPa at both flange faces, with extrema, section and truck positions, and fatigue impact multiplier. The headline shows the larger face range; fatigue resistance and life are outside this check.
-- **Export critical loads CSV**: the maximum-moment critical position as a static load case (wheels as point loads with impact and lane reduction, lane and footpath loads as area loads), to check in any finite element program.
+The progress screen shows a percentage ring, stage title, current task, operation counts and errors.
+Its six stages show:
 
-The web app lives in `web/` and only uses Setu's public functions.
+- **Dead load stages**: construction loads and applied/solved status.
+- **Influence surfaces**: a heatmap with minimum, maximum and units.
+- **Searching traffic**: the worst layout or a braking result with two direction buttons.
+- **Fatigue truck**: truck positions A and B and their stress range.
+- **Checking in OpenSees**: influence-surface predictions beside direct solves.
+- **Preparing the plots**: the load-combination count.
+
+Traffic progress counts searches, braking checks and combination batches separately.
+
+The results include:
+
+- **Deflection**: traffic and total deflection, limits L/800 and L/600, and pass/fail.
+  **See design forces & fatigue stress** shows demands; label tooltips explain each quantity.
+- **Check bridge inputs**: geometry, materials, effective slab widths and dead deflection by stage.
+- **Traffic positions**: place/girder tabs, deck plan, expandable vehicle table, legend and two critical-load CSV exports.
+  The readout shows the girder, response and lane reduction; deflection excludes footway load (IRC:22).
+- **Search replay**: vehicles alone, then setu's best lane arrangements, rolled along the span.
+  Use the player, charts and braking toggle; braking has two direction buttons.
+- **Girder diagrams** and **3D model**: load-case, girder and force controls.
+- **Wind, earthquake & temperature**: load shares, site values and temperature stresses.
+- **Detailed results by girder**: combination selection, design forces, load shares and fatigue stresses.
+
+The web app lives in `web/` and uses Setu's public functions.
+Restart the web process after backend changes.

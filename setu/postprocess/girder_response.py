@@ -84,7 +84,7 @@ def brace_forces(model, ops):
 
 
 # solve one load case and read every girder's forces
-def analyze_load_case(model, load_case, ops, pattern_tag=None):
+def analyze_load_case(model, load_case, ops, pattern_tag=None, *, on_solved=None):
     tag = pattern_tag if pattern_tag is not None else LOAD_CASE_PATTERN_BASE
     already_loading = ops.getPatterns()
     if already_loading:
@@ -99,7 +99,10 @@ def analyze_load_case(model, load_case, ops, pattern_tag=None):
         status = ops.analyze(1)
         if status != 0:
             raise BackendError(f"analysis of {load_case.name!r} failed with OpenSees status {status}")
-        return {k: girder_forces(model, k, ops) for k in range(model.bridge.girders.count)}
+        forces = {k: girder_forces(model, k, ops) for k in range(model.bridge.girders.count)}
+        if on_solved is not None:
+            on_solved(forces)
+        return forces
     except Exception:
         model.analysis_is_set_up = False
         ops.reset()

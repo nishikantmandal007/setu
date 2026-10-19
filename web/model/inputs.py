@@ -1,4 +1,5 @@
 import inspect
+import math
 
 from setu import (AddedDeadLoads, Bracing, BridgeInput, Concrete, DeckCrossSection, DeckSlab, Girders, MeshSettings,
                   PlateGirderSection, SeismicSite, Steel, TemperatureSite, WindSite)
@@ -21,6 +22,25 @@ SCHEMA = {
         {"table": "temperature", "title": "Temperature (IRC:6 215)", "optional": True, "fields": [{"key": "shade_max_c", "label": "Max shade temperature (C)", "value": 45.0}, {"key": "shade_min_c", "label": "Min shade temperature (C)", "value": 2.0}]},
     ]
 }
+# Blank optional numbers retain the library's automatic/default behavior.
+for table, fields in {
+    "wind": [("drag", "Drag coefficient (engineer supplied)", 0),
+             ("exposed_area_m2", "Exposed area (m2, engineer supplied)", 0),
+             ("force_height_above_deck_m", "Wind force height above deck top (m, signed)", None)],
+    "seismic": [("horizontal_coefficient", "Effective Ah (includes R; blank = automatic)", 0),
+                ("vertical_coefficient", "Effective Av (includes R; blank = automatic)", 0),
+                ("dead_weight_kn", "Full dead weight (kN; blank = model)", 0),
+                ("live_weight_kn", "Full live weight (kN; 20% participates)", 0)],
+}.items():
+    next(t for t in SCHEMA["tables"] if t["table"] == table)["fields"].extend(
+        {"key": key, "label": label, "value": None, "nullable": True, **({"min": minimum} if minimum is not None else {})}
+        for key, label, minimum in fields)
+next(t for t in SCHEMA["tables"] if t["table"] == "seismic")["fields"].append(
+    {"key": "include_vertical", "label": "Vertical seismic (check component requirements)", "value": None,
+     "choices": [None, True, False]})
+SCHEMA["tables"].append({"table": "analysis", "title": "Braking", "fields": [
+    {"key": "braking_height_above_deck_m", "label": "Custom height above deck top (m)",
+     "value": None, "nullable": True, "min": 0}]})
 TABLE_CLASSES = {"deck": DeckSlab, "girders.section": PlateGirderSection, "bracing": Bracing, "mesh": MeshSettings, "concrete": Concrete, "steel": Steel,
                  "added_dead_loads": AddedDeadLoads, "wind": WindSite, "seismic": SeismicSite, "temperature": TemperatureSite}
 BRIDGE_KEYS = {"span_m", "skew", "wearing_course_unit_weight_kn_m3"}
@@ -40,6 +60,8 @@ def keys_of(cls):
 
 # one table's values, refused if a key is unknown or a required one is missing
 def checked(table, values, required, allowed):
+    if not isinstance(values, dict):
+        raise InputError(f"{table} must be an object")
     unknown = set(values) - allowed
     if unknown:
         raise InputError(f"{table} has unknown field(s) {sorted(unknown)}")
@@ -59,7 +81,12 @@ def build(table, tables):
     if table not in tables:
         raise InputError(f"the form has no {table} table")
     cls = TABLE_CLASSES[table]
-    return cls(**checked(table, tables[table], *keys_of(cls)))
+    values = checked(table, tables[table], *keys_of(cls))
+    if cls is PlateGirderSection:
+        for key, value in values.items():
+            if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value <= 0:
+                raise InputError(f"{table}.{key} must be finite and positive")
+    return cls(**values)
 
 
 # the bridge and its site loads from what the page sent: {"tables": {...}, "strips": [[name, width], ...], "include": {"wind": true, ...}}
@@ -68,10 +95,28 @@ def bridge_from_form(form):
     strips = {name: width for name, width in form.get("strips", [])}
     if not strips:
         raise InputError("the cross-section has no strips")
-    girders = checked("girders", tables.get("girders", {}), {"count"}, {"count"})
+    girders = checked("girders", tables.get("girders", {}), {"count"}, {"count", "sections"})
+    sections = girders.pop("sections", None)
+    if sections is not None:
+        if not isinstance(sections, list) or len(sections) != girders["count"]:
+            raise InputError("girders.sections must contain one section per girder, left to right")
+        girder_input = Girders(**girders, sections=[build("girders.section", {"girders.section": section}) for section in sections])
+    else:
+        girder_input = Girders(section=build("girders.section", tables), **girders)
     bridge = BridgeInput(cross_section=DeckCrossSection.from_widths(strips), deck=build("deck", tables),
-                         girders=Girders(section=build("girders.section", tables), **girders),
+                         girders=girder_input,
                          bracing=build("bracing", tables), mesh=build("mesh", tables), steel=build("steel", tables), concrete=build("concrete", tables),
                          added_dead_loads=build("added_dead_loads", tables), **checked("bridge", tables.get("bridge", {}), BRIDGE_KEYS, BRIDGE_KEYS))
     loads = {table: build(table, tables) if include.get(table) else None for table in SITE_TABLES}
+    options = checked("analysis", tables.get("analysis", {}), set(), {"braking_height_above_deck_m"})
+    height = options.get("braking_height_above_deck_m")
+    if height is not None:
+        if isinstance(height, bool) or not isinstance(height, (int, float)) or not math.isfinite(height) or height < 0:
+            raise InputError("braking_height_above_deck_m must be finite and nonnegative")
+        loads["braking_height_above_deck_m"] = height
+    if loads["wind"] is not None:
+        depths = [bridge.girders.section_at(g).depth_m for g in range(bridge.girders.count)]
+        wind = loads["wind"]
+        if len(set(depths)) > 1 and any(v is None for v in (wind.drag, wind.exposed_area_m2, wind.force_height_above_deck_m)):
+            raise InputError("Unequal-depth wind needs engineer-supplied drag, exposed area and force height; fill all three wind overrides or disable wind.")
     return bridge, loads

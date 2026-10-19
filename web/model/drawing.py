@@ -66,7 +66,8 @@ def deck_drawing(bridge, results):
 # one load case's forces along every girder, rounded for the page
 def along_girders(forces):
     return {girder: {"m": np.round(f.composite_moment_kn_m, 2).tolist(), "v": np.round(f.shear_kn, 2).tolist(),
-                     "d": np.round(1000 * f.deflection_m, 3).tolist(), "r": round(f.reaction_kn, 2)} for girder, f in forces.items()}
+                     "d": np.round(1000 * f.deflection_m, 3).tolist(), "r": round(f.reaction_kn, 2),
+                     "r_end": None if f.end_reaction_kn is None else round(f.end_reaction_kn, 2)} for girder, f in forces.items()}
 
 
 # moment, shear and deflection along every girder for each dead stage and each critical live load (the live ones solved in OpenSees)
@@ -81,10 +82,10 @@ def diagrams(results, live_forces):
 # the deck mesh, girder lines, brace lines and girder depth for the 3D view
 def mesh_of(bridge):
     mesh = build_mesh(bridge)
-    section = bridge.girders.section
+    depths = [bridge.girders.section_at(g).depth_m for g in range(bridge.girders.count)]
     return {"x_m": mesh.length_mesh_m.tolist(), "z_m": mesh.width_mesh_m.tolist(), "girder_lines_m": mesh.girder_lines_m.tolist(),
             "brace_lines_m": mesh.brace_lines_m.tolist(), "skew": bridge.skew, "slab_m": bridge.deck.thickness_m,
-            "depth_m": section.web_height_m + section.top_flange_thickness_m + section.bottom_flange_thickness_m}
+            "depth_m": max(depths), "girder_depths_m": depths, "bracing": bridge.bracing.arrangement}
 
 
 # a layout of vehicles driven across the span, each the way it faces, passing their given place at travel 0; the effect at every travel distance
@@ -149,4 +150,25 @@ def replay(bridge, results, girder, place):
         if found is winner:
             found["label"] = "Critical: " + found["label"].split(": ", 1)[1]
     trials += arrangements
-    return {"at_m": float(results.dead.total[girder].stations_m[results.stations[key]]), "trials": trials}
+    at_m = float(results.dead.total[girder].stations_m[results.stations[key]])
+    details = results.braking.get((girder, (response, results.stations[key]), adverse))
+    return {"at_m": at_m, "trials": trials,
+            "braking": braking_view(bridge, details, girder, at_m, response, results.criticals[key]) if details else None}
+
+
+def braking_view(bridge, details, girder, station_m, response, critical):
+    """The two braking cases actually used by the design calculation."""
+    from setu.builder.assembly import DECK_NODE_BASE
+    mesh = build_mesh(bridge)
+    nodes = {DECK_NODE_BASE + i * mesh.stations_across_width + j:
+             [float(x + bridge.skew*z), 0., float(z)]
+             for i, x in enumerate(mesh.length_mesh_m) for j, z in enumerate(mesh.width_mesh_m)}
+    return {"kind": "braking", "girder": girder, "station_m": float(station_m), "response": response,
+            "unit": "kN·m" if response == MAX_MOMENT else "kN", "selected": details["selected"],
+            "live": details["live"], "combined": details["combined"], "force_kn": details["cases"].force_kn,
+            "vehicles": [body_of(v.vehicle_name, float(x), v.z_centre_m, v.impact_factor)
+                         for v in critical.vehicles for x in v.train_x_front_m],
+            "directions": {name: {"response": details["responses"][name],
+                          "nodes": [{"xyz_m": nodes[node], "fx_kn": float(fx), "mz_kn_m": float(mz)}
+                                    for node, fx, _, _, _, _, mz in case.nodal_loads]}
+                           for name, case in details["cases"].items()}}

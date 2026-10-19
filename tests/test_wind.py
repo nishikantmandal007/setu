@@ -106,6 +106,14 @@ def test_user_values_replace_the_code_values():
 SITE = WindSite(basic_wind_speed_mps=39.0, terrain=PLAIN_TERRAIN, height_m=12.0, funnelling=False, solid_barrier_height_m=1.1)
 
 
+@pytest.mark.parametrize("key,value", [("drag", -1.), ("exposed_area_m2", float("nan")),
+                                       ("plan_area_m2", -1.), ("live_load_exposed_area_m2", float("inf")),
+                                       ("force_height_above_deck_m", float("nan"))])
+def test_invalid_wind_overrides_are_rejected(key, value):
+    with pytest.raises(ValueError, match=key):
+        WindSite(**{**vars(SITE), key: value})
+
+
 def _reactions_under(model, case):
     """Total support reactions: every node's reaction summed, so the rigid links' internal pairs cancel."""
     _configure_a_static_analysis()

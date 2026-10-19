@@ -140,18 +140,27 @@ def test_thermal_layers_use_the_requested_girder():
     assert last.steel_bottom_kpa != pytest.approx(first.steel_bottom_kpa)
 
 
-def test_wind_uses_the_depth_envelope_for_unequal_girders():
+def test_unequal_depth_wind_requires_engineer_supplied_geometry_and_drag():
     from setu.loads.wind_loads import wind_load_cases
+    from setu import WindSite
     from test_design_values import WIND_SITE
     bridge = bridge_with_sections()
     model = build_bridge_model(bridge)
-    unequal = wind_load_cases(model, WIND_SITE)
-    deepest = max(bridge.girders.sections, key=lambda section: section.depth_m)
-    uniform = BridgeInput(**{**vars(bridge), "girders": Girders(bridge.girders.count, deepest)})
-    expected = wind_load_cases(build_bridge_model(uniform), WIND_SITE)
-    assert unequal.forces_kn == pytest.approx(expected.forces_kn)
-    for name in unequal:
-        np.testing.assert_allclose(unequal[name].nodal_loads, expected[name].nodal_loads)
+    overrides = dict(exposed_area_m2=100., drag=2.1270207852193996, force_height_above_deck_m=-0.4)
+    for missing in overrides:
+        incomplete = {k: v for k, v in overrides.items() if k != missing}
+        with pytest.raises(ValueError, match="unequal-depth wind requires"):
+            wind_load_cases(model, WindSite(**{**vars(WIND_SITE), **incomplete}))
+    site = WindSite(**{**vars(WIND_SITE), **overrides})
+    cases = wind_load_cases(model, site)
+    from setu.irc6.wind import hourly_mean_wind
+    _, pressure_pa = hourly_mean_wind(site.height_m, site.terrain, site.basic_wind_speed_mps, site.funnelling)
+    expected = pressure_pa / 1000 * 2 * 100 * overrides["drag"]
+    assert cases.forces_kn["transverse"] == pytest.approx(expected)
+    for name, sign in (("transverse from the left", 1), ("transverse from the right", -1)):
+        assert sum(load[3] for load in cases[name].nodal_loads) == pytest.approx(sign * expected)
+        assert sum(load[4] for load in cases[name].nodal_loads) == pytest.approx(
+            sign * expected * (site.force_height_above_deck_m + bridge.deck.thickness_m / 2))
 
 
 @pytest.mark.parametrize("arrangement", ["XTB", "KT"])

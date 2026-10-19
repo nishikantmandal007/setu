@@ -73,7 +73,8 @@ def bridge(deck_cross_section) -> BridgeInput:
     )
 
 
-PROBE_NODES = [(6, 10), (6, 20), (12, 10), (12, 15), (12, 30), (18, 20)]
+PROBE_NODES = [(6, 10), (6, 20), (12, 10), (12, 15), (12, 30), (18, 20),
+               (0, 10), (0, 20), (24, 10), (24, 20)]
 UNIT_LOAD_PATTERN = 99
 
 
@@ -292,21 +293,32 @@ def test_a_deck_with_no_room_for_a_vehicle_says_so(built):
 
 
 def test_the_surface_looks_like_a_bridge_influence_surface(built):
-    """Sanity: it must be smooth, bounded, and zero at the supports."""
+    """Sanity: finite and bounded, with small support-line effects."""
     model, _, _, surface, _, _ = built
 
     assert np.isfinite(surface.values).all()
     assert np.abs(surface.values).max() > 0
 
-    # A load standing directly over a girder support causes no moment - bar the
-    # micro-settlement of the 1e10 kN/m bearing spring, about a millionth of the peak.
     peak = np.abs(surface.values).max()
-    for girder in range(model.bridge.girders.count):
-        j = model.mesh.width_station_of_girder(girder)
-        assert abs(surface.values[0, j]) < 1e-5 * peak
-        assert abs(surface.values[-1, j]) < 1e-5 * peak
-
     # Between the girders the deck spans transversely, so a load at the support
     # line still finds its way to a girder - but only barely.
     assert np.abs(surface.values[0, :]).max() < 0.01 * peak
     assert np.abs(surface.values[-1, :]).max() < 0.01 * peak
+
+
+def test_support_load_moments_converge_as_bearing_springs_stiffen(bridge, monkeypatch):
+    import setu.builder.assembly as assembly
+
+    stiffness = assembly.BEARING_VERTICAL_STIFFNESS_KN_PER_M
+    ordinates, peaks = [], []
+    for factor in (1, 10):
+        monkeypatch.setattr(assembly, "BEARING_VERTICAL_STIFFNESS_KN_PER_M", stiffness * factor)
+        model = build_model(bridge)
+        element = model.midspan_element_of_girder(bridge.girders.count // 2)
+        surface = InfluenceSolver(model.as_deck_model()).for_girder_composite_moment("spring convergence", element)
+        ordinates.append(np.array([[surface.values[end, model.mesh.width_station_of_girder(k)]
+                                    for k in range(bridge.girders.count)] for end in (0, -1)]))
+        peaks.append(np.abs(surface.values).max())
+    # Finite springs settle: support-load moments approach zero in proportion to 1/K.
+    np.testing.assert_allclose(ordinates[1] * 10, ordinates[0], rtol=0.001, atol=1e-10)
+    assert peaks[1] == pytest.approx(peaks[0], rel=2e-6)

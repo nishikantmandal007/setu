@@ -59,7 +59,7 @@ class DesignValues:
     # design values for every girder, response and limit state, plus the dead load by stage, deflections, fatigue ranges,
     # the live shear range, temperature, and the surfaces, critical positions and stations behind the live load
     def __init__(self, girders, dead, deflections, fatigue, live_shear_range_kn, thermal, surfaces, criticals, stations,
-                 fatigue_stresses_mpa=None, combinations=None):
+                 fatigue_stresses_mpa=None, combinations=None, braking=None):
         self.girders = girders
         self.dead = dead
         self.deflections = deflections
@@ -71,6 +71,7 @@ class DesignValues:
         self.stations = stations
         self.fatigue_stresses_mpa = fatigue_stresses_mpa
         self.combinations = combinations
+        self.braking = braking or {}
 
     # the girder with the biggest value for this response and limit state
     def governing(self, response, limit_state, adverse):
@@ -99,14 +100,15 @@ def girder_design_values(bridge, wind=None, seismic=None, temperature=None, cust
     wind_forces = dict(wind_cases or {})
     custom_forces = custom_load_cases(model, custom_loads)
     combinations = irc6_combinations(wind_cases.speed_at_deck_mps if wind_cases is not None else None) + list(custom_combinations)
-    by_place, combinations_at_place = {}, {}
+    by_place, combinations_at_place, braking = {}, {}, {}
     for girder in girders:
         for place in places:
             effects = {
                 DEAD: sum(read(dead.stages[stage], girder, place) for stage in dead.stages if STAGE_IS_FACTORED_AS[stage] == DEAD),
                 SURFACING: sum(read(dead.stages[stage], girder, place) for stage in dead.stages if STAGE_IS_FACTORED_AS[stage] == SURFACING),
                 LIVE: [live_with_braking(model, live[girder, place, adverse], read, girder, place,
-                                        height_above_deck_m=braking_height_above_deck_m) for adverse in BOTH_DIRECTIONS],
+                                        height_above_deck_m=braking_height_above_deck_m,
+                                        details=braking.setdefault((girder, place, adverse), {})) for adverse in BOTH_DIRECTIONS],
             }
             if wind_forces:
                 effects[WIND] = wind_alternatives(wind_forces, read, girder, place, with_the_live_load=False)
@@ -131,7 +133,7 @@ def girder_design_values(bridge, wind=None, seismic=None, temperature=None, cust
                                      for place in places if place[0] == SUPPORT_SHEAR)
                            for girder in girders}
     return DesignValues(results, dead, deflections, fatigue, live_shear_range_kn, thermal_results(bridge, temperature), surfaces_out, criticals, stations,
-                        fatigue_stresses, combined)
+                        fatigue_stresses, combined, braking)
 
 
 # (response, station) of every place a design value is read; unequal girders check both ends
@@ -240,7 +242,7 @@ def fatigue_stress_ranges(solver, girder, places, bridge, model):
         for response, station in places:
             if response != MAX_MOMENT:
                 continue
-            surface = solver.for_girder_stress_mpa(f"girder {girder}, {face} stress at {station}", model.element_of_girder_at(girder, station), section, y_m)
+            surface = solver.for_girder_stress_mpa(f"girder {girder}, {face} stress at {model.mesh.length_mesh_m[station]:.3f} m", model.element_of_girder_at(girder, station), section, y_m)
             stress = fatigue_range(surface, bridge.cross_section, bridge.span_m, DEFAULT_SAMPLING)
             stress.at_m = float(model.mesh.length_mesh_m[station])
             found.append(stress)
@@ -249,10 +251,15 @@ def fatigue_stress_ranges(solver, girder, places, bridge, model):
 
 
 # live load response plus the worse of the two braking directions
-def live_with_braking(model, critical, read, girder, place, *, height_above_deck_m=None):
-    braking = [read(case, girder, place) for case in braking_load_cases(model, critical, height_above_deck_m=height_above_deck_m).values()]
-    adding = max(braking) if critical.adverse == BIGGER_IS_WORSE else min(braking)
-    return critical.response + adding
+def live_with_braking(model, critical, read, girder, place, *, height_above_deck_m=None, details=None):
+    cases = braking_load_cases(model, critical, height_above_deck_m=height_above_deck_m)
+    responses = {name: read(case, girder, place) for name, case in cases.items()}
+    choose = max if critical.adverse == BIGGER_IS_WORSE else min
+    direction = choose(responses, key=responses.get)
+    combined = critical.response + responses[direction]
+    if details is not None:
+        details.update(cases=cases, responses=responses, selected=direction, live=critical.response, combined=combined)
+    return combined
 
 
 # every mix of wind sides and directions, with wind on the vehicles if asked

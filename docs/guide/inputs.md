@@ -98,6 +98,16 @@ Its existing damping calculation belongs to that coefficient calculation. Setu's
 uses the existing 5% basis; adding these overrides does not switch the automatic code method.
 The returned `SeismicLoadCases.live_weight_kn` remains the **participating** live weight, as before.
 
+### Wind scope and force height
+
+Uniform-depth bridges retain the existing automatic wind calculation. Unequal-depth bridges require
+all three engineer-supplied inputs: `exposed_area_m2`, `drag` and `force_height_above_deck_m`.
+Setu refuses the unsupported automatic approximation rather than using maximum girder depth as windward depth.
+`force_height_above_deck_m` is signed metres above the **top of the concrete slab**; a negative value
+places the resultant below it. Setu adds half the slab thickness to reach its deck-node reference.
+The overrides define one resultant magnitude and height for both transverse directions; separate
+analyses are needed for different directional inputs. This API does not calculate unequal-girder shielding.
+
 ### Braking height
 
 `girder_design_values(..., braking_height_above_deck_m=value)` and

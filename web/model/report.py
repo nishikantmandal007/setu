@@ -3,7 +3,8 @@ from setu.postprocess.thermal_stresses import effective_slab_width_m
 from setu.utils.constants import (BASIC, BEARING_REACTION, BIGGER_IS_WORSE, MAX_MOMENT, RARE, SEISMIC_COMBINATION, SMALLER_IS_WORSE,
                                   SUPPORT, SUPPORT_SHEAR)
 
-from model import drawing
+from model import drawing, progress
+from setu import build_mesh
 
 # the headline design values: title, response, limit state, direction
 GOVERNING = (
@@ -19,6 +20,7 @@ GOVERNING = (
 def build(bridge, loads, results, checks, wind, live_forces):
     girders = range(bridge.girders.count)
     return {
+        "geometry": progress.geometry(bridge, build_mesh(bridge)),
         "bridge": {"span_m": bridge.span_m, "skew": bridge.skew, "girders": bridge.girders.count, "deck_width_m": bridge.width_m(),
                    "girder_spacing_m": (bridge.width_m() - 2 * bridge.deck.overhang_m) / (bridge.girders.count - 1),
                    "effective_slab_widths_m": {f"girder {g}": effective_slab_width_m(bridge, g) for g in girders},
