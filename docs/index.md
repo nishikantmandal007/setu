@@ -22,7 +22,7 @@ Find the worst legal traffic on a bridge deck,<br>and the IRC design forces for 
 <div class="anim" data-anim="replay"></div>
 
 !!! info "Every girder, every design place"
-    Pick any girder and result in the animation. Setu runs this search for **every girder**, at every place it designs: the moment at midspan and at 0.02L, 0.04L and 0.06L towards the bearing (the largest live moment stands a little off midspan), the shear and the reaction at the bearing, and the midspan deflection. That is seven influence surfaces and seven searches per girder.
+    Pick any girder and result in the animation. Setu runs this search for **every girder**, at every place it designs: the moment at midspan and at 0.02L, 0.04L and 0.06L towards the bearing (the largest live moment stands a little off midspan), the shear and the reaction at the bearing, and the midspan deflection. That is seven influence surfaces per girder, each searched for its worst traffic, plus a top- and a bottom-flange stress surface at each of the four moment sections for fatigue. Girders that differ across the width also check the mirrored moment sections and the far bearing.
 
 <div class="grid cards" markdown>
 
@@ -30,7 +30,7 @@ Find the worst legal traffic on a bridge deck,<br>and the IRC design forces for 
 
     ---
 
-    Influence surfaces by the adjoint method: one solve gives the effect of a load anywhere on the deck. Seven solves per girder, however fine the mesh.
+    Influence surfaces by the adjoint method: one solve gives the effect of a load anywhere on the deck. Fifteen solves per girder (seven responses and eight fatigue stresses), and one per brace member, however fine the mesh.
 
     [:octicons-arrow-right-24: Influence surfaces](how-it-works/influence-surfaces.md)
 

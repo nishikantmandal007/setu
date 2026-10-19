@@ -35,7 +35,7 @@ In the code, `adjoint_loads_for_girder_force` builds $g$ from the weighted colum
 | Composite moment $M_c = M_z + N a$ | $w = e_{M_z} + a\, e_{N}$ at the element's i-end | deck deflection under $g$ |
 | Shear $V$ | $w = e_{V_y}$ | deck deflection under $g$ |
 | Deflection of a node | a unit downward load at that node | deck deflection (Maxwell's theorem directly) |
-| Bearing reaction | a unit downward load on the bearing node | $k \times$ deck deflection, with $k$ = 10¹⁰ kN/m |
+| Bearing reaction | a unit downward load on the bearing node | $k \times$ deck deflection, with $k$ = 10⁹ kN/m |
 
 For each girder, Setu builds the moment surface at midspan and at 0.02L, 0.04L and 0.06L towards the first bearing (the largest live moment stands a little off midspan), the shear and the reaction at the first bearing, and the midspan deflection. That is **7 solves per girder**, whatever the size of the mesh.
 

@@ -5,7 +5,7 @@ With an influence surface in hand, finding the worst position means placing code
 <div class="anim" data-anim="replay"></div>
 
 !!! info "Every girder, every design place"
-    Pick any girder and result in the animation. Setu runs this search for **every girder**, at every place it designs: the moment at midspan and at 0.02L, 0.04L and 0.06L towards the bearing (the largest live moment stands a little off midspan), the shear and the reaction at the bearing, and the midspan deflection. That is seven influence surfaces and seven searches per girder.
+    Pick any girder and result in the animation. Setu runs this search for **every girder**, at every place it designs: the moment at midspan and at 0.02L, 0.04L and 0.06L towards the bearing (the largest live moment stands a little off midspan), the shear and the reaction at the bearing, and the midspan deflection. That is seven influence surfaces per girder, each searched for its worst traffic, plus a top- and a bottom-flange stress surface at each of the four moment sections for fatigue. Girders that differ across the width also check the mirrored moment sections and the far bearing.
 
 ## What Setu places
 
