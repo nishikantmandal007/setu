@@ -76,3 +76,41 @@ def test_a_grid_that_does_not_match_the_mesh_is_refused():
             name="mismatched",
             skew=0.0,
         )
+
+
+# a surface carrying the six adjoint displacements of a few nodes, for reciprocity
+def surface_with_nodes(node_tags, displacements):
+    plane = flat_surface()
+    return InfluenceSurface(plane.values, plane.length_mesh_m, plane.width_mesh_m, "with nodes", 0.0,
+                            node_tags=np.asarray(node_tags, int), every_node_displacement=np.asarray(displacements, float))
+
+
+# reciprocity is the sum of every force times its node's adjoint displacement, whatever order the loads come in
+def test_reciprocity_adds_force_times_displacement():
+    from setu.analysis.influence_surface import response_to_load_case
+    from setu.loads.load_cases import LoadCase
+
+    rng = np.random.default_rng(71)
+    displacements = rng.normal(size=(40, 6))
+    forces = rng.normal(size=(40, 6))
+    surface = surface_with_nodes(100 + np.arange(40), displacements)
+    loads = [(100 + row, *force.tolist()) for row, force in enumerate(forces)][::-1]
+    expected = sum(float(f @ d) for f, d in zip(forces, displacements))
+    assert response_to_load_case(surface, LoadCase("random", loads)) == pytest.approx(expected, rel=1e-12)
+    assert response_to_load_case(surface, LoadCase("twice", loads + loads[:1])) == pytest.approx(expected + float(forces[-1] @ displacements[-1]), rel=1e-12)
+
+
+# empty cases, absent nodes, deck-only surfaces and element loads keep their boundary behaviour
+def test_reciprocity_validates_loads():
+    from setu.analysis.influence_surface import response_to_load_case
+    from setu.loads.load_cases import LoadCase
+
+    surface = surface_with_nodes([7], np.zeros((1, 6)))
+    assert response_to_load_case(surface, LoadCase("empty")) == 0.0
+    for missing in (8, 6):
+        with pytest.raises(KeyError):
+            response_to_load_case(surface, LoadCase("missing", [(missing, 0., 1., 0., 0., 0., 0.)]))
+    with pytest.raises(ValueError, match="deck ordinates"):
+        response_to_load_case(flat_surface(), LoadCase("one", [(7, 0., 1., 0., 0., 0., 0.)]))
+    with pytest.raises(ValueError, match="element loads"):
+        response_to_load_case(surface, LoadCase("elements", element_loads=[(1, "-beamUniform", (1., 0.))]))

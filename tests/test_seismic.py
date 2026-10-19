@@ -19,14 +19,13 @@ from setu.irc6.seismic import (
     vertical_seismic_coefficient,
     zone_factor,
 )
-from setu.loads.load_cases import apply_load_case
 from setu.loads.seismic_loads import seismic_load_cases
 from setu.models.site import SeismicSite
 
-pytest.importorskip("openseespy.opensees", reason="needs a finite element solver")
-import openseespy.opensees as ops  # noqa: E402
+pytest.importorskip("setu.solver.backend", reason="needs a finite element solver")
+from setu.solver import backend  # noqa: E402
 
-from test_design_forces import BRIDGE, _configure_a_static_analysis  # noqa: E402
+from test_design_forces import BRIDGE  # noqa: E402
 
 
 def test_table_4_2_zone_factors():
@@ -93,35 +92,30 @@ def seismic():
 
 
 def _totals(case):
-    _configure_a_static_analysis()
-    apply_load_case(case, ops, pattern_tag=103)
-    ops.reset()
-    ops.setTime(0.0)
-    ops.analyze(1)
-    ops.reactions()
-    tags = ops.getNodeTags()
-    totals = [sum(ops.nodeReaction(node, dof) for node in tags) for dof in (1, 2, 3)]
-    ops.remove("loadPattern", 103)
-    ops.remove("timeSeries", 103)
+    with backend.solved(case.nodal_loads, case.element_loads, pattern=103):
+        backend.calculate_reactions()
+        tags = backend.node_tags()
+        totals = [sum(backend.node_reaction(node, dof) for node in tags) for dof in (1, 2, 3)]
+
     return totals
 
 
 def test_longitudinal_base_shear_carries_no_live_load(seismic):
-    model, cases = seismic
+    _, cases = seismic
     along_kn, _, _ = _totals(cases["longitudinal"])
 
     assert -along_kn == pytest.approx(horizontal_seismic_coefficient(SITE) * cases.dead_weight_kn, rel=1e-9)
 
 
 def test_transverse_base_shear_carries_a_fifth_of_the_live_load(seismic):
-    model, cases = seismic
+    _, cases = seismic
     _, _, across_kn = _totals(cases["transverse"])
 
     assert -across_kn == pytest.approx(horizontal_seismic_coefficient(SITE) * (cases.dead_weight_kn + 0.2 * CLASS_A_KN), rel=1e-9)
 
 
 def test_vertical_seismic_force(seismic):
-    model, cases = seismic
+    _, cases = seismic
     _, up_kn, _ = _totals(cases["vertical"])
 
     assert up_kn == pytest.approx(vertical_seismic_coefficient(SITE) * (cases.dead_weight_kn + 0.2 * CLASS_A_KN), rel=1e-9)
@@ -181,3 +175,18 @@ def test_vertical_policy_can_be_requested_or_disabled_explicitly():
 def test_invalid_seismic_overrides_are_rejected(field, value):
     with pytest.raises(ValueError, match=field):
         SeismicSite("IV", "II", 1., .5, 1., **{field: value})
+
+
+# the dead weight map is built once per model, never changed by the live placements or a site override
+def test_seismic_dead_weight_is_built_once_per_model():
+    import setu.loads.seismic_loads as loads
+
+    model = build_bridge_model(BRIDGE)
+    dead = dict(loads.dead_weight_at_nodes(model))
+    built_before = loads.dead_weight_at_nodes.cache_info().misses
+    for critical in (None, ONE_CLASS_A, None):
+        cases = loads.seismic_load_cases(model, SITE, critical)
+        assert cases["longitudinal"].nodal_loads == loads.inertia(dead, cases.horizontal_coefficient, 1, "expected").nodal_loads
+    loads.seismic_load_cases(model, SeismicSite("IV", "II", 1., .5, 1., dead_weight_kn=1000.), ONE_CLASS_A)
+    assert loads.dead_weight_at_nodes.cache_info().misses == built_before
+    assert list(loads.dead_weight_at_nodes(model).items()) == list(dead.items())

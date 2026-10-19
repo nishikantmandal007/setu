@@ -5,7 +5,6 @@ import numpy as np
 import pytest
 
 from setu.analysis.along_span import find_worst_train, place_train
-import oracles
 from oracles import worst_train_by_enumeration
 
 ADVERSE = ("maximum", "minimum")
@@ -85,6 +84,7 @@ def test_a_train_helps_when_both_vehicles_hurt():
     one = place_train(responses, positions_m, 20.0, 1, "minimum")
     two = place_train(responses, positions_m, 20.0, 2, "minimum")
 
+    assert one is not None and two is not None
     assert two.response == pytest.approx(2 * one.response)
     assert two.vehicles_in_train() == 2
 
@@ -130,3 +130,56 @@ def test_a_train_follower_exactly_at_minimum_spacing_is_found():
         worst_train = max(worst_train, best.max())
 
     assert found == pytest.approx(worst_train, rel=1e-9)
+
+
+# batched growing trains keep the scalar DP's exact responses, ties and positions
+@pytest.mark.parametrize("adverse", ADVERSE)
+@pytest.mark.parametrize("seed", range(12))
+def test_batched_trains_are_bit_identical_to_separate_lengths(seed, adverse):
+    from setu.analysis.along_span import find_worst_trains
+    from setu.helpers import is_worse
+
+    rng = np.random.default_rng(seed)
+    positions = np.cumsum(rng.choice([0.25, 0.5, 1.0, 2.0], 24))
+    responses = rng.normal(size=(24, 7))
+    responses[:, 1] = rng.integers(-2, 3, 24)
+    responses[:, 2] = 0.0
+    responses[:, 3] = -0.0
+    responses[:, 4] = -np.inf if adverse == "maximum" else np.inf
+    responses[:, 5] = responses[:, 4]
+    responses[0, 5] = 1.0
+    responses[:, 6] = rng.choice([1e16, 1., -1e16, -1.], 24)
+    found = find_worst_trains(responses, positions, 4.0, 10, adverse)
+    for column, actual in enumerate(found):
+        expected = None
+        for length in range(1, 11):
+            candidate = place_train(responses[:, column], positions, 4.0, length, adverse)
+            if candidate is None:
+                break
+            if expected is None or is_worse(candidate.response, expected.response, adverse):
+                expected = candidate
+        if expected is None:
+            assert actual is None
+        else:
+            assert actual.positions_m == expected.positions_m
+            assert np.float64(actual.response).tobytes() == np.float64(expected.response).tobytes()
+
+
+# a column that cannot fit even one vehicle keeps the existing public exception
+def test_batched_trains_refuse_an_impossible_first_vehicle():
+    from setu.analysis.along_span import VehicleResponses
+    from setu.irc6.vehicles import CLASS_A
+
+    responses = np.full((3, 2), -np.inf)
+    with pytest.raises(RuntimeError, match="even a single vehicle"):
+        VehicleResponses.worst_train_at_each_position(object.__new__(VehicleResponses), CLASS_A, responses, np.array([0., 10., 20.]), "maximum")
+
+
+# strict ties retain the first position and the shorter train
+def test_batched_train_ties_keep_the_first_shortest_placement():
+    from setu.analysis.along_span import find_worst_trains
+
+    found = find_worst_trains(np.zeros((5, 2)), np.arange(5.), 1., 5, "maximum")
+    assert [placement.positions_m for placement in found] == [(0.,), (0.,)]
+    two = place_train(np.ones(5), np.arange(5.), 1., 2, "maximum")
+    assert two is not None and two.positions_m == (0., 1.)

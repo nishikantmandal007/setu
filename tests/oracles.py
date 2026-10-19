@@ -47,6 +47,7 @@ def worst_chain_by_enumeration(block_curves, adverse: str) -> float:
         if worst is None or _is_worse(total, worst, adverse):
             worst = total
 
+    assert worst is not None
     return worst
 
 
