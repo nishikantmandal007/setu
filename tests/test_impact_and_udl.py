@@ -98,6 +98,7 @@ def test_only_the_adverse_area_is_loaded(sagging_surface, hogging_surface):
     strips = [(2.0, 11.5)]
 
     cells = cells_where_it_hurts(hogging_surface, *strips[0], "minimum", DEFAULT_SAMPLING)
+    assert cells is not None
     everywhere = RESIDUAL_UDL_KPA * float((cells.ordinates * cells.areas_m2).sum())
     only_where_it_hurts = response_to_area_load(hogging_surface, strips, "minimum", RESIDUAL_UDL_KPA, DEFAULT_SAMPLING)
     assert only_where_it_hurts <= everywhere + 1e-9

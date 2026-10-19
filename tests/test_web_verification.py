@@ -9,7 +9,19 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "web"))
 
 from model import analysis, inputs, jobs, report  # noqa: E402
+from setu import Bracing, Concrete, Steel  # noqa: E402
 from setu.utils.constants import BIGGER_IS_WORSE, MAX_MOMENT  # noqa: E402
+
+
+# the bridge's steel, bracing and concrete, checked to be what the form should have built
+def materials(bridge):
+    assert isinstance(bridge.steel, Steel) and isinstance(bridge.bracing, Bracing) and isinstance(bridge.concrete, Concrete)
+    return bridge.steel, bridge.bracing, bridge.concrete
+
+
+# one server-sent progress event as JSON
+def event_json(chunk):
+    return json.loads(chunk[len("data: "):])
 
 
 def form():
@@ -25,19 +37,19 @@ def test_grade_labels_are_optional_and_kept_separate():
     given["tables"]["bracing"]["steel_grade"] = "E250"
     given["tables"]["bracing"]["end_diaphragm_steel_grade"] = "E410"
     given["tables"]["concrete"]["grade"] = "M35"
-    bridge, _ = inputs.bridge_from_form(given)
+    steel, bracing, concrete = materials(inputs.bridge_from_form(given)[0])
 
-    assert bridge.steel.grade == "E350"
-    assert bridge.bracing.steel_grade == "E250"
-    assert bridge.bracing.end_diaphragm_steel_grade == "E410"
-    assert bridge.concrete.grade == "M35"
+    assert steel.grade == "E350"
+    assert bracing.steel_grade == "E250"
+    assert bracing.end_diaphragm_steel_grade == "E410"
+    assert concrete.grade == "M35"
 
     for values in given["tables"].values():
         for key in ("grade", "steel_grade", "end_diaphragm_steel_grade"):
             values.pop(key, None)
-    bridge, _ = inputs.bridge_from_form(given)
-    assert bridge.steel.grade is None and bridge.concrete.grade is None
-    assert bridge.bracing.steel_grade is None and bridge.bracing.end_diaphragm_steel_grade is None
+    steel, bracing, concrete = materials(inputs.bridge_from_form(given)[0])
+    assert steel.grade is None and concrete.grade is None
+    assert bracing.steel_grade is None and bracing.end_diaphragm_steel_grade is None
 
 
 @pytest.mark.parametrize("table,key", [("steel", "grade"), ("concrete", "grade"), ("bracing", "steel_grade"), ("bracing", "end_diaphragm_steel_grade")])
@@ -134,7 +146,9 @@ def test_http_submission_runs_a_real_job_and_returns_its_report(monkeypatch, ind
     job_id = response.get_json()["id"]
     try:
         job = jobs.get(job_id)
-        assert job.error is None
+        assert job is not None and job.error is None
+        results, result = job.results, job.result
+        assert results is not None and result is not None
         assert job.status()["finished"]
         assert job.done == job.totals
         assert job.done["Dead load stages"] == 4
@@ -154,13 +168,13 @@ def test_http_submission_runs_a_real_job_and_returns_its_report(monkeypatch, ind
         for place, ((response_name, adverse), _, _, _) in report.drawing.PLACES.items():
             for girder in range(3):
                 key = (girder, response_name, adverse)
-                source = job.results.surfaces[key]
+                source = results.surfaces[key]
                 record, ranked = job.traces[(source.name, adverse)]
                 if place == "deflection":
                     traffic = max(case.response - case.footway_response * case.lane_reduction for case in ranked)
-                    assert traffic == job.results.criticals[key].response
+                    assert traffic == results.criticals[key].response
                 else:
-                    assert ranked[0].response == job.results.criticals[key].response
+                    assert ranked[0].response == results.criticals[key].response
                 for vehicle in record["vehicles"]:
                     truck = find_vehicle_or_its_reverse(vehicle["key"])
                     offsets = along_the_mesh(wheel_load_offsets(truck, job.bridge.wearing_course_thickness_m, DEFAULT_SAMPLING), job.bridge.skew)
@@ -177,13 +191,13 @@ def test_http_submission_runs_a_real_job_and_returns_its_report(monkeypatch, ind
                             assert train["response"][j] == pytest.approx(alone, rel=1e-9)
                         else:
                             assert (train["response"][j] - alone) * (1 if adverse == BIGGER_IS_WORSE else -1) >= -1e-9
-        for key, r in job.result["replay"].items():
+        for key, r in result["replay"].items():
             for g, view in r.items():
                 assert (view["braking"] is None) == (key == "deflection")
                 if view["braking"]:
                     assert view["braking"]["girder"] == int(g)
                     assert view["braking"]["station_m"] == view["at_m"]
-        assert len(job.traces) == len({(job.results.surfaces[key].name, key[2]) for key in job.results.criticals})
+        assert len(job.traces) == len({(results.surfaces[key].name, key[2]) for key in results.criticals})
         assert all("Completed " not in event["name"] for event in job.activity_log)
         assert {"Solved an influence field", "Searched traffic layouts", "Evaluated a fatigue range", "Solved construction loads"} <= {e["name"] for e in job.activity_log}
         search = previews["search"]
@@ -202,13 +216,13 @@ def test_http_submission_runs_a_real_job_and_returns_its_report(monkeypatch, ind
         assert previews["loading"]["stages"][0]["name"] == "steel self weight"
         assert previews["loading"]["stages"][0]["total_downward_kn"] > 0
         assert set(previews["loading"]["stages"][0]) == {"name", "total_downward_kn", "solved"}
-        reactions = sum(f.reaction_kn + f.end_reaction_kn for f in job.results.dead.stages["steel self weight"].values())
+        reactions = sum(f.reaction_kn + f.end_reaction_kn for f in results.dead.stages["steel self weight"].values())
         assert previews["loading"]["stages"][0]["total_downward_kn"] == pytest.approx(reactions, rel=1e-6)
-        assert {row["name"] for row in previews["dead"]["stages"]} == set(job.results.dead.stages)
-        assert previews["dead"]["construction_stages"] == list(job.results.dead.stages)
-        assert previews["dead"]["forces"]["moment_kn_m"] == job.results.dead.total[0].composite_moment_kn_m.tolist()
-        assert previews["dead"]["forces"]["far_reaction_kn"] == job.results.dead.total[0].end_reaction_kn
-        surface = next(iter(job.results.surfaces.values()))
+        assert {row["name"] for row in previews["dead"]["stages"]} == set(results.dead.stages)
+        assert previews["dead"]["construction_stages"] == list(results.dead.stages)
+        assert previews["dead"]["forces"]["moment_kn_m"] == results.dead.total[0].composite_moment_kn_m.tolist()
+        assert previews["dead"]["forces"]["far_reaction_kn"] == results.dead.total[0].end_reaction_kn
+        surface = next(iter(results.surfaces.values()))
         first = previews["surface"]["surface"]
         # The first surface is retained as the governing surface on this coarse mesh.
         assert first["name"] == surface.name
@@ -220,11 +234,11 @@ def test_http_submission_runs_a_real_job_and_returns_its_report(monkeypatch, ind
         assert previews["check"]["rows"][0]["solved"] == pytest.approx(previews["check"]["rows"][0]["searched"], rel=1e-4, abs=1e-8)
         assert [len(p["rows"]) for p in check_previews] == list(range(1, job.totals["Checking in OpenSees"] + 1))
         assert job.check_rows == check_previews[-1]["rows"]
-        for row, check in zip(job.check_rows, job.result["checks"], strict=True):
+        for row, check in zip(job.check_rows, result["checks"], strict=True):
             key = (check["girder"], check["response"], check["adverse"])
             solved = check["solved"]
             assert (row["girder"], row["response"], row["adverse"]) == key
-            assert row["searched"] == job.results.criticals[key].response
+            assert row["searched"] == results.criticals[key].response
             assert row["solved"] == solved
             if row["searched"]:
                 assert row["difference_pct"] == pytest.approx(100 * abs(solved-row["searched"]) / abs(row["searched"]))
@@ -250,8 +264,8 @@ def test_http_submission_runs_a_real_job_and_returns_its_report(monkeypatch, ind
         stream = client.get(f"/progress/{job_id}", buffered=False)
         try:
             events = iter(stream.response)
-            first = json.loads(next(events).decode().removeprefix("data: ").strip())
-            second = json.loads(next(events).decode().removeprefix("data: ").strip())
+            first = event_json(next(events))
+            second = event_json(next(events))
             assert first["geometry"] == geometry
             assert "geometry" not in second
         finally:

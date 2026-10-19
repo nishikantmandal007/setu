@@ -10,7 +10,6 @@ from setu.models.deck import Carriageway
 from setu.utils.constants import CLASS_A_LANE, ZONE_70R
 from setu.analysis.across_carriageway import find_worst_placement
 from setu.analysis.across_carriageway import place_vehicles
-import oracles
 from oracles import worst_chain_by_enumeration
 
 ADVERSE = ("maximum", "minimum")

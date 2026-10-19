@@ -12,7 +12,7 @@ the girder feels are the self-balancing primary stresses of the difference profi
 
 import pytest
 
-from setu.builder.assembly import PINNED, ROLLER
+from setu.builder.assembly import NEAR_LONGITUDINAL_AND_TRANSVERSE_BEARING, FAR_TRANSVERSE_BEARING
 from setu.irc6.temperature import COOLING, HEATING, effective_temperature_range, temperature_difference_profiles
 from setu.models.bridge import BridgeInput
 from setu.postprocess.thermal_stresses import effective_slab_width_m, free_bearing_movement_m, primary_stresses, primary_thermal_stresses
@@ -101,8 +101,8 @@ def test_a_warm_slab_top_is_squeezed_and_a_cold_one_pulled():
     assert primary_thermal_stresses(BRIDGE, 2, profiles[COOLING]).slab_top_kpa > 0
 
 
+# the single fixed point leaves the far bearing free to expand along the span
 def test_the_far_bearing_is_free_so_uniform_temperature_moves_it_without_force():
-    """PINNED holds the girder along the span at one end, ROLLER lets it slide at the other; the bearing spring takes the vertical."""
-    assert PINNED[0] == 1 and ROLLER[0] == 0
-    assert PINNED[1] == ROLLER[1] == 0
+    assert NEAR_LONGITUDINAL_AND_TRANSVERSE_BEARING[0] == 1 and FAR_TRANSVERSE_BEARING[0] == 0
+    assert NEAR_LONGITUDINAL_AND_TRANSVERSE_BEARING[1] == FAR_TRANSVERSE_BEARING[1] == 0
     assert free_bearing_movement_m(35.0, (-8.0, 60.0)) == pytest.approx(12e-6 * 35.0 * 68.0)

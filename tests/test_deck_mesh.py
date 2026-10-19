@@ -1,7 +1,6 @@
 """The deck mesh must keep every line that matters."""
 
 
-from types import SimpleNamespace
 
 import numpy as np
 import pytest

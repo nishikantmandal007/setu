@@ -15,12 +15,12 @@ from setu.postprocess.design_values import places_to_design, surface_for, reader
 from setu.postprocess.thermal_stresses import primary_thermal_stresses
 from setu.utils.constants import MAX_MOMENT, SUPPORT_SHEAR, BEARING_REACTION
 
-ops = pytest.importorskip("openseespy.opensees")
+backend = pytest.importorskip("setu.solver.backend")
 from test_design_forces import BRIDGE
 
 
 def bridge_with_sections(*, skew=0.2, arrangement="XT", uniform=False):
-    sections = [copy.copy(BRIDGE.girders.section) for _ in range(BRIDGE.girders.count)]
+    sections = [copy.copy(BRIDGE.girders.section_at(0)) for _ in range(BRIDGE.girders.count)]
     if not uniform:
         for index, section in enumerate(sections):
             section.web_height_m += index * 0.12
@@ -56,12 +56,12 @@ def test_unequal_depths_keep_the_girder_tops_under_the_slab(arrangement):
     bridge = bridge_with_sections(arrangement=arrangement)
     model = build_bridge_model(bridge)
     for k, section in enumerate(bridge.girders.sections):
-        assert ops.nodeCoord(model.top_brace_nodes[k, 0], 2) == pytest.approx(-bridge.deck.thickness_m / 2)
-        assert ops.nodeCoord(model.bottom_brace_nodes[k, 0], 2) == pytest.approx(-bridge.deck.thickness_m / 2 - section.depth_m)
-        assert ops.nodeCoord(model.girder_nodes[k, 0], 2) == pytest.approx(-model.composite_lever_arm_m(k))
+        assert backend.node_coordinates(model.top_brace_nodes[k, 0])[1] == pytest.approx(-bridge.deck.thickness_m / 2)
+        assert backend.node_coordinates(model.bottom_brace_nodes[k, 0])[1] == pytest.approx(-bridge.deck.thickness_m / 2 - section.depth_m)
+        assert backend.node_coordinates(model.girder_nodes[k, 0])[1] == pytest.approx(-model.composite_lever_arm_m(k))
     for (k, station), node in model.k_brace_nodes.items():
-        ends = [ops.nodeCoord(model.bottom_brace_nodes[g, station], 2) for g in (k, k + 1)]
-        assert ops.nodeCoord(node, 2) == pytest.approx(sum(ends) / 2)
+        ends = [backend.node_coordinates(model.bottom_brace_nodes[g, station])[1] for g in (k, k + 1)]
+        assert backend.node_coordinates(node)[1] == pytest.approx(sum(ends) / 2)
 
 
 def test_each_girder_contributes_its_own_self_weight_and_seismic_weight():
@@ -88,7 +88,7 @@ def test_uniform_section_list_reproduces_the_existing_input(skew):
     for bridge in (listed, shared):
         model = build_bridge_model(bridge)
         node = model.deck_nodes[2, 4]
-        forces = analyze_load_case(model, LoadCase("point", [(node, 0., -100., 0., 0., 0., 0.)]), ops)
+        forces = analyze_load_case(model, LoadCase("point", [(node, 0., -100., 0., 0., 0., 0.)]))
         solved.append({k: (f.composite_moment_kn_m.copy(), f.deflection_m.copy()) for k, f in forces.items()})
     for k in solved[0]:
         np.testing.assert_allclose(solved[0][k], solved[1][k], rtol=1e-10, atol=1e-12)
@@ -105,19 +105,19 @@ def test_heterogeneous_influence_responses_match_direct_solves(skew):
     for k in (0, 3):
         for place in ((MAX_MOMENT, station), (SUPPORT_SHEAR, 0), (SUPPORT_SHEAR, far), (BEARING_REACTION, far)):
             surface = surface_for(solver, model, k, place)
-            forces = analyze_load_case(model, LoadCase("unit", [(node, 0., -1., 0., 0., 0., 0.)]), ops)
+            forces = analyze_load_case(model, LoadCase("unit", [(node, 0., -1., 0., 0., 0., 0.)]))
             direct = reader({})(forces, k, place)
             assert surface.values[probe] == pytest.approx(direct, rel=1e-7, abs=1e-10)
         element = model.girder_elements[k, station]
         section = model.girders[k]
         stress = solver.for_girder_stress_mpa("flange stress", element, section, section.depth_m)
-        forces = analyze_load_case(model, LoadCase("unit", [(node, 0., -1., 0., 0., 0., 0.)]), ops)[k]
+        forces = analyze_load_case(model, LoadCase("unit", [(node, 0., -1., 0., 0., 0., 0.)]))[k]
         direct_mpa = (forces.axial_kn[station] / section.area_m2 + forces.moment_kn_m[station]
                       * (section.neutral_axis_from_bottom_m - section.depth_m) / section.strong_axis_inertia_m4) / 1000
         assert stress.values[probe] == pytest.approx(direct_mpa, rel=1e-7, abs=1e-10)
         end_moment = solver.for_girder_composite_moment("end j moment", element, end="j")
-        analyze_load_case(model, LoadCase("unit", [(node, 0., -1., 0., 0., 0., 0.)]), ops)
-        end_forces = ops.eleResponse(element, "localForce")
+        analyze_load_case(model, LoadCase("unit", [(node, 0., -1., 0., 0., 0., 0.)]))
+        end_forces = backend.element_local_forces(element)
         direct_moment = end_forces[11] + model.composite_lever_arm_m(k) * end_forces[6]
         assert end_moment.values[probe] == pytest.approx(direct_moment, rel=1e-7, abs=1e-10)
 
@@ -168,24 +168,24 @@ def test_native_reactions_and_brace_forces_obey_equilibrium(arrangement):
     model = build_bridge_model(bridge_with_sections(arrangement=arrangement))
     node = model.deck_nodes[1, model.mesh.width_station_of_girder(1)]
     point = LoadCase("eccentric point", [(node, 0., -100., 0., 0., 0., 0.)])
-    forces = analyze_load_case(model, point, ops)
-    reactions = bearing_reactions(model, ops)
-    braces = brace_forces(model, ops)
+    forces = analyze_load_case(model, point)
+    reactions = bearing_reactions(model)
+    braces = brace_forces(model)
     assert sum(reactions.values()) == pytest.approx(100., rel=1e-8)
     far = model.mesh.stations_along_span - 1
-    assert sum(r for (g, end), r in reactions.items() if end == 0) > sum(r for (g, end), r in reactions.items() if end == far)
+    assert sum(r for (_, end), r in reactions.items() if end == 0) > sum(r for (_, end), r in reactions.items() if end == far)
     assert forces[1].end_reaction_kn == pytest.approx(reactions[1, far])
     assert set(braces) == set(model.brace_elements)
     assert any(station == 0 for _, station, _ in braces) and any(station == 2 for _, station, _ in braces)
     assert min(braces.values()) < 0 < max(braces.values())
-    ops.reactions()
+    backend.calculate_reactions()
     # For a corotTruss, positive axial force pulls node i towards node j.
     key = max(braces, key=lambda key: abs(braces[key]))
     tag = model.brace_elements[key]
-    start, end = ops.eleNodes(tag)
-    direction = np.subtract(ops.nodeCoord(end), ops.nodeCoord(start))
+    start, end = backend.element_nodes(tag)
+    direction = np.subtract(backend.node_coordinates(end), backend.node_coordinates(start))
     direction /= np.linalg.norm(direction)
-    global_force = ops.eleResponse(tag, "force")
+    global_force = backend.element_forces(tag)
     assert np.dot(global_force[:3], direction) == pytest.approx(-braces[key], rel=1e-7)
 
 

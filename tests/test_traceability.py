@@ -10,8 +10,7 @@ from setu.models.bridge import BridgeInput
 from setu.postprocess.girder_response import analyze_load_case
 from setu.postprocess.result_dataset import FORCE_COMPONENTS, result_dataset
 
-pytest.importorskip("openseespy.opensees", reason="needs a finite element solver")
-import openseespy.opensees as ops  # noqa: E402
+pytest.importorskip("setu.solver.backend", reason="needs a finite element solver")
 
 from test_design_forces import BRIDGE, CROSS_SECTION, SPAN_M  # noqa: E402
 
@@ -61,8 +60,8 @@ def test_patch_corners_follow_the_skew(traced):
 
 def test_the_result_dataset_is_in_osdagbridge_layout(traced):
     _, model, surface, critical, *_ = traced
-    forces = analyze_load_case(model, live_load(model, critical, surface), ops)
-    dataset = result_dataset(model, ops, "live")
+    forces = analyze_load_case(model, live_load(model, critical, surface))
+    dataset = result_dataset(model, "live")
     midspan_element = model.midspan_element_of_girder(0)
 
     assert dataset["forces"].dims == ("Loadcase", "Element", "Component")
