@@ -18,9 +18,25 @@ Everything below is importable from `setu`.
 
 | Name | Purpose |
 |---|---|
-| `girder_design_values(bridge, wind=None, seismic=None, temperature=None, custom_loads=(), custom_combinations=(), *, braking_height_above_deck_m=None)` | The full analysis. Returns `DesignValues`. See [Reading the results](results.md). |
-| `brace_design_values(bridge, wind=None, seismic=None, *, braking_height_above_deck_m=None, custom_loads=(), custom_combinations=())` | Per-brace axial design forces and critical traffic positions. Returns `BraceDesignValues`. See [Reading the results](results.md). |
-| `bridge_design_values(bridge, wind=None, seismic=None, temperature=None, custom_loads=(), custom_combinations=(), *, braking_height_above_deck_m=None)` | Girders and braces from one analysis: the dead load stages, model and solver are built once. Returns `BridgeDesignValues` with `.girders` and `.braces`, identical to the two calls above, and `.diagrams`: every governing girder value solved along the span. |
+| `girder_design_values(bridge, wind=None, seismic=None, temperature=None, custom_loads=(), custom_combinations=(), *, braking_height_above_deck_m=None, workers=None)` | The full analysis. Returns `DesignValues`. See [Reading the results](results.md). |
+| `brace_design_values(bridge, wind=None, seismic=None, *, braking_height_above_deck_m=None, custom_loads=(), custom_combinations=(), workers=None)` | Per-brace axial design forces and critical traffic positions. Returns `BraceDesignValues`. See [Reading the results](results.md). |
+| `bridge_design_values(bridge, wind=None, seismic=None, temperature=None, custom_loads=(), custom_combinations=(), *, braking_height_above_deck_m=None, workers=None)` | Girders and braces from one analysis: the dead load stages, model and solver are built once. Returns `BridgeDesignValues` with `.girders` and `.braces`, identical to the two calls above, and `.diagrams`: every governing girder value solved along the span. |
+
+The three design-value functions use every CPU core by default (`workers=None`), with a separate
+OpenSees model in each spawned process. Set `workers` to a positive process count, or `workers=1`
+for the original serial analysis in the calling process. Results retain the serial order and exact numbers.
+The web app uses `workers=1` to keep progress and traces in its process.
+
+A launcher using worker processes must protect its entry point so spawning cannot rerun the analysis:
+
+```python
+from setu import bridge_design_values
+
+# construct the bridge and run the analysis inside the guarded entry point
+if __name__ == "__main__":
+    bridge = ...  # your BridgeInput
+    values = bridge_design_values(bridge, workers=4)
+```
 
 ## The building blocks
 

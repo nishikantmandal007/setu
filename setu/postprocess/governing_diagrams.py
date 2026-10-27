@@ -120,18 +120,23 @@ class LoadSolver:
 
     # every girder's forces under one source: dead stage forces as they are, a load case or a live arrangement solved once
     def forces(self, source):
-        if isinstance(source, LiveArrangement):
-            key = ("live", id(source.critical), id(source.surface))
-            if key not in self.solved:
-                self.solved[key] = (source, analyze_load_case(self.model, live_load(self.model, source.critical, source.surface)))
-            return self.solved[key][1]
-        if isinstance(source, LoadCase):
-            nodes, loads = source.nodal_arrays
-            key = (nodes.tobytes(), loads.tobytes(), repr(source.element_loads))
-            if key not in self.solved:
-                self.solved[key] = (source, analyze_load_case(self.model, source))
-            return self.solved[key][1]
-        return source
+        key = source_key(source)
+        if key is None:
+            return source
+        if key not in self.solved:
+            case = live_load(self.model, source.critical, source.surface) if isinstance(source, LiveArrangement) else source
+            self.solved[key] = (source, analyze_load_case(self.model, case))
+        return self.solved[key][1]
+
+    # queue each distinct physical load once, then keep the solved forces in source order
+    def prepare(self, sources, work):
+        pending = {}
+        for source in sources:
+            key = source_key(source)
+            if key is not None and key not in pending:
+                case = live_load(self.model, source.critical, source.surface) if isinstance(source, LiveArrangement) else source
+                pending[key] = (source, work.load(case))
+        self.solved = {key: (source, future.result()) for key, (source, future) in pending.items()}
 
     # every girder's forces under a sum of factored sources
     def combined(self, terms):
@@ -139,9 +144,40 @@ class LoadSolver:
         return {girder: sum_of(scaled(forces[girder], coefficient) for coefficient, forces in parts) for girder in parts[0][1]}
 
 
+# the existing identity keys for traffic and content keys for ordinary load cases
+def source_key(source):
+    if isinstance(source, LiveArrangement):
+        return ("live", id(source.critical), id(source.surface))
+    if isinstance(source, LoadCase):
+        nodes, loads = source.nodal_arrays
+        return (nodes.tobytes(), loads.tobytes(), repr(source.element_loads))
+    return None
+
+
+# queue diagram sources in serial order while the parent replays the remaining combinations
+def diagram_sources(analysis, values, seismic, braking_height_above_deck_m, terms_by_key):
+    for key, critical in values.criticals.items():
+        yield LiveArrangement(critical, values.surfaces[key])
+    for (girder, response, adverse), station in values.stations.items():
+        details = values.braking.get((girder, (response, station), adverse))
+        if details is not None:
+            yield details["cases"][details["selected"]]
+    yield from analysis.wind_forces.values()
+    for girder, by_response in values.girders.items():
+        for response, by_limit_state in by_response.items():
+            for limit_state, by_adverse in by_limit_state.items():
+                for adverse, value in by_adverse.items():
+                    terms = replayed_terms(analysis, values, seismic, braking_height_above_deck_m, girder, response, adverse, value)
+                    terms_by_key[girder, response, limit_state, adverse] = terms
+                    yield from (source for _, source in terms)
+
+
 # every governing girder design value replayed as forces along all girders, with the dead stages, live arrangements, braking and wind
 def bridge_diagrams(analysis, values, seismic, braking_height_above_deck_m):
     solver = LoadSolver(analysis.model)
+    terms_by_key = {}
+    if analysis.work is not None:
+        solver.prepare(diagram_sources(analysis, values, seismic, braking_height_above_deck_m, terms_by_key), analysis.work)
     live = {key: solver.forces(LiveArrangement(critical, values.surfaces[key])) for key, critical in values.criticals.items()}
     braking = {}
     for (girder, response, adverse), station in values.stations.items():
@@ -154,7 +190,7 @@ def bridge_diagrams(analysis, values, seismic, braking_height_above_deck_m):
         for response, by_limit_state in by_response.items():
             for limit_state, by_adverse in by_limit_state.items():
                 for adverse, value in by_adverse.items():
-                    terms = replayed_terms(analysis, values, seismic, braking_height_above_deck_m, girder, response, adverse, value)
+                    terms = terms_by_key[girder, response, limit_state, adverse] if analysis.work is not None else replayed_terms(analysis, values, seismic, braking_height_above_deck_m, girder, response, adverse, value)
                     governing[girder, response, limit_state, adverse] = GoverningDiagram(girder, response, limit_state, adverse, value, solver.combined(terms))
     return BridgeDiagrams(live, braking, wind, governing, *plan_positions(analysis.model))
 

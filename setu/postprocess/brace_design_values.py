@@ -1,7 +1,8 @@
 from setu.analysis.critical_position import find_critical_position
 from setu.analysis.influence_surface import response_to_load_case
 from setu.loads.load_cases import LoadCase
-from setu.postprocess.design_values import BOTH_DIRECTIONS, girder_values, governing_by_limit_state, load_effects, shared_analysis
+from setu.postprocess.design_values import BOTH_DIRECTIONS, girder_values, governing_by_limit_state, load_effects
+from setu.postprocess.parallel import analysis_for
 from setu.postprocess.governing_diagrams import bridge_diagrams
 
 
@@ -24,25 +25,27 @@ class BridgeDesignValues:
 
 
 # every load on every brace member, combined per IRC:6 Annex B, tension positive in kN
-def brace_design_values(bridge, wind=None, seismic=None, *, braking_height_above_deck_m=None, custom_loads=(), custom_combinations=()):
-    return brace_values(shared_analysis(bridge, wind, custom_loads, custom_combinations), bridge, seismic, braking_height_above_deck_m)
+def brace_design_values(bridge, wind=None, seismic=None, *, braking_height_above_deck_m=None, custom_loads=(), custom_combinations=(), workers=None):
+    with analysis_for(bridge, wind, custom_loads, custom_combinations, workers, braces=True) as analysis:
+        return brace_values(analysis, bridge, seismic, braking_height_above_deck_m)
 
 
 # girder and brace design values sharing one set of dead load stages, one model and one solver, with every governing
 # girder value replayed as forces along the girders
 def bridge_design_values(bridge, wind=None, seismic=None, temperature=None, custom_loads=(), custom_combinations=(),
-                         *, braking_height_above_deck_m=None):
-    analysis = shared_analysis(bridge, wind, custom_loads, custom_combinations)
-    girders = girder_values(analysis, bridge, seismic, temperature, braking_height_above_deck_m)
-    braces = brace_values(analysis, bridge, seismic, braking_height_above_deck_m)
-    return BridgeDesignValues(girders, braces, bridge_diagrams(analysis, girders, seismic, braking_height_above_deck_m))
+                         *, braking_height_above_deck_m=None, workers=None):
+    with analysis_for(bridge, wind, custom_loads, custom_combinations, workers, girders=True, braces=True) as analysis:
+        girders = girder_values(analysis, bridge, seismic, temperature, braking_height_above_deck_m)
+        braces = brace_values(analysis, bridge, seismic, braking_height_above_deck_m)
+        return BridgeDesignValues(girders, braces, bridge_diagrams(analysis, girders, seismic, braking_height_above_deck_m))
 
 
 # brace design values from an analysis already set up; the dead forces are the brace forces its dead stages recorded
 def brace_values(analysis, bridge, seismic, braking_height_above_deck_m):
     model = analysis.model
-    surfaces = brace_surfaces(analysis.solver, model)
-    criticals = brace_live_positions(surfaces, bridge)
+    work = analysis.work
+    surfaces = brace_surfaces(analysis.solver, model) if work is None else {member: work.braces[member].result()[0] for member in model.brace_elements}
+    criticals = brace_live_positions(surfaces, bridge) if work is None else {(*member, adverse): work.braces[member].result()[1][adverse] for member in surfaces for adverse in BOTH_DIRECTIONS}
     read = brace_reader(surfaces)
     members, combinations_by_member, braking = {}, {}, {}
     for member in model.brace_elements:
@@ -57,11 +60,16 @@ def brace_values(analysis, bridge, seismic, braking_height_above_deck_m):
 # axial force influence surface for every brace member in the model
 def brace_surfaces(solver, model):
     surfaces = {}
-    for member, element in model.brace_elements.items():
-        pair, station, role = member
-        name = f"brace ({pair}, {station}, {role}) at {model.mesh.brace_lines_m[station]:.3f} m"
-        surfaces[member] = solver.for_brace_axial(name, element)
+    for member in model.brace_elements:
+        surfaces[member] = brace_surface(solver, model, member)
     return surfaces
+
+
+# axial surface of one brace member
+def brace_surface(solver, model, member):
+    pair, station, role = member
+    name = f"brace ({pair}, {station}, {role}) at {model.mesh.brace_lines_m[station]:.3f} m"
+    return solver.for_brace_axial(name, model.brace_elements[member])
 
 
 # worst legal traffic on the bridge for each brace member and adverse direction

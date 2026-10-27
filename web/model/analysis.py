@@ -5,7 +5,7 @@ from setu.utils.constants import BEARING_REACTION, MAX_MOMENT, SUPPORT_SHEAR
 
 # the design values, every critical position re-solved in OpenSees as a check, and the wind forces
 def analyse(bridge, loads, tick, *, on_check=None, on_phase=None):
-    results = girder_design_values(bridge, **loads)
+    results = girder_design_values(bridge, **loads, workers=1)
     if on_phase is not None:
         on_phase("Checking in OpenSees", "Building the verification model")
     model = build_bridge_model(bridge)

@@ -75,11 +75,11 @@ def test_bridge_design_values_share_one_analysis(monkeypatch, results):
     from setu import bridge_design_values, girder_design_values
 
     temperature = TemperatureSite(shade_max_c=45.0, shade_min_c=2.0)
-    alone = girder_design_values(BRACE_BRIDGE, wind=WIND_SITE, seismic=SEISMIC_SITE, temperature=temperature)
+    alone = girder_design_values(BRACE_BRIDGE, wind=WIND_SITE, seismic=SEISMIC_SITE, temperature=temperature, workers=1)
     solved = []
     dead_load_forces = design_values.dead_load_forces
     monkeypatch.setattr(design_values, "dead_load_forces", lambda bridge: solved.append(bridge) or dead_load_forces(bridge))
-    both = bridge_design_values(BRACE_BRIDGE, wind=WIND_SITE, seismic=SEISMIC_SITE, temperature=temperature)
+    both = bridge_design_values(BRACE_BRIDGE, wind=WIND_SITE, seismic=SEISMIC_SITE, temperature=temperature, workers=1)
     assert len(solved) == 1
     assert flattened(both.girders.girders) == flattened(alone.girders)
     assert flattened(both.braces.members) == flattened(results.members)
