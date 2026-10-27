@@ -84,6 +84,7 @@ def test_arrangements_never_exceed_the_carriageway():
 def test_a_70r_zone_is_wider_at_the_edge_than_between_lanes():
     at_edge = fit_blocks_between([ZONE_70R, CLASS_A_LANE], 0.0, 12.0)
     inside = fit_blocks_between([CLASS_A_LANE, ZONE_70R, CLASS_A_LANE], 0.0, 14.0)
+    assert at_edge is not None and inside is not None
 
     assert at_edge.block_widths_m[0] == pytest.approx(7.25)
     assert inside.block_widths_m[1] == pytest.approx(7.00)

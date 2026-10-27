@@ -123,7 +123,7 @@ GOLDEN_ANSWERS = [
         residual_udl_applied=True,
         total_over_all_cases=15968.07892919936,
         vehicles=[
-            ('Class_A_reversed', 5.15, 4.2, (4.2,)),
+            ('Class_A', 5.15, 12.0, (12.0,)),
             ('Class_A', 8.35, 12.0, (12.0,)),
         ],
     ),
@@ -184,8 +184,8 @@ GOLDEN_ANSWERS = [
         total_over_all_cases=85466.56593931039,  # moved when the 70R wheeled gauge became 1.93 m (Fig. 1)
         vehicles=[
             ('Class_A', 1.75, 12.0, (12.0,)),
-            ('Class_A_reversed', 5.25, 4.2, (4.2,)),
-            ('Class_A', 8.75, 12.0, (12.0,)),
+            ('Class_A', 5.25, 12.0, (12.0,)),
+            ('Class_A_reversed', 8.75, 4.2, (4.2,)),
             ('Class_A', 12.25, 12.0, (12.0,)),
         ],
     ),

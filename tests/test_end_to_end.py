@@ -20,9 +20,8 @@ from test_design_forces import ADDED_DEAD_LOADS, CONCRETE, STEEL
 from setu.builder.assembly import build_bridge_model as build_model
 from setu.loads.dead_loads import steel_self_weight_load, wet_slab_load
 from setu.loads.load_cases import LoadCase
-from setu.loads.load_cases import apply_load_case
 
-ops = pytest.importorskip("openseespy.opensees", reason="needs a finite element solver")
+backend = pytest.importorskip("setu.solver.backend", reason="needs a finite element solver")
 
 SPAN_M = 35.0
 MOMENT_ABOUT_STRONG_AXIS = 5
@@ -73,18 +72,9 @@ def bridge(deck_cross_section) -> BridgeInput:
     )
 
 
-PROBE_NODES = [(6, 10), (6, 20), (12, 10), (12, 15), (12, 30), (18, 20)]
+PROBE_NODES = [(6, 10), (6, 20), (12, 10), (12, 15), (12, 30), (18, 20),
+               (0, 10), (0, 20), (24, 10), (24, 20)]
 UNIT_LOAD_PATTERN = 99
-
-
-def _configure_a_static_analysis() -> None:
-    ops.wipeAnalysis()
-    ops.system("UmfPack")
-    ops.numberer("RCM")
-    ops.constraints("Transformation")
-    ops.integrator("LoadControl", 1.0)
-    ops.algorithm("Linear")
-    ops.analysis("Static")
 
 
 @pytest.fixture(scope="module")
@@ -104,44 +94,31 @@ def built(bridge):
 
     steel, slab = steel_self_weight_load(model), wet_slab_load(model)
     dead_load = LoadCase('steel and wet slab', nodal_loads=steel.nodal_loads + slab.nodal_loads, element_loads=steel.element_loads)
-    apply_load_case(dead_load, ops, pattern_tag=DEAD_LOAD_PATTERN)
-    _configure_a_static_analysis()
-    ops.analyze(1)
-    ops.reactions()
-    reactions = {
-        "vertical_kn": sum(ops.nodeReaction(node, 2) for node in ops.getNodeTags()),
-        "sideways_kn": sum(ops.nodeReaction(node, 3) for node in ops.getNodeTags()),
-        "along_span_kn": sum(ops.nodeReaction(node, 1) for node in ops.getNodeTags()),
-    }
+    with backend.solved(dead_load.nodal_loads, dead_load.element_loads, pattern=DEAD_LOAD_PATTERN):
+        backend.calculate_reactions()
+        reactions = {
+            "vertical_kn": sum(backend.node_reaction(node, 2) for node in backend.node_tags()),
+            "sideways_kn": sum(backend.node_reaction(node, 3) for node in backend.node_tags()),
+            "along_span_kn": sum(backend.node_reaction(node, 1) for node in backend.node_tags()),
+        }
 
     return model, dead_load, reactions, surface, element, reciprocity
 
 
 def _check_against_real_unit_loads(deck, surface, element, lever_arm_m):
     """Puts a real unit load at each probe node and reads the composite moment M + N e it causes."""
-    _configure_a_static_analysis()
-    ops.timeSeries("Linear", UNIT_LOAD_PATTERN)
-
     measured = {}
     for station_along, station_across in PROBE_NODES:
-        ops.remove("loadPattern", UNIT_LOAD_PATTERN)
-        ops.pattern("Plain", UNIT_LOAD_PATTERN, UNIT_LOAD_PATTERN)
-        ops.load(
-            deck.deck_nodes[(station_along, station_across)], 0.0, -1.0, 0.0, 0.0, 0.0, 0.0
-        )
-        ops.reset()
-        ops.setTime(0.0)
-        ops.analyze(1)
-
-        forces = ops.eleResponse(element, "localForce")
-        directly = -(forces[MOMENT_ABOUT_STRONG_AXIS] + lever_arm_m * forces[AXIAL])
+        node = deck.deck_nodes[station_along, station_across]
+        with backend.solved([(node, 0.0, -1.0, 0.0, 0.0, 0.0, 0.0)], pattern=UNIT_LOAD_PATTERN):
+            forces = backend.element_local_forces(element)
+            directly = -(forces[MOMENT_ABOUT_STRONG_AXIS] + lever_arm_m * forces[AXIAL])
         from_the_surface = surface.influence_at(
             float(deck.length_mesh_m[station_along]),
             float(deck.width_mesh_m[station_across]),
         )
         measured[(station_along, station_across)] = (from_the_surface, directly)
 
-    ops.remove("loadPattern", UNIT_LOAD_PATTERN)
     return measured
 
 
@@ -292,21 +269,53 @@ def test_a_deck_with_no_room_for_a_vehicle_says_so(built):
 
 
 def test_the_surface_looks_like_a_bridge_influence_surface(built):
-    """Sanity: it must be smooth, bounded, and zero at the supports."""
-    model, _, _, surface, _, _ = built
+    """Sanity: finite and bounded, with small support-line effects."""
+    _, _, _, surface, _, _ = built
 
     assert np.isfinite(surface.values).all()
     assert np.abs(surface.values).max() > 0
 
-    # A load standing directly over a girder support causes no moment - bar the
-    # micro-settlement of the 1e10 kN/m bearing spring, about a millionth of the peak.
     peak = np.abs(surface.values).max()
-    for girder in range(model.bridge.girders.count):
-        j = model.mesh.width_station_of_girder(girder)
-        assert abs(surface.values[0, j]) < 1e-5 * peak
-        assert abs(surface.values[-1, j]) < 1e-5 * peak
-
     # Between the girders the deck spans transversely, so a load at the support
     # line still finds its way to a girder - but only barely.
     assert np.abs(surface.values[0, :]).max() < 0.01 * peak
     assert np.abs(surface.values[-1, :]).max() < 0.01 * peak
+
+
+def test_support_load_moments_converge_as_bearing_springs_stiffen(bridge, monkeypatch):
+    import setu.builder.assembly as assembly
+
+    stiffness = assembly.BEARING_VERTICAL_STIFFNESS_KN_PER_M
+    ordinates, peaks = [], []
+    for factor in (1, 10):
+        monkeypatch.setattr(assembly, "BEARING_VERTICAL_STIFFNESS_KN_PER_M", stiffness * factor)
+        model = build_model(bridge)
+        element = model.midspan_element_of_girder(bridge.girders.count // 2)
+        surface = InfluenceSolver(model.as_deck_model()).for_girder_composite_moment("spring convergence", element)
+        ordinates.append(np.array([[surface.values[end, model.mesh.width_station_of_girder(k)]
+                                    for k in range(bridge.girders.count)] for end in (0, -1)]))
+        peaks.append(np.abs(surface.values).max())
+    # Finite springs settle: support-load moments approach zero in proportion to 1/K.
+    np.testing.assert_allclose(ordinates[1] * 10, ordinates[0], rtol=0.001, atol=1e-10)
+    assert peaks[1] == pytest.approx(peaks[0], rel=2e-6)
+
+
+# winning-only searches describe the same first layout and leave losers unmaterialised
+def test_winner_only_search_describes_just_the_first_layout(monkeypatch, built, deck_cross_section):
+    from setu.analysis import critical_position
+
+    *_, surface, _, _ = built
+    ranked = rank_all_positions(surface, deck_cross_section, SPAN_M, "maximum", WEARING_COURSE_M)
+    calls = []
+    describe = critical_position.describe
+
+    # count descriptions while using the real vehicle placement
+    def counted(*args):
+        calls.append(args[0])
+        return describe(*args)
+
+    monkeypatch.setattr(critical_position, "describe", counted)
+    winner = find_critical_position(surface, deck_cross_section, SPAN_M, "maximum", WEARING_COURSE_M)
+    assert len(calls) == 1
+    assert {key: value for key, value in vars(winner).items() if key != "vehicles"} == {key: value for key, value in vars(ranked[0]).items() if key != "vehicles"}
+    assert [vars(vehicle) for vehicle in winner.vehicles] == [vars(vehicle) for vehicle in ranked[0].vehicles]

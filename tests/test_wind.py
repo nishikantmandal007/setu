@@ -16,16 +16,15 @@ from setu.irc6.wind import (
     vertical_wind_force_kn,
     wind_on_live_load_kn,
 )
-from setu.loads.load_cases import apply_load_case
 from setu.postprocess.girder_response import analyze_load_case
 from setu.loads.wind_loads import wind_load_cases
 from setu.models.site import WindSite
 from setu.utils.constants import OBSTRUCTED_TERRAIN, PLAIN_TERRAIN
 
-pytest.importorskip("openseespy.opensees", reason="needs a finite element solver")
-import openseespy.opensees as ops  # noqa: E402
+pytest.importorskip("setu.solver.backend", reason="needs a finite element solver")
+from setu.solver import backend  # noqa: E402
 
-from test_design_forces import BRIDGE, SPAN_M, _configure_a_static_analysis  # noqa: E402
+from test_design_forces import BRIDGE, SPAN_M  # noqa: E402
 
 PA_PER_KPA = 1000.0
 
@@ -106,18 +105,21 @@ def test_user_values_replace_the_code_values():
 SITE = WindSite(basic_wind_speed_mps=39.0, terrain=PLAIN_TERRAIN, height_m=12.0, funnelling=False, solid_barrier_height_m=1.1)
 
 
+@pytest.mark.parametrize("key,value", [("drag", -1.), ("exposed_area_m2", float("nan")),
+                                       ("plan_area_m2", -1.), ("live_load_exposed_area_m2", float("inf")),
+                                       ("force_height_above_deck_m", float("nan"))])
+def test_invalid_wind_overrides_are_rejected(key, value):
+    with pytest.raises(ValueError, match=key):
+        WindSite(**{**vars(SITE), key: value})
+
+
 def _reactions_under(model, case):
     """Total support reactions: every node's reaction summed, so the rigid links' internal pairs cancel."""
-    _configure_a_static_analysis()
-    apply_load_case(case, ops, pattern_tag=101)
-    ops.reset()
-    ops.setTime(0.0)
-    ops.analyze(1)
-    ops.reactions()
-    tags = ops.getNodeTags()
-    totals = [sum(ops.nodeReaction(node, dof) for node in tags) for dof in (1, 2, 3)]
-    ops.remove("loadPattern", 101)
-    ops.remove("timeSeries", 101)
+    with backend.solved(case.nodal_loads, case.element_loads, pattern=101):
+        backend.calculate_reactions()
+        tags = backend.node_tags()
+        totals = [sum(backend.node_reaction(node, dof) for node in tags) for dof in (1, 2, 3)]
+
     return totals
 
 
@@ -127,7 +129,7 @@ def _support_shear_of_each_girder(model, case):
     Reactions at single nodes are not used here: OpenSees reports rigid-link constraint forces
     as nodal reactions too, so only the total over all nodes is a clean reaction.
     """
-    forces = analyze_load_case(model, case, ops)
+    forces = analyze_load_case(model, case)
     return [forces[girder].shear_kn[0] for girder in sorted(forces)]
 
 
@@ -139,7 +141,7 @@ def wind_cases():
 
 def test_the_supports_take_the_transverse_force(wind_cases):
     model, cases = wind_cases
-    along_kn, up_kn, across_kn = _reactions_under(model, cases["transverse from the left"])
+    _, up_kn, across_kn = _reactions_under(model, cases["transverse from the left"])
 
     assert -across_kn == pytest.approx(cases.forces_kn["transverse"], rel=1e-9)
     assert abs(up_kn) < 1e-6 * cases.forces_kn["transverse"]
@@ -166,25 +168,20 @@ def test_transverse_wind_is_in_equilibrium_about_the_span(wind_cases):
     scale for any load at all (a plain vertical force shows the same), from how OpenSees reports
     reactions at rigid-linked nodes, so a tighter check would test OpenSees, not the wind load.
     """
-    model, cases = wind_cases
+    _, cases = wind_cases
     case = cases["transverse from the left"]
     applied_kn_m = 0.0
     for node, _, fy, fz, mx, _, _ in case.nodal_loads:
-        _, y_m, z_m = ops.nodeCoord(node)
+        _, y_m, z_m = backend.node_coordinates(node)
         applied_kn_m += y_m * fz - z_m * fy + mx
-    _configure_a_static_analysis()
-    apply_load_case(case, ops, pattern_tag=101)
-    ops.reset()
-    ops.setTime(0.0)
-    ops.analyze(1)
-    ops.reactions()
-    resisted_kn_m = 0.0
-    for node in ops.getNodeTags():
-        _, ry, rz, rmx, _, _ = ops.nodeReaction(node)
-        _, y_m, z_m = ops.nodeCoord(node)
-        resisted_kn_m += y_m * rz - z_m * ry + rmx
-    ops.remove("loadPattern", 101)
-    ops.remove("timeSeries", 101)
+    with backend.solved(case.nodal_loads, case.element_loads, pattern=101):
+        backend.calculate_reactions()
+        resisted_kn_m = 0.0
+        for node in backend.node_tags():
+            _, ry, rz, rmx, _, _ = backend.node_reactions(node)
+            _, y_m, z_m = backend.node_coordinates(node)
+            resisted_kn_m += y_m * rz - z_m * ry + rmx
+
 
     assert applied_kn_m + resisted_kn_m == pytest.approx(0.0, abs=1e-3 * cases.forces_kn["transverse"] * BRIDGE.width_m())
 
@@ -228,6 +225,6 @@ def test_a_load_case_read_through_its_influence_surface_matches_a_real_solve(win
     midspan = model.mesh.stations_along_span // 2
     surface = InfluenceSolver(model.as_deck_model()).for_girder_composite_moment("m", model.midspan_element_of_girder(1))
 
-    solved = analyze_load_case(model, cases[name], ops)[1].composite_moment_kn_m[midspan]
+    solved = analyze_load_case(model, cases[name])[1].composite_moment_kn_m[midspan]
 
     assert response_to_load_case(surface, cases[name]) == pytest.approx(solved, rel=1e-9, abs=1e-9)

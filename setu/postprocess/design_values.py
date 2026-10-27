@@ -1,9 +1,9 @@
 import copy
 import itertools
 
-from setu.analysis.critical_position import rank_all_positions
+from setu.analysis.critical_position import find_critical_position, rank_all_positions
 from setu.analysis.fatigue import fatigue_range
-from setu.helpers import DEFAULT_SAMPLING, adverse_sign, import_opensees
+from setu.helpers import DEFAULT_SAMPLING, adverse_sign
 from setu.analysis.influence_surface import InfluenceSolver, response_to_load_case
 from setu.builder.assembly import BEARING_VERTICAL_STIFFNESS_KN_PER_M, build_bridge_model
 from setu.irc6.combinations import design_value, irc6_combinations
@@ -11,11 +11,11 @@ from setu.irc6.seismic import combine_directions
 from setu.irc6.temperature import effective_temperature_range, temperature_difference_profiles
 from setu.loads.braking_loads import braking_load_cases
 from setu.loads.custom_loads import custom_load_cases
-from setu.loads.load_builders import applied_live_loads
 from setu.loads.load_cases import LoadCase
 from setu.loads.seismic_loads import seismic_load_cases
 from setu.loads.wind_loads import wind_load_cases
 from setu.postprocess.girder_response import STAGE_IS_FACTORED_AS, dead_load_forces
+from setu.postprocess.parallel import analysis_for
 from setu.postprocess.thermal_stresses import free_bearing_movement_m, primary_thermal_stresses
 from setu.utils.constants import (
     BEARING_REACTION,
@@ -36,10 +36,10 @@ from setu.utils.constants import (
 
 NO_EFFECT = 0.0
 # the maximum live moment on a simply supported span stands a little off midspan, so the moment is checked at midspan and at
-# these fractions of the span towards the first bearing; the deck is symmetric end to end (point-symmetric across the girders
-# when skewed), so the other side of midspan gives nothing new
+# these fractions of the span towards the first bearing. Unequal sections also check the mirrored stations and far bearing.
 MOMENT_SECTIONS_OFF_MIDSPAN = (0.0, 0.02, 0.04, 0.06)
 BOTH_DIRECTIONS = (BIGGER_IS_WORSE, SMALLER_IS_WORSE)
+WIND_SIDES = ("from the left", "from the right")
 
 
 class GoverningValue:
@@ -58,9 +58,10 @@ class GoverningValue:
 
 class DesignValues:
     # design values for every girder, response and limit state, plus the dead load by stage, deflections, fatigue ranges,
-    # the live shear range, temperature, and the surfaces, critical positions and stations behind the live load
+    # the live shear range, temperature, the surfaces, critical positions and stations behind the live load, and the surface
+    # and critical position at every design place
     def __init__(self, girders, dead, deflections, fatigue, live_shear_range_kn, thermal, surfaces, criticals, stations,
-                 fatigue_stresses_mpa=None, combinations=None):
+                 fatigue_stresses_mpa, combinations, braking, place_surfaces, place_criticals):
         self.girders = girders
         self.dead = dead
         self.deflections = deflections
@@ -72,72 +73,116 @@ class DesignValues:
         self.stations = stations
         self.fatigue_stresses_mpa = fatigue_stresses_mpa
         self.combinations = combinations
+        self.braking = braking
+        self.place_surfaces = place_surfaces
+        self.place_criticals = place_criticals
 
     # the girder with the biggest value for this response and limit state
     def governing(self, response, limit_state, adverse):
         return max(((girder, by_response[response][limit_state][adverse]) for girder, by_response in self.girders.items()), key=lambda pair: abs(pair[1].value))
 
 
-# every load on every girder, combined per IRC:6 Annex B, at every place a design value is read
-def girder_design_values(bridge, wind=None, seismic=None, temperature=None, custom_loads=(), custom_combinations=(), ops=None):
-    ops = import_opensees() if ops is None else ops
-    dead = dead_load_forces(bridge, ops)
-    model = build_bridge_model(bridge, ops)
-    girders = range(bridge.girders.count)
+class SharedAnalysis:
+    # what girder and brace design values both read, built once: dead load stages, the composite model and its influence solver,
+    # the wind and custom load cases, and the combinations
+    def __init__(self, dead, model, solver, wind_cases, custom_forces, combinations, work=None):
+        self.dead = dead
+        self.work = work
+        self.model = model
+        self.solver = solver
+        self.wind_forces = dict(wind_cases or {})
+        self.custom_forces = custom_forces
+        self.combinations = combinations
+
+
+# solve the dead load stages, build the composite model and its solver, and make the wind and custom load cases once
+def shared_analysis(bridge, wind, custom_loads, custom_combinations, *, work=None):
+    dead = dead_load_forces(bridge) if work is None else None
+    model = build_bridge_model(bridge)
     solver = InfluenceSolver(model.as_deck_model())
-    places = places_to_design(model)
-    surfaces = {(girder, place): surface_for(solver, model, girder, place) for girder in girders for place in places}
-    deflection_surfaces = {girder: solver.for_deflection(f"girder {girder}, {MIDSPAN_DEFLECTION}", midspan_deck_node_over(model, girder)) for girder in girders}
-
-    # the worst legal traffic on this bridge for one surface
-    def search(surface, adverse):
-        return rank_all_positions(surface, bridge.cross_section, bridge.span_m, adverse, bridge.wearing_course_thickness_m)
-
-    live = {(girder, place, adverse): search(surfaces[girder, place], adverse)[0] for girder in girders for place in places for adverse in BOTH_DIRECTIONS}
-    read = reader(surfaces)
+    if work is not None:
+        work.start(model)
+        dead = work.dead.result()
     wind_cases = wind_load_cases(model, wind) if wind is not None else None
-    wind_forces = dict(wind_cases or {})
     custom_forces = custom_load_cases(model, custom_loads)
     combinations = irc6_combinations(wind_cases.speed_at_deck_mps if wind_cases is not None else None) + list(custom_combinations)
-    by_place, combinations_at_place = {}, {}
+    return SharedAnalysis(dead, model, solver, wind_cases, custom_forces, combinations, work)
+
+
+# unfactored effects of every active load group on one target, a girder place or a brace member, read as read(forces, *target);
+# braking details are kept under (*target_key, adverse)
+def load_effects(analysis, dead_stages, live, read, target, target_key, seismic, braking_height_above_deck_m, braking):
+    effects = {
+        DEAD: sum(read(dead_stages[stage], *target) for stage in dead_stages if STAGE_IS_FACTORED_AS[stage] == DEAD),
+        SURFACING: sum(read(dead_stages[stage], *target) for stage in dead_stages if STAGE_IS_FACTORED_AS[stage] == SURFACING),
+        LIVE: [live_with_braking(analysis.model, live[adverse], read, *target, height_above_deck_m=braking_height_above_deck_m,
+                                 details=braking.setdefault((*target_key, adverse), {})) for adverse in BOTH_DIRECTIONS],
+    }
+    if analysis.wind_forces:
+        effects[WIND] = wind_alternatives(analysis.wind_forces, read, *target, with_the_live_load=False)
+    if seismic is not None:
+        own = seismic_load_cases(analysis.model, seismic, live[BIGGER_IS_WORSE])
+        effects[SEISMIC] = combine_directions(*[read(own[name], *target) for name in ("longitudinal", "transverse", "vertical") if name in own])
+    for group, forces in analysis.custom_forces.items():
+        effects[group] = add_to(effects.get(group, NO_EFFECT), read(forces, *target))
+    return effects
+
+
+# every load on every girder, combined per IRC:6 Annex B, at every place a design value is read
+def girder_design_values(bridge, wind=None, seismic=None, temperature=None, custom_loads=(), custom_combinations=(),
+                         *, braking_height_above_deck_m=None, workers=None):
+    with analysis_for(bridge, wind, custom_loads, custom_combinations, workers, girders=True) as analysis:
+        return girder_values(analysis, bridge, seismic, temperature, braking_height_above_deck_m)
+
+
+# girder design values from an analysis already set up
+def girder_values(analysis, bridge, seismic, temperature, braking_height_above_deck_m):
+    dead, model, solver = analysis.dead, analysis.model, analysis.solver
+    girders = range(bridge.girders.count)
+    places = places_to_design(model)
+    work = analysis.work
+    surfaces = {(girder, place): work.places[girder, place].result()[0] if work is not None else surface_for(solver, model, girder, place) for girder in girders for place in places}
+    deflection_surfaces = {girder: work.deflections[girder].result()[0] if work is not None else solver.for_deflection(f"girder {girder}, {MIDSPAN_DEFLECTION}", midspan_deck_node_over(model, girder)) for girder in girders}
+
+    live = {(girder, place, adverse): work.places[girder, place].result()[1][adverse] if work is not None else find_critical_position(surfaces[girder, place], bridge.cross_section, bridge.span_m, adverse, bridge.wearing_course_thickness_m) for girder in girders for place in places for adverse in BOTH_DIRECTIONS}
+    read = reader(surfaces)
+    by_place, combinations_at_place, braking = {}, {}, {}
     for girder in girders:
         for place in places:
-            effects = {
-                DEAD: sum(read(dead.stages[stage], girder, place) for stage in dead.stages if STAGE_IS_FACTORED_AS[stage] == DEAD),
-                SURFACING: sum(read(dead.stages[stage], girder, place) for stage in dead.stages if STAGE_IS_FACTORED_AS[stage] == SURFACING),
-                LIVE: [live_with_braking(model, live[girder, place, adverse], read, girder, place) for adverse in BOTH_DIRECTIONS],
-            }
-            if wind_forces:
-                effects[WIND] = wind_alternatives(wind_forces, read, girder, place, with_the_live_load=False)
-            if seismic is not None:
-                own = seismic_load_cases(model, seismic, live[girder, place, BIGGER_IS_WORSE], ops)
-                effects[SEISMIC] = combine_directions(*[read(own[name], girder, place) for name in ("longitudinal", "transverse", "vertical") if name in own])
-            for group, forces in custom_forces.items():
-                effects[group] = add_to(effects.get(group, NO_EFFECT), read(forces, girder, place))
-            by_place[girder, place], combinations_at_place[girder, place] = governing_by_limit_state(effects, combinations, wind_forces, read, girder, place, model.mesh.length_mesh_m[place[1]])
+            effects = load_effects(analysis, dead.stages, {adverse: live[girder, place, adverse] for adverse in BOTH_DIRECTIONS}, read,
+                                   (girder, place), (girder, place), seismic, braking_height_above_deck_m, braking)
+            by_place[girder, place], combinations_at_place[girder, place] = governing_by_limit_state(
+                effects, analysis.combinations, analysis.wind_forces, read, girder, place, model.mesh.length_mesh_m[place[1]])
     results = {girder: {response: worst_over_places([by_place[girder, place] for place in places if place[0] == response]) for response in RESPONSES} for girder in girders}
     combined = {girder: {response: worst_over_places([combinations_at_place[girder, place] for place in places if place[0] == response]) for response in RESPONSES} for girder in girders}
     surfaces_out, criticals, stations = worst_live_places(live, surfaces, places, girders)
     deflections = {}
     for girder in girders:
-        deflections[girder], without_footway = girder_deflection(deflection_surfaces[girder], dead, girder, model, search)
+        ranked = work.deflections[girder].result()[1] if work is not None else rank_all_positions(deflection_surfaces[girder], bridge.cross_section, bridge.span_m, BIGGER_IS_WORSE, bridge.wearing_course_thickness_m)
+        deflections[girder], without_footway = girder_deflection(ranked, dead, girder, model)
         surfaces_out[girder, MIDSPAN_DEFLECTION, BIGGER_IS_WORSE] = deflection_surfaces[girder]
         criticals[girder, MIDSPAN_DEFLECTION, BIGGER_IS_WORSE] = without_footway
         stations[girder, MIDSPAN_DEFLECTION, BIGGER_IS_WORSE] = model.mesh.stations_along_span // 2
-    fatigue = {girder: fatigue_ranges(surfaces, girder, places, bridge, model) for girder in girders}
-    fatigue_stresses = {girder: fatigue_stress_ranges(solver, girder, places, bridge, model) for girder in girders}
-    live_shear_range_kn = {girder: max(live[girder, (SUPPORT_SHEAR, SUPPORT), BIGGER_IS_WORSE].response, 0.0) - min(live[girder, (SUPPORT_SHEAR, SUPPORT), SMALLER_IS_WORSE].response, 0.0)
+    fatigue = {girder: fatigue_ranges(surfaces, girder, places, bridge, model, work) for girder in girders}
+    fatigue_stresses = {girder: fatigue_stress_ranges(solver, girder, places, bridge, model, work) for girder in girders}
+    live_shear_range_kn = {girder: max(max(live[girder, place, BIGGER_IS_WORSE].response, 0.0) - min(live[girder, place, SMALLER_IS_WORSE].response, 0.0)
+                                     for place in places if place[0] == SUPPORT_SHEAR)
                            for girder in girders}
     return DesignValues(results, dead, deflections, fatigue, live_shear_range_kn, thermal_results(bridge, temperature), surfaces_out, criticals, stations,
-                        fatigue_stresses, combined)
+                        fatigue_stresses, combined, braking, surfaces, live)
 
 
-# (response, station) of every place a design value is read: the moment at the sections near midspan, shear and reaction at the first bearing
+# (response, station) of every place a design value is read; unequal girders check both ends
 def places_to_design(model):
     stations_m = model.mesh.length_mesh_m
     span_m = stations_m[-1] - stations_m[0]
     moment_stations = sorted({int(abs(stations_m - (span_m / 2 - fraction * span_m)).argmin()) for fraction in MOMENT_SECTIONS_OFF_MIDSPAN})
-    return [(MAX_MOMENT, station) for station in moment_stations] + [(SUPPORT_SHEAR, SUPPORT), (BEARING_REACTION, SUPPORT)]
+    ends = [SUPPORT]
+    if any(vars(girder) != vars(model.girders[0]) for girder in model.girders[1:]):
+        # Unequal girders can break point symmetry on a skewed deck.
+        moment_stations = sorted(set(moment_stations) | {len(stations_m) - 1 - station for station in moment_stations})
+        ends.append(len(stations_m) - 1)
+    return [(MAX_MOMENT, station) for station in moment_stations] + [(response, end) for response in (SUPPORT_SHEAR, BEARING_REACTION) for end in ends]
 
 
 # the influence surface for one place on one girder
@@ -147,7 +192,9 @@ def surface_for(solver, model, girder, place):
     if response == MAX_MOMENT:
         return solver.for_girder_composite_moment(name, model.element_of_girder_at(girder, station))
     if response == SUPPORT_SHEAR:
-        return solver.for_girder_shear(name, model.element_of_girder_at(girder, station))
+        far_end = station == model.mesh.stations_along_span - 1
+        element = model.element_of_girder_at(girder, station - 1 if far_end else station)
+        return solver.for_girder_shear(name, element, end="j" if far_end else "i")
     return solver.for_bearing_reaction(name, model.bearings[girder, station], BEARING_VERTICAL_STIFFNESS_KN_PER_M)
 
 
@@ -168,7 +215,7 @@ def reader(surfaces):
             return float(forces[girder].composite_moment_kn_m[station])
         if response == SUPPORT_SHEAR:
             return float(forces[girder].shear_kn[station])
-        return forces[girder].reaction_kn
+        return forces[girder].reaction_kn if station == SUPPORT else forces[girder].end_reaction_kn
     return read
 
 
@@ -199,8 +246,7 @@ def worst_live_places(live, surfaces, places, girders):
 
 # IRC:22 deflections at midspan: live load with impact but without the footway load (which the clause lets you leave out),
 # each dead load stage, and the total; also the live critical position without its footway, for tracing
-def girder_deflection(surface, dead, girder, model, search):
-    ranked = search(surface, BIGGER_IS_WORSE)
+def girder_deflection(ranked, dead, girder, model):
     worst = max(ranked, key=lambda position: position.response - position.footway_response * position.lane_reduction)
     without_footway = copy.copy(worst)
     without_footway.response = worst.response - worst.footway_response * worst.lane_reduction
@@ -212,47 +258,65 @@ def girder_deflection(surface, dead, girder, model, search):
 
 
 # clause 204.6 fatigue ranges on one girder: the moment range at the worst section near midspan, and the shear range at the bearing
-def fatigue_ranges(surfaces, girder, places, bridge, model):
+def fatigue_ranges(surfaces, girder, places, bridge, model, work=None):
     ranges = {}
     for response in (MAX_MOMENT, SUPPORT_SHEAR):
-        found = [(fatigue_range(surfaces[girder, place], bridge.cross_section, bridge.span_m, DEFAULT_SAMPLING), place) for place in places if place[0] == response]
+        found = [(work.places[girder, place].result()[2] if work is not None else fatigue_range(surfaces[girder, place], bridge.cross_section, bridge.span_m, DEFAULT_SAMPLING), place) for place in places if place[0] == response]
         worst, place = max(found, key=lambda pair: pair[0].range)
-        worst.at_m = float(model.mesh.length_mesh_m[place[1]])
-        ranges[response] = worst
+        ranges[response] = worst.located_at(float(model.mesh.length_mesh_m[place[1]]))
     return ranges
 
 
 # Search each flange face independently: the line with the worst moment need not give the worst steel stress.
-def fatigue_stress_ranges(solver, girder, places, bridge, model):
+def fatigue_stress_ranges(solver, girder, places, bridge, model, work=None):
     ranges = {}
-    for face, y_m in (("steel top", model.girder.depth_m), ("steel bottom", 0.0)):
+    section = model.girders[girder]
+    for face, y_m in (("steel top", section.depth_m), ("steel bottom", 0.0)):
         found = []
         for response, station in places:
             if response != MAX_MOMENT:
                 continue
-            surface = solver.for_girder_stress_mpa(f"girder {girder}, {face} stress at {station}", model.element_of_girder_at(girder, station), model.girder, y_m)
-            stress = fatigue_range(surface, bridge.cross_section, bridge.span_m, DEFAULT_SAMPLING)
-            stress.at_m = float(model.mesh.length_mesh_m[station])
+            stress = work.stresses[girder, face, station].result() if work is not None else fatigue_stress(solver, model, bridge, girder, face, y_m, station)
             found.append(stress)
         ranges[face] = max(found, key=lambda stress: stress.range)
     return ranges
 
 
+# fatigue range at one flange face and station
+def fatigue_stress(solver, model, bridge, girder, face, y_m, station):
+    surface = stress_surface(solver, model, girder, face, y_m, station)
+    stress = fatigue_range(surface, bridge.cross_section, bridge.span_m, DEFAULT_SAMPLING)
+    return stress.located_at(float(model.mesh.length_mesh_m[station]))
+
+
+# one flange-stress surface before its fatigue search
+def stress_surface(solver, model, girder, face, y_m, station):
+    return solver.for_girder_stress_mpa(f"girder {girder}, {face} stress at {model.mesh.length_mesh_m[station]:.3f} m", model.element_of_girder_at(girder, station), model.girders[girder], y_m)
+
+
 # live load response plus the worse of the two braking directions
-def live_with_braking(model, critical, read, girder, place):
-    braking = [read(case, girder, place) for case in braking_load_cases(model, critical).values()]
-    adding = max(braking) if critical.adverse == BIGGER_IS_WORSE else min(braking)
-    return critical.response + adding
+def live_with_braking(model, critical, read, girder, place, *, height_above_deck_m=None, details=None):
+    cases = braking_load_cases(model, critical, height_above_deck_m=height_above_deck_m)
+    responses = {name: read(case, girder, place) for name, case in cases.items()}
+    choose = max if critical.adverse == BIGGER_IS_WORSE else min
+    direction = choose(responses, key=lambda name: responses[name])
+    combined = critical.response + responses[direction]
+    if details is not None:
+        details.update(cases=cases, responses=responses, selected=direction, live=critical.response, combined=combined)
+    return combined
 
 
 # every mix of wind sides and directions, with wind on the vehicles if asked
 def wind_alternatives(wind_forces, read, girder, place, with_the_live_load):
+    on_the_bridge = ["longitudinal", *(f"{kind} {way}" for kind, ways in (("transverse", WIND_SIDES), ("vertical", ("upward", "downward"))) for way in ways)]
+    on_the_vehicles = ["on live load, longitudinal", *(f"on live load {side}" for side in WIND_SIDES)] if with_the_live_load else []
+    response = {name: read(wind_forces[name], girder, place) for name in on_the_bridge + on_the_vehicles}
     alternatives = []
-    for side, along, vertical in itertools.product(("from the left", "from the right"), BOTH_WAYS, ("upward", "downward")):
-        effect = read(wind_forces[f"transverse {side}"], girder, place) + along * read(wind_forces["longitudinal"], girder, place)
-        effect += read(wind_forces[f"vertical {vertical}"], girder, place)
+    for side, along, vertical in itertools.product(WIND_SIDES, BOTH_WAYS, ("upward", "downward")):
+        effect = response[f"transverse {side}"] + along * response["longitudinal"]
+        effect += response[f"vertical {vertical}"]
         if with_the_live_load:
-            effect += read(wind_forces[f"on live load {side}"], girder, place) + along * read(wind_forces["on live load, longitudinal"], girder, place)
+            effect += response[f"on live load {side}"] + along * response["on live load, longitudinal"]
         alternatives.append(effect)
     return alternatives
 
@@ -264,13 +328,27 @@ def add_to(effect, extra):
     return effect + extra
 
 
+# does this combination put wind on the vehicles: wind is active and the combination carries both live load and wind
+def wind_on_the_vehicles(wind_forces, combination):
+    return bool(wind_forces) and LIVE in combination.factors and WIND in combination.factors
+
+
+# the effects one combination takes at one place: with live load and wind together, wind on the vehicles too
+def effects_in(combination, effects, wind_on_traffic):
+    in_this_combination = dict(effects)
+    if wind_on_traffic is not None and LIVE in combination.factors and WIND in combination.factors:
+        in_this_combination[WIND] = wind_on_traffic
+    return in_this_combination
+
+
 # worst combination in each limit state, both directions, at one place
 def governing_by_limit_state(effects, combinations, wind_forces, read, girder, place, at_m):
     governing, by_combination = {}, {}
+    wind_on_traffic = None
     for combination in combinations:
-        in_this_combination = dict(effects)
-        if wind_forces and LIVE in combination.factors and WIND in combination.factors:
-            in_this_combination[WIND] = wind_alternatives(wind_forces, read, girder, place, with_the_live_load=True)
+        if wind_on_traffic is None and wind_on_the_vehicles(wind_forces, combination):
+            wind_on_traffic = wind_alternatives(wind_forces, read, girder, place, with_the_live_load=True)
+        in_this_combination = effects_in(combination, effects, wind_on_traffic)
         for adverse in BOTH_DIRECTIONS:
             value, shares = design_value(in_this_combination, combination, adverse)
             result = GoverningValue(value, combination.name, adverse, shares, float(at_m))

@@ -14,6 +14,7 @@ from setu.analysis.critical_position import find_critical_position, rank_all_pos
 from setu.irc6.combinations import custom_combination
 
 from setu.loads.load_builders import applied_live_loads, live_load
+from setu.postprocess.brace_design_values import brace_design_values, bridge_design_values
 from setu.postprocess.design_values import girder_design_values
-from setu.postprocess.girder_response import analyze_load_case, dead_load_forces
+from setu.postprocess.girder_response import analyze_load_case, dead_load_forces, bearing_reactions, brace_forces
 from setu.postprocess.result_dataset import result_dataset, merge_datasets

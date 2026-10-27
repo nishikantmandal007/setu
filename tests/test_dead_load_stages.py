@@ -12,8 +12,7 @@ from setu.loads.dead_loads import steel_self_weight_load, superimposed_dead_load
 from setu.models.bridge import Bracing, BridgeInput, DeckSlab
 from setu.postprocess.girder_response import analyze_load_case, dead_load_forces
 
-pytest.importorskip("openseespy.opensees", reason="needs a finite element solver")
-import openseespy.opensees as ops  # noqa: E402
+pytest.importorskip("setu.solver.backend", reason="needs a finite element solver")
 
 from test_design_forces import BRIDGE, CROSS_SECTION, SPAN_M  # noqa: E402
 
@@ -35,8 +34,8 @@ def test_the_steel_alone_carries_the_wet_slab():
     spacing_m = model.mesh.girder_lines_m[girder + 1] - model.mesh.girder_lines_m[girder]
     w_kn_m = SLAB_UNIT_WEIGHT_KN_M3 * bridge.deck.thickness_m * spacing_m + bridge.steel.unit_weight_kn_m3 * model.girder.area_m2
 
-    steel = analyze_load_case(model, steel_self_weight_load(model), ops)[girder].moment_kn_m[midspan]
-    slab = analyze_load_case(model, wet_slab_load(model), ops)[girder].moment_kn_m[midspan]
+    steel = analyze_load_case(model, steel_self_weight_load(model))[girder].moment_kn_m[midspan]
+    slab = analyze_load_case(model, wet_slab_load(model))[girder].moment_kn_m[midspan]
 
     assert steel + slab == pytest.approx(w_kn_m * SPAN_M ** 2 / 8, rel=0.01)
 
@@ -124,7 +123,7 @@ def test_a_line_load_sits_on_its_strip_centre():
     centre_m = (median.z_from_m + median.z_to_m) / 2
     width_mesh_m = model.mesh.width_mesh_m
     loaded_tags = {tag for tag, *_ in superimposed_dead_load(model).nodal_loads}
-    loaded_z_m = {float(width_mesh_m[j]) for (i, j), node in model.deck_nodes.items() if node in loaded_tags}
+    loaded_z_m = {float(width_mesh_m[j]) for (_, j), node in model.deck_nodes.items() if node in loaded_tags}
 
     assert max(abs(z_m - centre_m) for z_m in loaded_z_m) <= float(np.diff(width_mesh_m).max())
     assert -sum(fy for _, _, fy, *_ in superimposed_dead_load(model).nodal_loads) == pytest.approx(10.0 * SPAN_M, rel=1e-9)

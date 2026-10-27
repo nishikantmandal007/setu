@@ -31,7 +31,11 @@ def wind_load_cases(model, site):
     span_m = bridge.span_m
     speed_mps, pressure_pa = hourly_mean_wind(site.height_m, site.terrain, site.basic_wind_speed_mps, site.funnelling)
     pressure_kpa = pressure_pa * KPA_PER_PA
-    girder_depth_m = model.girder.depth_m
+    girder_depth_m = model.girders[0].depth_m
+    if any(girder.depth_m != girder_depth_m for girder in model.girders[1:]):
+        if any(value is None for value in (site.exposed_area_m2, site.drag, site.force_height_above_deck_m)):
+            raise ValueError("unequal-depth wind requires explicit exposed_area_m2, drag and force_height_above_deck_m; "
+                             "automatic shielding and application height are not supported")
     exposed_area_m2 = site.exposed_area_m2
     if exposed_area_m2 is None:
         exposed_area_m2 = span_m * (girder_depth_m + bridge.deck.thickness_m + site.solid_barrier_height_m)
@@ -46,6 +50,8 @@ def wind_load_cases(model, site):
         pressure_kpa, span_m, site.solid_barrier_height_m, site.gust, site.drag_on_live_load, site.live_load_exposed_area_m2
     )
     centroid_above_deck_nodes_m = (site.solid_barrier_height_m - girder_depth_m) / 2
+    if site.force_height_above_deck_m is not None:
+        centroid_above_deck_nodes_m = site.force_height_above_deck_m + bridge.deck.thickness_m / 2
     live_load_wind_above_deck_nodes_m = bridge.deck.thickness_m / 2 + bridge.wearing_course_thickness_m + WIND_ON_LIVE_LOAD_ACTS_ABOVE_ROAD_M
     edges = (0, model.mesh.stations_across_width - 1)
     cases = {

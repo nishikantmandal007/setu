@@ -13,13 +13,13 @@ from setu.analysis.critical_position import find_critical_position
 from setu.analysis.influence_surface import InfluenceSolver
 from setu.builder.assembly import build_bridge_model
 from setu.loads.load_builders import live_load
-from setu.loads.load_cases import apply_load_case
+from setu.loads.load_cases import LoadCase, apply_load_case
 from setu.models.bridge import AddedDeadLoads, Bracing, BridgeInput, DeckSlab, Girders, MeshSettings
 from setu.models.materials import Concrete, Steel
 from setu.models.sections import PlateGirderSection
 from setu.models.deck import DeckCrossSection
 
-ops = pytest.importorskip("openseespy.opensees", reason="needs a finite element solver")
+backend = pytest.importorskip("setu.solver.backend", reason="needs a finite element solver")
 
 SPAN_M = 35.0
 SHEAR_AT_END_I = 1
@@ -71,38 +71,20 @@ BRIDGE = BridgeInput(
 )
 
 
-def _configure_a_static_analysis():
-    ops.wipeAnalysis()
-    ops.system("UmfPack")
-    ops.numberer("RCM")
-    ops.constraints("Transformation")
-    ops.integrator("LoadControl", 1.0)
-    ops.algorithm("Linear")
-    ops.analysis("Static")
-
-
-def _read_directly(element, component, pattern_tag, lever_arm_m=0.0):
-    """Internal force at end i of the element; with a lever arm, the composite moment M + N e."""
-    ops.reset()
-    ops.setTime(0.0)
-    ops.analyze(1)
-    forces = ops.eleResponse(element, "localForce")
-    force = END_I_FORCE_TO_INTERNAL_FORCE * (forces[component] + lever_arm_m * forces[AXIAL_AT_END_I])
-    ops.remove("loadPattern", pattern_tag)
-    ops.remove("timeSeries", pattern_tag)
-    return force
+def _read_directly(element, component, case, pattern_tag, lever_arm_m=0.0):
+    """Internal force at end i; with a lever arm, the composite moment M + N e."""
+    with backend.solved(case.nodal_loads, case.element_loads, pattern=pattern_tag):
+        forces = backend.element_local_forces(element)
+        return END_I_FORCE_TO_INTERNAL_FORCE * (forces[component] + lever_arm_m * forces[AXIAL_AT_END_I])
 
 
 def _unit_load_response(deck, node, element, component, lever_arm_m=0.0):
-    ops.timeSeries("Linear", UNIT_LOAD_PATTERN)
-    ops.pattern("Plain", UNIT_LOAD_PATTERN, UNIT_LOAD_PATTERN)
-    ops.load(node, 0.0, -1.0, 0.0, 0.0, 0.0, 0.0)
-    return _read_directly(element, component, UNIT_LOAD_PATTERN, lever_arm_m)
+    case = LoadCase("unit load", [(node, 0.0, -1.0, 0.0, 0.0, 0.0, 0.0)])
+    return _read_directly(element, component, case, UNIT_LOAD_PATTERN, lever_arm_m)
 
 
 def _live_load_response(model, critical, surface, element, component, lever_arm_m):
-    apply_load_case(live_load(model, critical, surface), ops, pattern_tag=LIVE_LOAD_PATTERN)
-    return _read_directly(element, component, LIVE_LOAD_PATTERN, lever_arm_m)
+    return _read_directly(element, component, live_load(model, critical, surface), LIVE_LOAD_PATTERN, lever_arm_m)
 
 
 def _critical(surface, adverse="maximum"):
@@ -138,7 +120,6 @@ def built():
 
     surfaces = {name: solve(name, element) for name, (element, _, _, solve) in checks.items()}
 
-    _configure_a_static_analysis()
     reciprocity = {}
     for name, (element, component, lever, _) in checks.items():
         for station_along, station_across in PROBE_NODES:
@@ -190,7 +171,6 @@ def test_the_live_load_gives_back_the_searched_response(built, name, adverse):
     element, component, lever, _ = checks[name]
     critical = _critical(surfaces[name], adverse)
 
-    _configure_a_static_analysis()
     directly = _live_load_response(model, critical, surfaces[name], element, component, lever)
 
     # an axle standing exactly on the bearing line reaches the girder only through the 1e10 kN/m bearing spring,
@@ -207,7 +187,7 @@ def test_each_girder_gets_its_own_critical_position(built):
     }
 
     responses = [worst[girder].response for girder in worst]
-    assert len({round(response, 6) for response in responses}) > 1
+    assert len({round(float(response), 6) for response in responses}) > 1
     outer_vehicle_m = min(placed.z_centre_m for placed in worst[0].vehicles)
     middle_vehicle_m = min(placed.z_centre_m for placed in worst[BRIDGE.girders.count // 2].vehicles)
     assert outer_vehicle_m <= middle_vehicle_m
@@ -225,7 +205,7 @@ def test_a_load_case_after_the_surfaces_is_not_polluted_by_them(built):
     solver = InfluenceSolver(model.as_deck_model())
     solver.for_girder_composite_moment("pollute the model first", element)
 
-    forces = analyze_load_case(model, live_load(model, critical, surface), ops)
+    forces = analyze_load_case(model, live_load(model, critical, surface))
 
     assert forces[2].composite_moment_kn_m[midspan] == pytest.approx(critical.response, rel=1e-6)
 
@@ -234,17 +214,15 @@ def test_a_load_case_refuses_to_run_on_top_of_another(built):
     from setu.errors import OtherLoadsStillActiveError
     from setu.postprocess.girder_response import analyze_load_case
 
-    model, checks, surfaces, _ = built
+    model, _, surfaces, _ = built
     surface = surfaces["girder 2, midspan moment"]
     critical = _critical(surface)
-    ops.timeSeries("Constant", UNIT_LOAD_PATTERN)
-    ops.pattern("Plain", UNIT_LOAD_PATTERN, UNIT_LOAD_PATTERN)
+    apply_load_case(LoadCase("other active case"), pattern_tag=UNIT_LOAD_PATTERN)
     try:
         with pytest.raises(OtherLoadsStillActiveError):
-            analyze_load_case(model, live_load(model, critical, surface), ops)
+            analyze_load_case(model, live_load(model, critical, surface))
     finally:
-        ops.remove("loadPattern", UNIT_LOAD_PATTERN)
-        ops.remove("timeSeries", UNIT_LOAD_PATTERN)
+        backend.remove_loads(UNIT_LOAD_PATTERN)
 
 
 def test_girder_forces_use_one_sign_along_the_whole_girder(built):
@@ -258,7 +236,7 @@ def test_girder_forces_use_one_sign_along_the_whole_girder(built):
         (model.deck_nodes[midspan, model.mesh.width_station_of_girder(2)], 0.0, -100.0, 0.0, 0.0, 0.0, 0.0)
     ])
 
-    forces = analyze_load_case(model, downwards_at_midspan, ops)[2]
+    forces = analyze_load_case(model, downwards_at_midspan)[2]
 
     assert forces.shear_kn[0] * forces.shear_kn[1] > 0
     assert forces.moment_kn_m[midspan] > 0, "sagging is positive"
@@ -274,7 +252,6 @@ def test_composite_moment_surface_is_the_response_to_a_unit_load():
     surface = InfluenceSolver(deck).for_girder_composite_moment("girder 1, composite midspan moment", element)
     lever_arm_m = -girder_centroid_level_m(model.bridge, model.girder)
 
-    _configure_a_static_analysis()
     for station_along, station_across in PROBE_NODES:
         node = deck.deck_nodes[(station_along, station_across)]
         steel_moment = _unit_load_response(deck, node, element, MOMENT_AT_END_I)
@@ -296,7 +273,7 @@ def test_composite_moments_of_all_girders_add_up_to_statics():
     load_kn = 100.0
     point = LoadCase("point", nodal_loads=[(model.deck_nodes[midspan, model.mesh.width_station_of_girder(1)], 0.0, -load_kn, 0.0, 0.0, 0.0, 0.0)])
 
-    forces = analyze_load_case(model, point, ops)
+    forces = analyze_load_case(model, point)
     carried_by_the_girders = sum(forces[girder].composite_moment_kn_m[midspan] for girder in forces)
     steel_alone = sum(forces[girder].moment_kn_m[midspan] for girder in forces)
 
@@ -315,7 +292,7 @@ def test_long_term_concrete_leaves_more_to_the_steel():
         model = build_bridge_model(BRIDGE, load_duration=load_duration)
         midspan = model.mesh.stations_along_span // 2
         point = LoadCase("point", nodal_loads=[(model.deck_nodes[midspan, model.mesh.width_station_of_girder(1)], 0.0, -100.0, 0.0, 0.0, 0.0, 0.0)])
-        forces = analyze_load_case(model, point, ops)
+        forces = analyze_load_case(model, point)
         steel_moment[load_duration] = forces[1].moment_kn_m[midspan]
         assert sum(forces[g].composite_moment_kn_m[midspan] for g in forces) == pytest.approx(100.0 * SPAN_M / 4, rel=0.01)
 

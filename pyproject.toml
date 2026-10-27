@@ -28,3 +28,7 @@ include = ["setu*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+# the web app and its tests import model/, routes and controller from web/ (tests put it on sys.path)
+[tool.pyright]
+extraPaths = ["web"]

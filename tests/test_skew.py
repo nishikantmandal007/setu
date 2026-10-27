@@ -8,16 +8,14 @@ import pytest
 from setu.analysis.critical_position import find_critical_position
 from setu.analysis.influence_surface import InfluenceSolver
 from setu.builder.assembly import build_bridge_model
-from setu.loads.load_builders import live_load
-from setu.loads.load_cases import apply_load_case
 from setu.models.bridge import BridgeInput
 
-pytest.importorskip("openseespy.opensees", reason="needs a finite element solver")
-import openseespy.opensees as ops  # noqa: E402
+pytest.importorskip("setu.solver.backend", reason="needs a finite element solver")
+from setu.solver import backend  # noqa: E402
 
 from test_design_forces import (  # noqa: E402
     BRIDGE, CROSS_SECTION, MOMENT_AT_END_I, PROBE_NODES, SPAN_M,
-    _configure_a_static_analysis, _read_directly, _unit_load_response,
+    _live_load_response, _unit_load_response,
 )
 
 SKEW = 0.2
@@ -43,10 +41,8 @@ def test_the_surface_knows_the_deck_is_skewed(skewed):
 def test_reciprocity_at_the_real_position_of_each_node(skewed, probe):
     model, element, surface = skewed
     deck = model.as_deck_model()
-    station_along, station_across = probe
-    x_m, _, z_m = ops.nodeCoord(deck.deck_nodes[probe])
+    x_m, _, z_m = backend.node_coordinates(deck.deck_nodes[probe])
 
-    _configure_a_static_analysis()
     directly = _unit_load_response(deck, deck.deck_nodes[probe], element, MOMENT_AT_END_I, model.composite_lever_arm_m())
 
     assert surface.influence_at(x_m, z_m) == pytest.approx(directly, rel=1e-8, abs=1e-10)
@@ -57,9 +53,7 @@ def test_the_live_load_gives_back_the_searched_response_on_a_skewed_deck(skewed,
     model, element, surface = skewed
     critical = find_critical_position(surface, CROSS_SECTION, SPAN_M, adverse, BRIDGE.wearing_course_thickness_m)
 
-    _configure_a_static_analysis()
-    apply_load_case(live_load(model, critical, surface), ops, pattern_tag=LIVE_LOAD_PATTERN)
-    directly = _read_directly(element, MOMENT_AT_END_I, LIVE_LOAD_PATTERN, model.composite_lever_arm_m())
+    directly = _live_load_response(model, critical, surface, element, MOMENT_AT_END_I, model.composite_lever_arm_m())
 
     assert directly == pytest.approx(critical.response, rel=1e-6)
 
@@ -69,7 +63,7 @@ def test_skew_does_not_weaken_the_search(skewed):
 
     Mainly this guards against a search that loses vehicles off the ends of a skewed deck.
     """
-    model, element, surface = skewed
+    _, _, surface = skewed
     square = build_bridge_model(BRIDGE)
     square_surface = InfluenceSolver(square.as_deck_model()).for_girder_composite_moment("square", square.midspan_element_of_girder(1))
 

@@ -14,8 +14,7 @@ from setu.postprocess.design_values import places_to_design
 from setu.postprocess.girder_response import analyze_load_case, dead_load_forces
 from setu.utils.constants import MAX_MOMENT
 
-pytest.importorskip("openseespy.opensees", reason="needs a finite element solver")
-import openseespy.opensees as ops  # noqa: E402
+pytest.importorskip("setu.solver.backend", reason="needs a finite element solver")
 
 from test_design_forces import BRIDGE, CROSS_SECTION, PROBE_NODES, SPAN_M  # noqa: E402
 
@@ -33,7 +32,7 @@ def solved():
     measured = {}
     for probe in PROBE_NODES:
         unit = LoadCase("unit", nodal_loads=[(deck.deck_nodes[probe], 0.0, -1.0, 0.0, 0.0, 0.0, 0.0)])
-        forces = analyze_load_case(model, unit, ops)[1]
+        forces = analyze_load_case(model, unit)[1]
         x_m, z_m = float(deck.length_mesh_m[probe[0]]), float(deck.width_mesh_m[probe[1]])
         measured[probe] = (reaction.influence_at(x_m, z_m), forces.reaction_kn, deflection.influence_at(x_m, z_m), forces.deflection_m[midspan])
     return model, measured
@@ -135,7 +134,7 @@ def test_fatigue_stress_extremes_match_the_truck_solved_in_opensees(skew):
             nodal = {}
             for dx, dz, load in fatigue_truck_offsets():
                 share_between_nodes(model, front + dx, stress.z_centre_m + dz, load * stress.impact_factor, nodal)
-            forces = analyze_load_case(model, as_a_load_case(model, nodal, "fatigue truck"), ops)[1]
+            forces = analyze_load_case(model, as_a_load_case(model, nodal, "fatigue truck"))[1]
             directly_mpa = (forces.axial_kn[station] / section.area_m2
                             + forces.moment_kn_m[station] * (section.neutral_axis_from_bottom_m - y_m) / section.strong_axis_inertia_m4) / 1000
 

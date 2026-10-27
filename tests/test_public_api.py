@@ -5,7 +5,7 @@ EXPLICITLY_CALLED = [
     "Steel", "Concrete", "SurfacingLayer", "PlateGirderSection", "SeismicSite", "TemperatureSite", "WindSite", "CustomLoad",
     "build_mesh", "build_bridge_model", "InfluenceSolver", "find_critical_position", "rank_all_positions", "custom_combination",
     "applied_live_loads", "live_load", "girder_design_values", "analyze_load_case", "dead_load_forces",
-    "result_dataset", "merge_datasets",
+    "result_dataset", "merge_datasets", "bearing_reactions", "brace_forces",
 ]
 
 

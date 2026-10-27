@@ -63,6 +63,7 @@ def test_the_wearing_course_spreads_the_footprint_wider():
 def test_reversing_class_a_reverses_its_axles():
     """Clause 204.1.4 - and Class A is not symmetric, so this is a new load case."""
     backwards = facing_backwards(CLASS_A)
+    assert isinstance(backwards, type(CLASS_A))
 
     assert backwards.axle_loads_t == tuple(reversed(CLASS_A.axle_loads_t))
     assert backwards.lead_clearance_m == CLASS_A.trail_clearance_m

@@ -1,3 +1,4 @@
+from numbers import Integral
 from setu.models.materials import SurfacingLayer
 from setu.utils.constants import CRASH_BARRIER_PREFIX, KERB_PREFIX, MEDIAN_PREFIX, RAILING_PREFIX
 
@@ -19,9 +20,27 @@ class DeckSlab:
 
 class Girders:
     # how many main girders and their plate girder section
-    def __init__(self, count, section):
-        self.count = count
+    def __init__(self, count, section=None, *, sections=None):
+        if not isinstance(count, Integral) or isinstance(count, bool) or count < 2:
+            raise ValueError("need at least two girders, with an integer count")
+        if section is not None and sections is None:
+            each = (section,) * count
+        elif sections is not None and section is None:
+            each = tuple(sections)
+            if len(each) != count or any(s is None for s in each):
+                raise ValueError(f"need {count} girder sections, ordered left to right")
+        else:
+            raise ValueError("give either one shared section or sections for every girder")
+        self.count = int(count)
         self.section = section
+        self.sections = None if sections is None else each
+        self.section_of_each_girder = each
+
+    # the section of one girder, counted from the left
+    def section_at(self, index):
+        if not 0 <= index < self.count:
+            raise IndexError(f"girder {index} is outside 0..{self.count - 1}")
+        return self.section_of_each_girder[index]
 
 
 class Bracing:

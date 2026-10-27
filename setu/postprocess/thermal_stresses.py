@@ -22,7 +22,7 @@ class ThermalStresses:
 # self-balancing stresses in one girder's composite section from a temperature difference profile
 def primary_thermal_stresses(bridge, girder, profile):
     slab_width_m = effective_slab_width_m(bridge, girder)
-    layers = composite_layers(bridge, slab_width_m)
+    layers = composite_layers(bridge, slab_width_m, girder=girder)
     return ThermalStresses(layers, primary_stresses(layers, profile), bridge.deck.thickness_m, slab_width_m)
 
 
@@ -36,8 +36,8 @@ def effective_slab_width_m(bridge, girder):
 
 
 # the slab over its effective width and the girder plates, cut into thin layers with their moduli
-def composite_layers(bridge, slab_width_m):
-    girder = bridge.girders.section
+def composite_layers(bridge, slab_width_m, *, girder=0):
+    girder = bridge.girders.section_at(girder)
     concrete_kpa = bridge.concrete.modulus_for(SHORT_TERM, bridge.steel.elastic_modulus_kpa)
     steel_kpa = bridge.steel.elastic_modulus_kpa
     plates = [

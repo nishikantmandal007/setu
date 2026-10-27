@@ -5,6 +5,7 @@ from pathlib import Path
 from flask import Response, jsonify, request, send_file
 
 from model import critical_loads, inputs, jobs
+from model.jobs import PROGRESS_PROTOCOL
 
 WEB = Path(__file__).resolve().parent
 ROOT = WEB.parent
@@ -20,7 +21,7 @@ def page():
 
 # the input form's fields
 def schema():
-    return jsonify(inputs.SCHEMA)
+    return jsonify({**inputs.SCHEMA, "progress_protocol": PROGRESS_PROTOCOL})
 
 
 # check the bridge the page sent and start its analysis
@@ -40,8 +41,11 @@ def progress(job_id):
 
     # one status every 0.4 s until it is done
     def events():
+        cursor, first = 0, True
         while True:
-            status = job.status()
+            status = job.status(after_event=cursor, include_geometry=first)
+            first = False
+            cursor = status["event_count"]
             yield f"data: {json.dumps(status)}\n\n"
             if status["finished"] or status["error"]:
                 return

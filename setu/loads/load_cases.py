@@ -1,3 +1,8 @@
+from functools import cached_property
+
+import numpy as np
+
+from setu.solver import backend
 from setu.utils.constants import LOAD_CASE_PATTERN_BASE
 
 
@@ -9,15 +14,15 @@ class LoadCase:
         self.nodal_loads = nodal_loads or []
         self.element_loads = element_loads or []
 
+    # the loaded nodes and their six force terms as arrays, built once: a load case does not change after it is made
+    @cached_property
+    def nodal_arrays(self):
+        nodes = np.array([load[0] for load in self.nodal_loads], int)
+        forces = np.array([load[1:] for load in self.nodal_loads], float).reshape((-1, 6))
+        return nodes, forces
+
 
 # put a load case on the model as one pattern
-def apply_load_case(load_case, ops, pattern_tag=None):
+def apply_load_case(load_case, pattern_tag=None):
     tag = pattern_tag if pattern_tag is not None else LOAD_CASE_PATTERN_BASE
-    ops.timeSeries("Constant", tag)
-    ops.pattern("Plain", tag, tag)
-    for node, fx, fy, fz, mx, my, mz in load_case.nodal_loads:
-        ops.load(node, fx, fy, fz, mx, my, mz)
-    for element, load_type, parameters in load_case.element_loads:
-        ops.eleLoad("-ele", element, "-type", load_type, *parameters)
-
-
+    backend.apply_loads(load_case.nodal_loads, load_case.element_loads, pattern=tag)

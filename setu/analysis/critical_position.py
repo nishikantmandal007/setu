@@ -3,29 +3,34 @@ from setu.helpers import DEFAULT_SAMPLING
 from setu.irc6.lanes import footway_loaded_strips, footway_response, strips_beside_class_a
 from setu.irc6.vehicles import vehicles_allowed_in_each_block
 from setu.analysis.results import CriticalPosition, VehiclePlacement
-from setu.analysis.along_span import VehicleResponses, positions_across_width
+from setu.analysis.along_span import positions_across_width, vehicle_responses
 from setu.analysis.across_carriageway import carries_a_residual_udl, envelope_every_block, find_worst_placement
 
 
 # the worst legal IRC:6 traffic for this influence surface
 def find_critical_position(surface, cross_section, span_m, adverse, wearing_course_thickness_m, sampling=DEFAULT_SAMPLING):
-    return rank_all_positions(surface, cross_section, span_m, adverse, wearing_course_thickness_m, sampling)[0]
+    return next(described_positions(surface, cross_section, span_m, adverse, wearing_course_thickness_m, sampling))
 
 
 # every legal IRC:6 lane layout for this surface, worst first: vehicles, residual UDL and footway load
 def rank_all_positions(surface, cross_section, span_m, adverse, wearing_course_thickness_m, sampling=DEFAULT_SAMPLING):
+    return list(described_positions(surface, cross_section, span_m, adverse, wearing_course_thickness_m, sampling))
+
+
+# describe layouts on demand so a winning-only search stops after the first
+def described_positions(surface, cross_section, span_m, adverse, wearing_course_thickness_m, sampling):
     carriageways = cross_section.carriageways()
-    on_the_mesh = surface.along_the_mesh()
+    responses = vehicle_responses(surface, span_m, wearing_course_thickness_m, sampling)
+    on_the_mesh = responses.surface
     permitted = vehicles_allowed_in_each_block()
-    responses = VehicleResponses(on_the_mesh, span_m, wearing_course_thickness_m, surface.skew, sampling)
     every_vehicle = [vehicle for choices in permitted.values() for vehicle in choices]
     z_positions_m = positions_across_width(responses, every_vehicle, min(c.left_m for c in carriageways), max(c.right_m for c in carriageways))
     envelopes = [envelope_every_block(responses, permitted, z_positions_m, adverse, carriageway, on_the_mesh, sampling) for carriageway in carriageways]
     placements = find_worst_placement(carriageways, envelopes, adverse, z_positions_m, sampling)
     footway = footway_response(on_the_mesh, cross_section, adverse, span_m, sampling)
     footway_strips = footway_loaded_strips(cross_section, span_m)
-    return [describe(placement, carriageways, envelopes, responses, permitted, footway, footway_strips, on_the_mesh.name, adverse, wearing_course_thickness_m)
-            for placement in placements]
+    for placement in placements:
+        yield describe(placement, carriageways, envelopes, responses, permitted, footway, footway_strips, on_the_mesh.name, adverse, wearing_course_thickness_m)
 
 
 # turn one lane layout into a CriticalPosition with its vehicles and strips

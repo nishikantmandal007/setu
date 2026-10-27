@@ -5,8 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Setu bridge check</title>
 <script src="https://cdn.jsdelivr.net/npm/plotly.js-dist-min@2.35.2/plotly.min.js" defer></script>
-<script src="/shared/vehicles.js"></script>
-<link rel="stylesheet" href="/static/app.css">
+<script src="/shared/vehicles.js?v=clean-4"></script>
+<link rel="stylesheet" href="/static/app.css?v=clean-4">
 </head>
 <body>
 <header>
@@ -25,17 +25,22 @@
   </section>
   <div id="out">
     <div class="card empty">
-      <svg viewBox="0 0 520 150" aria-hidden="true">
-        <rect x="10" y="60" width="500" height="18" rx="3" fill="var(--kerb)"/>
-        <rect x="10" y="78" width="500" height="10" fill="var(--line)"/>
-        <rect x="30" y="88" width="14" height="50" fill="var(--line)"/><rect x="476" y="88" width="14" height="50" fill="var(--line)"/>
-        <rect x="150" y="30" width="120" height="30" rx="5" fill="var(--truck)"/><rect x="270" y="38" width="30" height="22" rx="4" fill="var(--truck-edge)"/>
+      <div class="welcome-copy">
+        <h2>Explore your bridge</h2>
+        <p>Enter the bridge details, then select <b>Analyse</b> to see its forces and deflections.</p>
+      </div>
+      <figure class="welcome-illustration">
+      <svg class="welcome-scene" viewBox="0 0 1512 982" preserveAspectRatio="xMaxYMax meet" role="img" aria-labelledby="welcome-bridge-title welcome-bridge-desc">
+        <title id="welcome-bridge-title">Osdag steel bridge illustration, adapted for Setu</title>
+        <desc id="welcome-bridge-desc">Osdag’s detailed cantilever bridge artwork, softly blended into the page.</desc>
+        <image class="welcome-artwork" href="/static/osdag-bridge.svg" width="1512" height="982"/>
       </svg>
-      <p>Fill in the bridge on the left and press <b>Analyse</b>.<br>You will see the worst place for every vehicle, the design forces for each girder, and the deflection checks, in plain words.</p>
+      <figcaption class="welcome-credit">Illustration adapted from <a href="https://github.com/osdag-admin/Osdag/blob/dev/src/osdag_gui/resources/vectors/background_dark.svg" target="_blank" rel="noopener noreferrer">Osdag</a></figcaption>
+      </figure>
     </div>
   </div>
 </main>
 
-<script src="/static/app.js"></script>
+<script src="/static/app.js?v=clean-4"></script>
 </body>
 </html>

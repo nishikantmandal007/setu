@@ -16,10 +16,9 @@ from setu.utils.constants import AREA, LINE, POINT
 from setu.postprocess.girder_response import analyze_load_case
 from setu.utils.constants import DEAD, SURFACING, WIND
 
-pytest.importorskip("openseespy.opensees", reason="needs a finite element solver")
-import openseespy.opensees as ops  # noqa: E402
+pytest.importorskip("setu.solver.backend", reason="needs a finite element solver")
 
-from test_design_forces import BRIDGE, CROSS_SECTION, SPAN_M  # noqa: E402
+from test_design_forces import BRIDGE, SPAN_M  # noqa: E402
 
 
 def _downward_total_kn(case):
@@ -79,6 +78,6 @@ def test_a_point_load_gives_back_the_influence_surface(skew):
     x_along_m, z_m = 14.7, 4.6
     cases = custom_load_cases(model, [CustomLoad("LL", POINT, 80.0, x_from_bearing_m=x_along_m, z_from_left_edge_m=z_m)])
 
-    forces = analyze_load_case(model, cases["live"], ops)
+    forces = analyze_load_case(model, cases["live"])
 
     assert forces[1].composite_moment_kn_m[midspan] == pytest.approx(80.0 * surface.influence_at(x_along_m + skew * z_m, z_m), rel=1e-6)

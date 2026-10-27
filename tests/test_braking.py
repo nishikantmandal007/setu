@@ -14,12 +14,11 @@ from setu.analysis.results import CriticalPosition, VehiclePlacement
 from setu.builder.assembly import build_bridge_model
 from setu.irc6.braking import braking_force_kn
 from setu.loads.braking_loads import braking_load_cases
-from setu.loads.load_cases import apply_load_case
 
-pytest.importorskip("openseespy.opensees", reason="needs a finite element solver")
-import openseespy.opensees as ops  # noqa: E402
+pytest.importorskip("setu.solver.backend", reason="needs a finite element solver")
+from setu.solver import backend  # noqa: E402
 
-from test_design_forces import BRIDGE, SPAN_M, _configure_a_static_analysis  # noqa: E402
+from test_design_forces import BRIDGE  # noqa: E402
 
 CLASS_A_KN = 55.4 * 9.81
 CLASS_A_PITCH_M = 0.6 + 18.8 + 0.9 + 18.5
@@ -66,17 +65,12 @@ def braking():
 
 
 def _totals(case):
-    _configure_a_static_analysis()
-    apply_load_case(case, ops, pattern_tag=102)
-    ops.reset()
-    ops.setTime(0.0)
-    ops.analyze(1)
-    ops.reactions()
-    tags = ops.getNodeTags()
-    along_kn = sum(ops.nodeReaction(node, 1) for node in tags)
-    up_kn = sum(ops.nodeReaction(node, 2) for node in tags)
-    ops.remove("loadPattern", 102)
-    ops.remove("timeSeries", 102)
+    with backend.solved(case.nodal_loads, case.element_loads, pattern=102):
+        backend.calculate_reactions()
+        tags = backend.node_tags()
+        along_kn = sum(backend.node_reaction(node, 1) for node in tags)
+        up_kn = sum(backend.node_reaction(node, 2) for node in tags)
+
     return along_kn, up_kn
 
 
@@ -90,7 +84,7 @@ def test_the_supports_take_the_braking_force(braking):
 
 def test_braking_acts_1_2_m_above_the_road(braking):
     """Taken to the deck nodes (slab mid-depth), the force carries a moment of F x (slab/2 + wearing course + 1.2 m)."""
-    model, cases = braking
+    _, cases = braking
     lever_m = BRIDGE.deck.thickness_m / 2 + BRIDGE.wearing_course_thickness_m + 1.2
     case = cases["forwards"]
 
@@ -102,3 +96,19 @@ def test_braking_either_way(braking):
     _, cases = braking
 
     assert [load[1] for load in cases["backwards"].nodal_loads] == pytest.approx([-load[1] for load in cases["forwards"].nodal_loads])
+
+
+@pytest.mark.parametrize("height", [0., 1.2, 2.5])
+def test_custom_braking_height_is_above_deck_top(height):
+    model = build_bridge_model(BRIDGE)
+    cases = braking_load_cases(model, _lanes((5.,)), height_above_deck_m=height)
+    for direction, sign in (("forwards", 1.), ("backwards", -1.)):
+        loads = cases[direction].nodal_loads
+        assert sum(load[1] for load in loads) == pytest.approx(sign * cases.force_kn)
+        assert sum(load[6] for load in loads) == pytest.approx(-sign * cases.force_kn * (height + BRIDGE.deck.thickness_m / 2))
+
+
+@pytest.mark.parametrize("height", [-1., float("nan"), float("inf")])
+def test_invalid_braking_height_is_rejected(height):
+    with pytest.raises(ValueError, match="height_above_deck_m"):
+        braking_load_cases(None, None, height_above_deck_m=height)

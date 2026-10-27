@@ -21,7 +21,7 @@ from setu.utils.constants import (
     WIND,
 )
 
-pytest.importorskip("openseespy.opensees", reason="needs a finite element solver")
+pytest.importorskip("setu.solver.backend", reason="needs a finite element solver")
 
 from test_design_forces import BRIDGE  # noqa: E402
 
@@ -93,7 +93,7 @@ def test_the_custom_group_only_shows_in_its_own_combination(results):
 
 
 def test_the_governing_girder_is_reported(results):
-    girder, governing = results.governing(MAX_MOMENT, BASIC, BIGGER_IS_WORSE)
+    _, governing = results.governing(MAX_MOMENT, BASIC, BIGGER_IS_WORSE)
 
     assert governing.value == max(results.girders[g][MAX_MOMENT][BASIC][BIGGER_IS_WORSE].value for g in results.girders)
 
@@ -101,7 +101,7 @@ def test_the_governing_girder_is_reported(results):
 def test_temperature_comes_back_as_stresses_and_bearing_movement(results):
     thermal = results.thermal
 
-    for girder, by_kind in thermal["girders"].items():
+    for _, by_kind in thermal["girders"].items():
         assert by_kind["positive difference"].slab_top_kpa < 0
         assert by_kind["reverse difference"].slab_top_kpa > 0
     assert thermal["girders"][0]["positive difference"].slab_width_m < thermal["girders"][2]["positive difference"].slab_width_m
@@ -139,3 +139,13 @@ def test_seismic_is_symmetric_too(results):
     last = results.girders[BRIDGE.girders.count - 1][MAX_MOMENT][SEISMIC_COMBINATION][BIGGER_IS_WORSE].value
 
     assert first == pytest.approx(last, rel=1e-6)
+
+
+def test_high_level_braking_height_reaches_the_live_effect():
+    from setu.models.bridge import BridgeInput, Bracing, MeshSettings
+    bridge = BridgeInput(**{**vars(BRIDGE), "bracing": Bracing("XT", 3, .01), "mesh": MeshSettings(2, 1.5)})
+    zero = girder_design_values(bridge, braking_height_above_deck_m=0.)
+    high = girder_design_values(bridge, braking_height_above_deck_m=3.)
+    differences = [abs(zero.girders[k][SUPPORT_SHEAR][BASIC][SMALLER_IS_WORSE].shares[LIVE]
+                       - high.girders[k][SUPPORT_SHEAR][BASIC][SMALLER_IS_WORSE].shares[LIVE]) for k in zero.girders]
+    assert max(differences) > 1e-3

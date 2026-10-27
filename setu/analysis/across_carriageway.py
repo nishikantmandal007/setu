@@ -66,7 +66,7 @@ def residual_udl_curve(surface, z_positions_m, carriageway, adverse, sampling):
 def place_vehicles(block_curves, adverse):
     worse_is_positive = adverse_sign(adverse)
     signed_best_total = worse_is_positive * np.asarray(block_curves[0], float)
-    offset_of_the_block_to_the_left = [None]
+    offset_of_the_block_to_the_left = []
     for curve in block_curves[1:]:
         best_to_the_left, where_that_best_sat = best_so_far(signed_best_total)
         signed_best_total = worse_is_positive * np.asarray(curve, float) + best_to_the_left
@@ -79,9 +79,7 @@ def place_vehicles(block_curves, adverse):
 def walk_back_through_the_blocks(signed_best_total, offset_of_the_block_to_the_left):
     offset = int(np.argmax(signed_best_total))
     chosen_offsets = [offset]
-    for where_the_block_to_the_left_sat in reversed(offset_of_the_block_to_the_left[1:]):
-        if where_the_block_to_the_left_sat is None:
-            raise RuntimeError('backtracking reached a block with no recorded offset to its left - only the leftmost block may have one')
+    for where_the_block_to_the_left_sat in reversed(offset_of_the_block_to_the_left):
         offset = int(where_the_block_to_the_left_sat[offset])
         chosen_offsets.append(offset)
     chosen_offsets.reverse()

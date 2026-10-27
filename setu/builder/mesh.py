@@ -97,7 +97,8 @@ def tributary_length_m(stations_m, station):
 class DeckModel:
     # what the influence solver needs: mesh, deck nodes, girder section and elements
     def __init__(self, length_mesh_m, width_mesh_m, deck_nodes, girder_section,
-                 girder_local_axis=(0.0, 0.0, 1.0), skew=0.0, composite_lever_arm_m=0.0, girder_elements=None):
+                 girder_local_axis=(0.0, 0.0, 1.0), skew=0.0, composite_lever_arm_m=0.0, girder_elements=None,
+                 *, girder_sections=None, composite_lever_arms_m=None, brace_area_m2=None):
         self.length_mesh_m = length_mesh_m
         self.width_mesh_m = width_mesh_m
         self.deck_nodes = deck_nodes
@@ -106,11 +107,20 @@ class DeckModel:
         self.skew = skew
         self.composite_lever_arm_m = composite_lever_arm_m
         self.girder_elements = girder_elements or {}
+        self.girder_sections = girder_sections
+        self.composite_lever_arms_m = composite_lever_arms_m
+        self.brace_area_m2 = brace_area_m2
 
         if len(length_mesh_m) < 2 or len(width_mesh_m) < 2:
             raise InfluenceSurfaceError(
                 f"need at least 2 stations each way, got {len(length_mesh_m)} x {len(width_mesh_m)}"
             )
+
+    def section_for_element(self, element):
+        return self.girder_section if self.girder_sections is None else self.girder_sections[element]
+
+    def lever_arm_for_element(self, element):
+        return self.composite_lever_arm_m if self.composite_lever_arms_m is None else self.composite_lever_arms_m[element]
 
     # stations along the span
     @property

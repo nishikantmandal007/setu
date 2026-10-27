@@ -19,9 +19,9 @@ For a skewed deck, every node at width position z is shifted along the span by `
 | Deck slab | `ShellMITC4` with an `ElasticMembranePlateSection` (E, ν, thickness) | one shell per mesh cell, nodes at y = 0 (slab mid-plane) |
 | Girders | `elasticBeamColumn` with the plate girder's A, E, G, J, I<sub>y</sub>, I<sub>z</sub> | one element per span station interval, nodes at the **steel centroid** |
 | Slab–girder tie | `rigidLink beam` | from every girder node up to the deck node above it |
-| Bracing | `corotTruss` (area from the input) | between nodes at the top and bottom of neighbouring girders, at each brace station, in the X, XT, XB, XTB, K or KT pattern |
+| Bracing | `truss` (area from the input), linear like the girders | between nodes at the top and bottom of neighbouring girders, at each brace station, in the X, XT, XB, XTB, K or KT pattern |
 | Brace to girder | `rigidLink beam` | from the girder node to its top and bottom brace nodes |
-| Bearings | `zeroLength` vertical spring, k = 10¹⁰ kN/m, to a fixed ground node | under each girder end |
+| Bearings | `zeroLength` vertical spring, k = 10⁹ kN/m, to a fixed ground node | under each girder end |
 
 The girder node level below the slab mid-plane is
 
@@ -43,18 +43,18 @@ where $N$ is the girder's axial force and $a$ the lever arm above. This is the m
 
 ## Bearings and supports
 
-Each bearing is a very stiff vertical spring (10¹⁰ kN/m). It is rigid for design purposes, and it makes the **reaction an element force**, so the reaction has an exact influence surface too.
+Each bearing is a very stiff vertical spring (10⁹ kN/m). It is rigid for design purposes, and it makes the **reaction an element force**, so the reaction has an exact influence surface too.
+
+Every girder end sits on its vertical spring. Only one girder, `(count - 1) // 2` (the middle one, or the left of the two middle ones), is held horizontally, so the span is truly simply supported and free to expand:
 
 | Node | Restrained | Free |
 |---|---|---|
-| girder end at x = 0 | x and z translation | rotations |
-| girder end at x = L | z translation | x translation, rotations |
-| K-brace meeting points | x, rotations about x, y, z | move with the deck vertically and across |
+| held girder's end at x = 0 | x and z translation | rotations |
+| held girder's end at x = L | z translation | x translation, rotations |
+| every other girder end | nothing horizontal | x and z translation, rotations |
+| K-brace meeting points | follow their girder along x (`equalDOF`); rotations fixed, as a truss joint has none | move with the deck vertically and across |
 
-The vertical degree of freedom at each bearing is carried by the spring.
-
-!!! warning "Known limit"
-    Every girder is held along the span at x = 0. The girders then push against each other through the deck at the fixed end. This relieves the edge girder by a few percent (see [Accuracy and limits](../accuracy.md)). Holding a single girder is the planned change.
+The vertical degree of freedom at each bearing is carried by the spring. In the bare-steel model, before the slab joins the girders, internal axial links (`twoNodeLink`) tie each girder's x = 0 end to the held girder so the steel frame is stable; they add no ground restraint and carry no force under the steel and wet-slab stages.
 
 ## Section properties
 
