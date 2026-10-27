@@ -3,7 +3,7 @@ from setu.postprocess.thermal_stresses import effective_slab_width_m
 from setu.utils.constants import (BASIC, BEARING_REACTION, BIGGER_IS_WORSE, MAX_MOMENT, RARE, SEISMIC_COMBINATION, SMALLER_IS_WORSE,
                                   SUPPORT, SUPPORT_SHEAR)
 
-from model import drawing, progress
+from model import drawing, inputs, progress
 from setu import build_mesh
 
 # the headline design values: title, response, limit state, direction
@@ -24,8 +24,8 @@ def build(bridge, loads, results, checks, wind, live_forces):
         "bridge": {"span_m": bridge.span_m, "skew": bridge.skew, "girders": bridge.girders.count, "deck_width_m": bridge.width_m(),
                    "girder_spacing_m": (bridge.width_m() - 2 * bridge.deck.overhang_m) / (bridge.girders.count - 1),
                    "effective_slab_widths_m": {f"girder {g}": effective_slab_width_m(bridge, g) for g in girders},
-                   "grades": {"girder": bridge.steel.grade, "cross bracing": bridge.bracing.steel_grade,
-                              "end diaphragm": bridge.bracing.end_diaphragm_steel_grade, "concrete": bridge.concrete.grade},
+                   "grades": {name: inputs.grade_strengths(grade) for name, grade in (("girder", bridge.steel.grade), ("cross bracing", bridge.bracing.steel_grade),
+                              ("end diaphragm", bridge.bracing.end_diaphragm_steel_grade), ("concrete", bridge.concrete.grade))},
                    "steel_modulus_mpa": bridge.steel.elastic_modulus_mpa, "concrete_modulus_mpa": bridge.concrete.elastic_modulus_mpa},
         "design_values": {f"girder {g}": {response: {limit: {adverse: value.to_dict() for adverse, value in by_direction.items()} for limit, by_direction in by_limit.items()}
                                           for response, by_limit in results.girders[g].items()} for g in girders},

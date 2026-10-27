@@ -4,6 +4,18 @@ import math
 from setu import (AddedDeadLoads, Bracing, BridgeInput, Concrete, DeckCrossSection, DeckSlab, Girders, MeshSettings,
                   PlateGirderSection, SeismicSite, Steel, TemperatureSite, WindSite)
 
+# IS 2062 steel grades as OsdagBridge's material table lists them: fy, fu (MPa)
+STEEL_GRADES = {f"E {fy}{quality}": {"fy_mpa": fy, "fu_mpa": fu}
+                for fy, fu, qualities in [(250, 410, "A BR B0 C"), (275, 430, "A BR B0 C"), (300, 440, "A BR B0 C"), (350, 490, "A BR B0 C"),
+                                          (410, 540, "A BR B0 C"), (450, 570, "A BR"), (550, 650, "A BR"), (600, 730, "A BR"), (650, 780, "A BR")]
+                for quality in qualities.split()}
+# IRC:112 concrete grades from the same table: fck, fctm, Ecm (MPa)
+CONCRETE_GRADES = {f"M{fck}": {"fck_mpa": fck, "fctm_mpa": fctm, "ecm_mpa": ecm_gpa * 1000}
+                   for fck, fctm, ecm_gpa in [(15, 1.6, 27), (20, 1.9, 29), (25, 2.2, 30), (30, 2.5, 31), (35, 2.8, 32), (40, 3.0, 33), (45, 3.3, 34), (50, 3.5, 35),
+                                              (55, 3.7, 36), (60, 4.0, 37), (65, 4.4, 38), (70, 4.5, 38), (75, 4.7, 39), (80, 4.8, 40), (85, 4.9, 40), (90, 5.0, 41)]}
+STEEL_FILLS = {grade: {"elastic_modulus_mpa": 200000, "poissons_ratio": 0.3, "unit_weight_kn_m3": 78.5} for grade in STEEL_GRADES}
+CONCRETE_FILLS = {grade: {"elastic_modulus_mpa": p["ecm_mpa"]} for grade, p in CONCRETE_GRADES.items()}
+
 # the form the page draws: one entry per table, each field with its label, starting value and limits
 SCHEMA = {
     "tables": [
@@ -12,10 +24,10 @@ SCHEMA = {
         {"table": "deck", "title": "Deck slab", "fields": [{"key": "thickness_m", "label": "Slab thickness (m)", "value": 0.23, "min": 0.15, "max": 0.4}, {"key": "overhang_m", "label": "Overhang (m)", "value": 1.25, "min": 0}, {"key": "wearing_course_thickness_m", "label": "Wearing course (m)", "value": 0.075, "min": 0}]},
         {"table": "girders", "title": "Girders", "fields": [{"key": "count", "label": "Number of girders", "value": 5, "min": 2, "max": 12, "integer": True}]},
         {"table": "girders.section", "title": "Plate girder section (m)", "fields": [{"key": "top_flange_width_m", "label": "Top flange width", "value": 0.55, "min": 0.1}, {"key": "top_flange_thickness_m", "label": "Top flange thickness", "value": 0.025, "min": 0.005}, {"key": "bottom_flange_width_m", "label": "Bottom flange width", "value": 0.65, "min": 0.1}, {"key": "bottom_flange_thickness_m", "label": "Bottom flange thickness", "value": 0.04, "min": 0.005}, {"key": "web_height_m", "label": "Web height", "value": 2.1, "min": 0.3}, {"key": "web_thickness_m", "label": "Web thickness", "value": 0.014, "min": 0.006}]},
-        {"table": "bracing", "title": "Bracing", "fields": [{"key": "steel_grade", "label": "Cross bracing steel grade (label)", "value": "", "type": "text"}, {"key": "end_diaphragm_steel_grade", "label": "End diaphragm steel grade (label)", "value": "", "type": "text"}, {"key": "station_count", "label": "Brace lines along span", "value": 7, "min": 2, "integer": True}, {"key": "area_m2", "label": "Member area (m2)", "value": 0.01, "min": 0}, {"key": "arrangement", "label": "Arrangement", "value": "XT", "choices": ["X", "XT", "XB", "XTB", "K", "KT"]}]},
+        {"table": "bracing", "title": "Bracing", "fields": [{"key": "steel_grade", "label": "Cross bracing steel grade", "value": "E 250A", "choices": list(STEEL_GRADES)}, {"key": "end_diaphragm_steel_grade", "label": "End diaphragm steel grade", "value": "E 250A", "choices": list(STEEL_GRADES)}, {"key": "station_count", "label": "Brace lines along span", "value": 7, "min": 2, "integer": True}, {"key": "area_m2", "label": "Member area (m2)", "value": 0.01, "min": 0}, {"key": "arrangement", "label": "Arrangement", "value": "XT", "choices": ["X", "XT", "XB", "XTB", "K", "KT"]}]},
         {"table": "mesh", "title": "Mesh", "fields": [{"key": "panels_between_braces", "label": "Panels between braces", "value": 25, "min": 1, "integer": True}, {"key": "target_size_across_width_m", "label": "Target size across (m)", "value": 0.25, "min": 0.05}]},
-        {"table": "steel", "title": "Steel", "fields": [{"key": "grade", "label": "Girder steel grade (label)", "value": "", "type": "text"}, {"key": "elastic_modulus_mpa", "label": "E (MPa)", "value": 200000, "min": 1}, {"key": "poissons_ratio", "label": "Poisson's ratio", "value": 0.3, "min": 0, "max": 0.5}, {"key": "unit_weight_kn_m3", "label": "Unit weight (kN/m3)", "value": 78.5, "min": 0}]},
-        {"table": "concrete", "title": "Deck concrete", "fields": [{"key": "grade", "label": "Concrete grade (label)", "value": "", "type": "text"}, {"key": "elastic_modulus_mpa", "label": "Ecm (MPa)", "value": 32000, "min": 1}, {"key": "poissons_ratio", "label": "Poisson's ratio", "value": 0.2, "min": 0, "max": 0.5}, {"key": "unit_weight_kn_m3", "label": "Unit weight (kN/m3)", "value": 25.0, "min": 0}]},
+        {"table": "steel", "title": "Steel", "fields": [{"key": "grade", "label": "Girder steel grade", "value": "E 350A", "choices": list(STEEL_GRADES), "fills": STEEL_FILLS}, {"key": "elastic_modulus_mpa", "label": "E (MPa)", "value": 200000, "min": 1}, {"key": "poissons_ratio", "label": "Poisson's ratio", "value": 0.3, "min": 0, "max": 0.5}, {"key": "unit_weight_kn_m3", "label": "Unit weight (kN/m3)", "value": 78.5, "min": 0}]},
+        {"table": "concrete", "title": "Deck concrete", "fields": [{"key": "grade", "label": "Concrete grade", "value": "M35", "choices": list(CONCRETE_GRADES), "fills": CONCRETE_FILLS}, {"key": "elastic_modulus_mpa", "label": "Ecm (MPa)", "value": 32000, "min": 1}, {"key": "poissons_ratio", "label": "Poisson's ratio", "value": 0.2, "min": 0, "max": 0.5}, {"key": "unit_weight_kn_m3", "label": "Unit weight (kN/m3)", "value": 25.0, "min": 0}]},
         {"table": "added_dead_loads", "title": "SIDL (footpath area load, the rest line loads per strip)", "fields": [{"key": "footpath_kpa", "label": "Footpath (kN/m2)", "value": 3.6, "min": 0}, {"key": "kerb_kn_per_m", "label": "Kerb (kN/m)", "value": 3.24, "min": 0}, {"key": "median_kn_per_m", "label": "Median (kN/m)", "value": 3.6, "min": 0}, {"key": "crash_barrier_kn_per_m", "label": "Crash barrier (kN/m)", "value": 0.0, "min": 0}, {"key": "railing_kn_per_m", "label": "Railing (kN/m)", "value": 0.0, "min": 0}]},
         {"table": "wind", "title": "Wind (IRC:6 209)", "optional": True, "fields": [{"key": "basic_wind_speed_mps", "label": "Basic wind speed (m/s)", "value": 39.0, "min": 20, "max": 60}, {"key": "terrain", "label": "Terrain", "value": "plain", "choices": ["plain", "obstructed"]}, {"key": "height_m", "label": "Average exposed height (m)", "value": 12.0, "min": 0, "max": 100}, {"key": "solid_barrier_height_m", "label": "Solid barrier height (m)", "value": 1.1, "min": 0}, {"key": "funnelling", "label": "Funnelling topography", "value": False, "choices": [False, True]}]},
         {"table": "seismic", "title": "Seismic (IRC:SP:114)", "optional": True, "fields": [{"key": "zone", "label": "Zone", "value": "IV", "choices": ["II", "III", "IV", "V"]}, {"key": "soil", "label": "Soil type", "value": "II", "choices": ["I", "II", "III"]}, {"key": "importance_factor", "label": "Importance factor I", "value": 1.2, "min": 1}, {"key": "period_s", "label": "Fundamental period T (s)", "value": 0.5, "min": 0}, {"key": "response_reduction", "label": "Response reduction R", "value": 1.0, "choices": [1.0, 2.0, 3.0, 4.0, 5.0]}]},
@@ -69,11 +81,16 @@ def checked(table, values, required, allowed):
     if missing:
         raise InputError(f"{table} is missing {sorted(missing)}")
     values = dict(values)
+    grades = CONCRETE_GRADES if table == "concrete" else STEEL_GRADES
     for key in values.keys() & {"grade", "steel_grade", "end_diaphragm_steel_grade"}:
-        if values[key] is not None and (not isinstance(values[key], str) or len(values[key]) > 80):
-            raise InputError(f"{table}.{key} must be a grade label of at most 80 characters")
-        values[key] = (values[key] or "").strip() or None
+        if values[key] is not None and (not isinstance(values[key], str) or values[key] not in grades):
+            raise InputError(f"{table}.{key} must be one of {', '.join(grades)}")
     return values
+
+
+# a grade with its strengths, for the report
+def grade_strengths(grade):
+    return grade and {"grade": grade, **(CONCRETE_GRADES.get(grade) or STEEL_GRADES[grade])}
 
 
 # one table of the form as its setu object

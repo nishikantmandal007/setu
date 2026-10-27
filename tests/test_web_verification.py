@@ -31,17 +31,17 @@ def form():
     }
 
 
-def test_grade_labels_are_optional_and_kept_separate():
+def test_grades_are_optional_and_kept_separate():
     given = form()
-    given["tables"]["steel"]["grade"] = " E350 "
-    given["tables"]["bracing"]["steel_grade"] = "E250"
-    given["tables"]["bracing"]["end_diaphragm_steel_grade"] = "E410"
+    given["tables"]["steel"]["grade"] = "E 350A"
+    given["tables"]["bracing"]["steel_grade"] = "E 250A"
+    given["tables"]["bracing"]["end_diaphragm_steel_grade"] = "E 410C"
     given["tables"]["concrete"]["grade"] = "M35"
     steel, bracing, concrete = materials(inputs.bridge_from_form(given)[0])
 
-    assert steel.grade == "E350"
-    assert bracing.steel_grade == "E250"
-    assert bracing.end_diaphragm_steel_grade == "E410"
+    assert steel.grade == "E 350A"
+    assert bracing.steel_grade == "E 250A"
+    assert bracing.end_diaphragm_steel_grade == "E 410C"
     assert concrete.grade == "M35"
 
     for values in given["tables"].values():
@@ -53,11 +53,11 @@ def test_grade_labels_are_optional_and_kept_separate():
 
 
 @pytest.mark.parametrize("table,key", [("steel", "grade"), ("concrete", "grade"), ("bracing", "steel_grade"), ("bracing", "end_diaphragm_steel_grade")])
-@pytest.mark.parametrize("invalid", [350, [], "E" * 81])
-def test_bad_grade_labels_are_refused(table, key, invalid):
+@pytest.mark.parametrize("invalid", [350, [], "E350", "M35 "])
+def test_grades_outside_the_material_table_are_refused(table, key, invalid):
     given = form()
     given["tables"][table][key] = invalid
-    with pytest.raises(inputs.InputError, match="grade label"):
+    with pytest.raises(inputs.InputError, match="must be one of"):
         inputs.bridge_from_form(given)
 
 
@@ -65,7 +65,8 @@ def test_verification_report_from_a_real_analysis():
     given = form()
     given["tables"]["girders"]["count"] = 3
     given["tables"]["mesh"] = {"panels_between_braces": 2, "target_size_across_width_m": 1.0}
-    given["tables"]["steel"]["grade"] = "E350"
+    given["tables"]["steel"]["grade"] = "E 350A"
+    given["tables"]["concrete"]["grade"] = None
     bridge, loads = inputs.bridge_from_form(given)
     results, checks, wind, live_forces = analysis.analyse(bridge, loads, lambda _: None)
     body = json.loads(json.dumps(report.build(bridge, loads, results, checks, wind, live_forces), allow_nan=False))
@@ -73,7 +74,10 @@ def test_verification_report_from_a_real_analysis():
     assert body["bridge"]["deck_width_m"] == pytest.approx(13.5)
     assert body["bridge"]["girder_spacing_m"] == pytest.approx(5.5)
     assert body["bridge"]["effective_slab_widths_m"] == {"girder 0": 4.0, "girder 1": 5.5, "girder 2": 4.0}
-    assert body["bridge"]["grades"] == {"girder": "E350", "cross bracing": None, "end diaphragm": None, "concrete": None}
+    assert body["bridge"]["grades"] == {"girder": {"grade": "E 350A", "fy_mpa": 350, "fu_mpa": 490},
+                                        "cross bracing": {"grade": "E 250A", "fy_mpa": 250, "fu_mpa": 410},
+                                        "end diaphragm": {"grade": "E 250A", "fy_mpa": 250, "fu_mpa": 410}, "concrete": None}
+
     for girder in results.girders:
         key = f"girder {girder}"
         df = body["deflections_m"][key]
@@ -91,6 +95,13 @@ def test_verification_report_from_a_real_analysis():
     for check in body["checks"]:
         assert check["solved"] == pytest.approx(check["searched"], rel=1e-4, abs=1e-8)
 
+
+def test_each_grade_fills_the_stiffness_it_stands_for():
+    assert inputs.CONCRETE_FILLS["M40"] == {"elastic_modulus_mpa": 33000}
+    assert inputs.STEEL_GRADES["E 450BR"] == {"fy_mpa": 450, "fu_mpa": 570}
+    assert len(inputs.STEEL_GRADES) == 28 and len(inputs.CONCRETE_GRADES) == 16
+    schema = {t["table"]: {f["key"]: f for f in t["fields"]} for t in inputs.SCHEMA["tables"] if "fields" in t}
+    assert inputs.CONCRETE_FILLS[schema["concrete"]["grade"]["value"]]["elastic_modulus_mpa"] == schema["concrete"]["elastic_modulus_mpa"]["value"]
 
 @pytest.mark.parametrize("individual", [False, True])
 def test_http_submission_runs_a_real_job_and_returns_its_report(monkeypatch, individual):

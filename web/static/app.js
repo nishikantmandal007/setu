@@ -17,9 +17,6 @@ function field(f, value, onChange) {
     input = el("select");
     f.choices.forEach(c => input.append(el("option", { value: String(c), textContent: c === null ? "Automatic" : String(c), selected: String(c) === String(value) })));
     input.onchange = () => onChange(input.value === "null" ? null : input.value === "true" ? true : input.value === "false" ? false : isNaN(input.value) ? input.value : Number(input.value));
-  } else if (f.type === "text") {
-    input = el("input", { type: "text", value, maxLength: 80, placeholder: "Not specified" });
-    input.oninput = () => onChange(input.value);
   } else {
     input = el("input", { type: "number", step: f.integer ? 1 : "any", value: value ?? "", required: !f.nullable, placeholder: f.nullable ? "Automatic" : "" });
     if (f.min !== undefined) input.min = f.min;
@@ -46,10 +43,12 @@ function tableGroup(t, open) {
     };
     box.append(el("label", { className: "toggle" }, on, "include this load"));
   }
-  t.fields.forEach(f => { state.tables[t.table][f.key] = f.value; grid.append(field(f, f.value, v => {
+  const inputs = {};
+  t.fields.forEach(f => { state.tables[t.table][f.key] = f.value; const box = field(f, f.value, v => {
     state.tables[t.table][f.key] = v;
+    Object.entries(f.fills?.[v] || {}).forEach(([key, x]) => { state.tables[t.table][key] = x; inputs[key].value = x; });
     if (t.table === "girders" && f.key === "count") redrawSections();
-  })); });
+  }); inputs[f.key] = box.querySelector("input,select"); grid.append(box); });
   box.append(grid);
   if (t.table === "analysis") {
     const mode = el("select", { "ariaLabel": "Braking force height" },
@@ -899,7 +898,7 @@ function verificationCard() {
     el("div", { className: "verification-section" }, el("h3", {}, "Bridge geometry"),
       table([["Total width, edge to edge", `${fmt(b.deck_width_m, 3)} m`], ["Gap between girder centres", `${fmt(b.girder_spacing_m, 3)} m`]])),
     el("details", {}, el("summary", {}, "Material grades & stiffness"),
-      table(materials.map(([label, grade]) => [label, grade || "Grade not entered"])),
+      table(materials.map(([label, g]) => [label, g ? `${g.grade}: ${Object.entries(g).filter(([k]) => k !== "grade").map(([k, v]) => `${k.replace("_mpa", "")} ${fmt(v)} MPa`).join(", ")}` : "Grade not entered"])),
       table([["Steel stiffness (E), all members", `${fmt(b.steel_modulus_mpa)} MPa`], ["Concrete stiffness (Ecm)", `${fmt(b.concrete_modulus_mpa)} MPa`]])),
     el("details", {}, el("summary", {}, "Slab width acting with each girder"),
       table(girders().map(g => [girderName(g), `${fmt(b.effective_slab_widths_m[`girder ${g}`], 3)} m`]))),
