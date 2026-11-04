@@ -93,7 +93,7 @@ def test_the_fatigue_truck_is_clause_204_6():
     """12, 14 and 14 t on four tyres per axle, pair centres 1.68 m apart; 50% of the clause 208 impact."""
     offsets = fatigue_truck_offsets()
 
-    assert offsets[:, 2].sum() == pytest.approx(40.0 * 9.81)
+    assert offsets[:, 2].sum() == pytest.approx(400.0)
     assert sorted(set(np.round(offsets[:, 0], 6))) == [0.0, 4.5, 5.9]
     assert sorted(set(np.round(np.abs(offsets[:, 1]), 6))) == [0.64, 1.04]
     assert fatigue_impact_factor(35.0) == pytest.approx(1.0 + 0.5 * 9.0 / (13.5 + 35.0))

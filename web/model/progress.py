@@ -3,7 +3,7 @@
 import numpy as np
 from setu.solver import backend
 
-from setu.irc6.irc_constants import FATIGUE_TRUCK_AXLE_LOADS_T, FATIGUE_TRUCK_AXLE_SPACING_M, FATIGUE_TRUCK_OVERALL_WIDTH_M, FATIGUE_TRUCK_TYRE_PAIR_WIDTH_M
+from setu.irc6.irc_constants import FATIGUE_TRUCK_AXLE_LOADS_KN, FATIGUE_TRUCK_AXLE_SPACING_M, FATIGUE_TRUCK_OVERALL_WIDTH_M, FATIGUE_TRUCK_TYRE_PAIR_WIDTH_M
 from setu.utils.constants import MAX_MOMENT, MIDSPAN_DEFLECTION, SUPPORT_SHEAR, BEARING_REACTION
 from setu.builder.assembly import BEARING_VERTICAL_STIFFNESS_KN_PER_M
 from setu.irc6.lanes import count_design_lanes
@@ -80,7 +80,7 @@ def completed(name, value, args):
                               "heading": -1, "tracked": False, "width_m": FATIGUE_TRUCK_OVERALL_WIDTH_M,
                               "gauge_m": FATIGUE_TRUCK_OVERALL_WIDTH_M - FATIGUE_TRUCK_TYRE_PAIR_WIDTH_M,
                               "body_m": [-FATIGUE_TRUCK_TYRE_PAIR_WIDTH_M, axles[-1] + FATIGUE_TRUCK_TYRE_PAIR_WIDTH_M],
-                              "axles_m": axles, "axle_loads_t": list(FATIGUE_TRUCK_AXLE_LOADS_T), "impact_factor": value.impact_factor,
+                              "axles_m": axles, "axle_loads_kn": list(FATIGUE_TRUCK_AXLE_LOADS_KN), "impact_factor": value.impact_factor,
                               "axle_positions_only": True}]}
     return None
 

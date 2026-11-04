@@ -3,7 +3,6 @@ from setu.utils.constants import (
     BASIC,
     DEAD,
     FREQUENT,
-    KPA_PER_KG_M2,
     LIVE,
     OBSTRUCTED_TERRAIN,
     PLAIN_TERRAIN,
@@ -51,27 +50,27 @@ MOST_70R_VEHICLES_DRAWN = 2
 LANE_REDUCTION_BY_LANE_COUNT = {1: 1.00, 2: 1.00, 3: 0.90}
 LANE_REDUCTION_FOR_FOUR_OR_MORE_LANES = 0.80
 
-# Table 6 S.No.1 - 500 kg/m2 residual load
-RESIDUAL_UDL_KG_M2 = 500.0
-RESIDUAL_UDL_KPA = RESIDUAL_UDL_KG_M2 * KPA_PER_KG_M2
+# Table 6 S.No.1 (Amendment 10) - 5 kN/m2 on the carriageway a single Class A lane leaves
+RESIDUAL_UDL_KPA = 5.0
 RESIDUAL_UDL_APPLIES_BELOW_M = 5.30
 
-# Clause 206.1 and 206.3 - footway live load, and how it falls with span
-FOOTWAY_PEDESTRIAN_KG_M2 = 400.0
+# Clause 206.1 and 206.3 (Amendment 10, kN/m2) - footway live load, and how it falls with span:
+# P = P' up to 7.5 m; P = P' - (40L - 300)/900 up to 30 m; P = (P' - 2.6 + 48/L)(16.5 - W)/15 beyond
+FOOTWAY_PEDESTRIAN_KPA = 4.0
 FOOTWAY_FULL_LOAD_UP_TO_SPAN_M = 7.5
 FOOTWAY_WIDTH_MATTERS_ABOVE_SPAN_M = 30.0
-FOOTWAY_MEDIUM_SPAN_KG_M2_PER_M = 40.0
-FOOTWAY_MEDIUM_SPAN_OFFSET_KG_M2 = 300.0
-FOOTWAY_MEDIUM_SPAN_DIVISOR = 9.0
-FOOTWAY_LONG_SPAN_DEDUCTION_KG_M2 = 260.0
-FOOTWAY_LONG_SPAN_KG_M2_M = 4800.0
+FOOTWAY_MEDIUM_SPAN_KPA_PER_M = 40.0
+FOOTWAY_MEDIUM_SPAN_OFFSET_KPA = 300.0
+FOOTWAY_MEDIUM_SPAN_DIVISOR = 900.0
+FOOTWAY_LONG_SPAN_DEDUCTION_KPA = 2.6
+FOOTWAY_LONG_SPAN_KPA_M = 48.0
 FOOTWAY_WIDTH_FACTOR_BASE_M = 16.5
 FOOTWAY_WIDTH_FACTOR_DIVISOR = 15.0
 
-# Clause 204.6, Fig. 7 - the 40 t fatigue truck: axles 12, 14, 14 t at 4.5 m and 1.4 m; dual tyres 310 mm wide in 710 mm pairs,
+# Clause 204.6, Fig. 7 (Amendment 8, kN) - the 400 kN fatigue truck: axles 120, 140, 140 kN at 4.5 m and 1.4 m; dual tyres 310 mm wide in 710 mm pairs,
 # 2390 mm overall so the pair centres are 1.68 m apart; one truck, single passage, outer tyre edge at least 150 mm off the kerb;
 # 50% of the clause 208 impact
-FATIGUE_TRUCK_AXLE_LOADS_T = (12.0, 14.0, 14.0)
+FATIGUE_TRUCK_AXLE_LOADS_KN = (120.0, 140.0, 140.0)
 FATIGUE_TRUCK_AXLE_SPACING_M = (4.5, 1.4)
 FATIGUE_TRUCK_OVERALL_WIDTH_M = 2.39
 FATIGUE_TRUCK_TYRE_PAIR_WIDTH_M = 0.71

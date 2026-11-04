@@ -248,7 +248,7 @@ function brakingScene(b, data) {
     const direction = total < 0 ? -1 : 1;
     forces.replaceChildren();
     const axles = data.vehicles.flatMap(v => v.tracked ? [{ v, x: (v.body_m[0] + v.body_m[1]) / 2, share: 1 }]
-      : v.axles_m.map((x, k) => ({ v, x, share: v.axle_loads_t[k] })));
+      : v.axles_m.map((x, k) => ({ v, x, share: v.axle_loads_kn[k] })));
     const reach = Math.min(b.span_m * .13, 3.4);
     axles.forEach(({ v, x, share }) => {
       const length = reach * share / Math.max(...axles.map(a => a.share));
@@ -515,7 +515,7 @@ function deckSvg() {
 // one vehicle seen from above, drawn by the shared docs/javascripts/vehicles.js
 function vehicleSvg(v) {
   return SetuVehicles.draw(v, { title: `${v.name}${v.heading > 0 ? " (turned round)" : ""}\n${v.tracked ? "tracked, " : ""}`
-    + `${v.tracked ? "total" : "axle loads"} ${v.axle_loads_t.join(", ")} t\nfront axle at x = ${fmt(v.x_m, 2)} m, centre z = ${fmt(v.z_m, 2)} m\nimpact factor ${fmt(v.impact_factor, 3)}` });
+    + `${v.tracked ? "total" : "axle loads"} ${v.axle_loads_kn.join(", ")} kN\nfront axle at x = ${fmt(v.x_m, 2)} m, centre z = ${fmt(v.z_m, 2)} m\nimpact factor ${fmt(v.impact_factor, 3)}` });
 }
 
 function placeVehicle(v, shift = 0) {

@@ -106,6 +106,8 @@ class GoldenAnswer:
 
 # The full IRC:6 live load - vehicles, residual UDL and footway load - checked equal to the pre-cleanup
 # search run with its default switches, number for number, before the switches were removed.
+# Every value moved by exactly 10/9.81 (1.019367992) when the loads became the kN values IRC:6-2017 Amendment 10 prints;
+# no vehicle position, arrangement or case count moved.
 GOLDEN_ANSWERS = [
     GoldenAnswer(
         name='two class a vehicles on a dual carriageway, sagging, with the clause 206.3 footway load',
@@ -114,14 +116,14 @@ GOLDEN_ANSWERS = [
         span_m=SPAN_M,
         adverse='maximum',
         cases=1,
-        response=15968.07892919936,
-        response_before_reduction=15968.07892919936,
+        response=16277.348551681305,
+        response_before_reduction=16277.348551681305,
         lane_reduction=1.0,
         design_lanes=2,
         lane_pattern='class_a | class_a',
-        footway_response=1324.4475417088515,
+        footway_response=1350.0994308958732,
         residual_udl_applied=True,
-        total_over_all_cases=15968.07892919936,
+        total_over_all_cases=16277.348551681305,
         vehicles=[
             ('Class_A', 5.15, 12.0, (12.0,)),
             ('Class_A', 8.35, 12.0, (12.0,)),
@@ -135,14 +137,14 @@ GOLDEN_ANSWERS = [
         span_m=2 * SPAN_M,
         adverse='minimum',
         cases=1,
-        response=-14342.843527917632,
-        response_before_reduction=-14342.843527917632,
+        response=-14620.635604401257,
+        response_before_reduction=-14620.635604401257,
         lane_reduction=1.0,
         design_lanes=2,
         lane_pattern='class_a | class_a',
-        footway_response=-996.5457626734934,
+        footway_response=-1015.8468528781787,
         residual_udl_applied=True,
-        total_over_all_cases=-14342.843527917632,
+        total_over_all_cases=-14620.635604401257,
         vehicles=[
             ('Class_A', 5.15, 6.5, (6.5, 45.3)),
             ('Class_A', 8.35, 6.5, (6.5, 45.3)),
@@ -155,14 +157,14 @@ GOLDEN_ANSWERS = [
         span_m=SPAN_M,
         adverse='maximum',
         cases=1,
-        response=7036.801253437773,
-        response_before_reduction=7036.801253437773,
+        response=7173.089962729636,
+        response_before_reduction=7173.089962729636,
         lane_reduction=1.0,
         design_lanes=1,
         lane_pattern='class_a',
         footway_response=0.0,
         residual_udl_applied=True,
-        total_over_all_cases=7036.801253437773,
+        total_over_all_cases=7173.089962729636,
         vehicles=[
             ('Class_A', 3.8, 12.0, (12.0,)),
         ],
@@ -174,14 +176,14 @@ GOLDEN_ANSWERS = [
         span_m=SPAN_M,
         adverse='maximum',
         cases=7,
-        response=15597.548983659555,
-        response_before_reduction=19496.936229574443,
+        response=15899.64218517794,
+        response_before_reduction=19874.552731472424,
         lane_reduction=0.8,
         design_lanes=4,
         lane_pattern='class_a + class_a + class_a + class_a',
         footway_response=0.0,
         residual_udl_applied=False,
-        total_over_all_cases=85466.56593931039,  # moved when the 70R wheeled gauge became 1.93 m (Fig. 1)
+        total_over_all_cases=87121.8816914479,  # moved when the 70R wheeled gauge became 1.93 m (Fig. 1)
         vehicles=[
             ('Class_A', 1.75, 12.0, (12.0,)),
             ('Class_A', 5.25, 12.0, (12.0,)),

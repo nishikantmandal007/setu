@@ -20,7 +20,7 @@ from setu.solver import backend  # noqa: E402
 
 from test_design_forces import BRIDGE  # noqa: E402
 
-CLASS_A_KN = 55.4 * 9.81
+CLASS_A_KN = 554.0
 CLASS_A_PITCH_M = 0.6 + 18.8 + 0.9 + 18.5
 
 
@@ -39,7 +39,7 @@ def test_one_train_all_on_the_span():
 
 def test_part_of_the_first_train_off_the_span():
     """Front axle at 30 m: axles at 30, 31.1, 34.2 m are on (2.7 + 2.7 + 11.4 t); the rest is past the far end."""
-    on_the_span_kn = (2.7 + 2.7 + 11.4) * 9.81
+    on_the_span_kn = 27.0 + 27.0 + 114.0
 
     assert braking_force_kn(_lanes((30.0,)), span_m=35.0, skew=0.0) == pytest.approx(0.2 * on_the_span_kn)
 

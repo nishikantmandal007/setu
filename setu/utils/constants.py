@@ -1,9 +1,7 @@
 # Constants shared by more than one module. Values taken from a design code live in
 # setu/irc6/irc_constants.py; a constant only one module uses stays in that module.
 
-# ── Units, all conversions in one place (materials, lanes, wind_loads, irc_constants, cli) ──
-GRAVITY_KN_PER_TONNE = 9.81
-KPA_PER_KG_M2 = GRAVITY_KN_PER_TONNE / 1000.0
+# ── Units, all conversions in one place. IRC loads are stored in kN as Amendment 10 prints them, so there is no tonne conversion ──
 KPA_PER_MPA = 1000.0
 KPA_PER_PA = 1e-3
 

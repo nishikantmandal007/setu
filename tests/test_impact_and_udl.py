@@ -74,7 +74,7 @@ def test_when_the_residual_udl_applies(carriageway_width_m, applies):
 
 
 def test_the_residual_udl_is_500_kg_per_square_metre():
-    assert pytest.approx(500.0 * 9.81 / 1000.0) == RESIDUAL_UDL_KPA
+    assert pytest.approx(5.0) == RESIDUAL_UDL_KPA
 
 
 def test_the_strips_move_with_the_vehicle():

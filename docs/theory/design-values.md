@@ -43,7 +43,7 @@ IRC:22 cl. 604.3.2. Live deflection is the worst ranked arrangement on the defle
 
 ## Fatigue
 
-IRC:6 cl. 204.6 (`setu/analysis/fatigue.py`). The 40 t fatigue truck runs along every line on each carriageway that keeps the outer tyre edge 150 mm from the kerb, with half the cl. 208 impact. For each line the range of one passage is $\max(R_{\max}, 0) - \min(R_{\min}, 0)$: the empty bridge counts. The worst line is kept, for the moment near midspan and the shear at the support.
+IRC:6 cl. 204.6 (`setu/analysis/fatigue.py`). The 400 kN fatigue truck runs along every line on each carriageway that keeps the outer tyre edge 150 mm from the kerb, with half the cl. 208 impact. For each line the range of one passage is $\max(R_{\max}, 0) - \min(R_{\min}, 0)$: the empty bridge counts. The worst line is kept, for the moment near midspan and the shear at the support.
 
 The web report shows the **nominal longitudinal steel stress range in MPa**. For each checked section near midspan, stress influence surfaces are formed at the top and bottom steel faces using the composite FE model's steel axial force and steel bending moment:
 

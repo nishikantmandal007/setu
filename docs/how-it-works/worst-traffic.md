@@ -11,16 +11,18 @@ With an influence surface in hand, finding the worst position means placing code
 
 | Item | Rule | IRC:6 clause |
 |---|---|---|
-| **Class A** train | 8 axles, 55.4 t, 1.8 m wheel gauge; trains follow each other at least 18.5 m apart | 204.1, Fig. 3 |
-| **70R wheeled** | 7 axles, 100 t, wheel lines 1.93 m apart | 204.1, Fig. 1 |
-| **70R tracked** | two 4.57 m × 0.84 m tracks, 70 t | 204.1, Fig. 1 |
+| **Class A** train | 8 axles, 554 kN, 1.8 m wheel gauge; trains follow each other at least 18.5 m apart | 204.1, Fig. 3 |
+| **70R wheeled** | 7 axles, 1000 kN, wheel lines 1.93 m apart | 204.1, Fig. 1 |
+| **70R tracked** | two 4.57 m × 0.84 m tracks, 700 kN | 204.1, Fig. 1 |
 | **Lanes** | how many design lanes fit, from the carriageway width | Table 6, 6A |
 | **Where vehicles may stand** | clearances to the kerb and to each other | 204.3, Table 3 |
 | **Impact** | vehicle loads are increased by the impact factor for a steel bridge | 208 |
 | **Several lanes loaded** | 3 lanes × 0.9, 4 or more × 0.8 | 205, Table 8 |
-| **Residual lane load** | on carriageways narrower than 5.3 m: 500 kg/m² on the width left beside the Class A lane | Table 6 |
+| **Residual lane load** | on carriageways narrower than 5.3 m: 5 kN/m² on the width left beside the Class A lane | Table 6 |
 | **Footway** | pedestrian load, falling with span | 206.3 |
 | **Braking** | 20 % of the first train, 10 % of the following ones | 211 |
+
+Loads are the kN values IRC:6-2017 prints since Amendment 10 (in force from 1 October 2026): Class A axles 27, 114 and 68 kN, 70R axles 80, 120 and 170 kN, footway 4 kN/m². There is no tonne-to-kN conversion.
 
 Each vehicle is tried **both ways round** (a Class A lorry is not symmetric) and at every position across its lane.
 
@@ -37,4 +39,4 @@ This happens for **every girder separately**. The worst position for an edge gir
 
 ## Fatigue
 
-For fatigue, IRC:6 cl. 204.6 uses a single 40 t truck making one passage. Setu rolls it along the worst line (outer tyre at least 150 mm from the kerb) with half the normal impact. The fatigue **range** is the largest effect minus the smallest, including the empty bridge.
+For fatigue, IRC:6 cl. 204.6 uses a single 400 kN truck making one passage. Setu rolls it along the worst line (outer tyre at least 150 mm from the kerb) with half the normal impact. The fatigue **range** is the largest effect minus the smallest, including the empty bridge.

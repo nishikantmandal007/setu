@@ -9,12 +9,12 @@ from setu.irc6.irc_constants import (
     CLASS_A_VEHICLE_GAP_M,
     DESIGN_LANES_BY_WIDTH,
     FOOTWAY_FULL_LOAD_UP_TO_SPAN_M,
-    FOOTWAY_LONG_SPAN_DEDUCTION_KG_M2,
-    FOOTWAY_LONG_SPAN_KG_M2_M,
+    FOOTWAY_LONG_SPAN_DEDUCTION_KPA,
+    FOOTWAY_LONG_SPAN_KPA_M,
     FOOTWAY_MEDIUM_SPAN_DIVISOR,
-    FOOTWAY_MEDIUM_SPAN_KG_M2_PER_M,
-    FOOTWAY_MEDIUM_SPAN_OFFSET_KG_M2,
-    FOOTWAY_PEDESTRIAN_KG_M2,
+    FOOTWAY_MEDIUM_SPAN_KPA_PER_M,
+    FOOTWAY_MEDIUM_SPAN_OFFSET_KPA,
+    FOOTWAY_PEDESTRIAN_KPA,
     FOOTWAY_WIDTH_FACTOR_BASE_M,
     FOOTWAY_WIDTH_FACTOR_DIVISOR,
     FOOTWAY_WIDTH_MATTERS_ABOVE_SPAN_M,
@@ -34,7 +34,7 @@ from setu.irc6.irc_constants import (
     ZONE_70R_INSIDE_M,
 )
 from setu.helpers import where_a_load_hurts
-from setu.utils.constants import CLASS_A_LANE, KPA_PER_KG_M2, NOTHING_THERE_M, ROUND_TO_DECIMALS, TOLERANCE_M, ZONE_70R
+from setu.utils.constants import CLASS_A_LANE, NOTHING_THERE_M, ROUND_TO_DECIMALS, TOLERANCE_M, ZONE_70R
 
 DESIGN_LANES_PER_70R_ZONE = 2
 DESIGN_LANES_PER_CLASS_A_LANE = 1
@@ -260,15 +260,15 @@ def cells_where_it_hurts(surface, from_m, to_m, adverse, sampling):
 
 # clause 206.3 footway load for this span and width
 def footway_pressure_kpa(span_m, footway_width_m):
-    full_kg_m2 = FOOTWAY_PEDESTRIAN_KG_M2
+    full_kpa = FOOTWAY_PEDESTRIAN_KPA
     if span_m <= FOOTWAY_FULL_LOAD_UP_TO_SPAN_M:
-        return full_kg_m2 * KPA_PER_KG_M2
+        return full_kpa
     if span_m <= FOOTWAY_WIDTH_MATTERS_ABOVE_SPAN_M:
-        falls_by_kg_m2 = (FOOTWAY_MEDIUM_SPAN_KG_M2_PER_M * span_m - FOOTWAY_MEDIUM_SPAN_OFFSET_KG_M2) / FOOTWAY_MEDIUM_SPAN_DIVISOR
-        return (full_kg_m2 - falls_by_kg_m2) * KPA_PER_KG_M2
-    long_span_kg_m2 = full_kg_m2 - FOOTWAY_LONG_SPAN_DEDUCTION_KG_M2 + FOOTWAY_LONG_SPAN_KG_M2_M / span_m
+        falls_by_kpa = (FOOTWAY_MEDIUM_SPAN_KPA_PER_M * span_m - FOOTWAY_MEDIUM_SPAN_OFFSET_KPA) / FOOTWAY_MEDIUM_SPAN_DIVISOR
+        return full_kpa - falls_by_kpa
+    long_span_kpa = full_kpa - FOOTWAY_LONG_SPAN_DEDUCTION_KPA + FOOTWAY_LONG_SPAN_KPA_M / span_m
     width_factor = (FOOTWAY_WIDTH_FACTOR_BASE_M - footway_width_m) / FOOTWAY_WIDTH_FACTOR_DIVISOR
-    return long_span_kg_m2 * width_factor * KPA_PER_KG_M2
+    return long_span_kpa * width_factor
 
 # each footway strip with its pressure
 def footway_loaded_strips(cross_section, span_m):
