@@ -8,12 +8,14 @@ version = "1.0.0"
 description = "Find the worst legal IRC:6 vehicle placement on a bridge deck."
 requires-python = ">=3.12,<3.13"
 dependencies = [
-    "numpy==2.5.2",
+    "numpy>=2.5.2",
     "openseespy==3.8.0.0",
-    "xarray==2026.7.0",
-    "scipy==1.18.1",
-    "flask==3.1.3",
+    "xarray>=2026.7.0",
+    "scipy>=1.18.1",
 ]
+
+[project.optional-dependencies]
+web = ["flask==3.1.3"]
 
 [dependency-groups]
 dev = ["pytest==9.1.1"]
