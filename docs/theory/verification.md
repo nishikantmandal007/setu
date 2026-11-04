@@ -8,7 +8,7 @@ Setu checks itself at run time, and its test suite (about 880 tests) checks the 
 |---|---|
 | The model must not move under no load before the first influence surface | a load pattern left on the model, which would pollute every surface |
 | Each critical position is re-applied to the full model as ordinary loads and solved (web app) | any disagreement between the influence-surface prediction and a direct analysis |
-| Inputs are validated with the offending value named | missing inputs, unknown strip names, loads with nowhere to go, surfacing outside Table 15B |
+| Inputs are validated with the offending value named | missing inputs, unknown strip names, loads with nowhere to go, slab depth outside Fig. 16b |
 
 On the example bridge all 35 critical positions agree with the direct solve. The one tolerance, 10⁻³ kN on a support shear, is there because an axle standing exactly on the bearing line is shared through a spring that is rigid only to about 10⁻⁶.
 

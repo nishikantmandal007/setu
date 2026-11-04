@@ -77,6 +77,7 @@ def test_each_girder_contributes_its_own_self_weight_and_seismic_weight():
     from setu.loads.dead_loads import wet_slab_load, superimposed_dead_load, surfacing_load
     vertical = case.nodal_loads + wet_slab_load(model).nodal_loads + superimposed_dead_load(model).nodal_loads + surfacing_load(model).nodal_loads
     expected = sum(by_element.values()) * bridge.span_m / (model.mesh.stations_along_span - 1) - sum(load[2] for load in vertical)
+    expected -= 1.0 * bridge.deck.thickness_m * bridge.width_m() * bridge.span_m  # seismic weight is the hardened slab; the wet stage adds 1 kN/m3 (Amendment 10)
     assert sum(dead_weight_at_nodes(model).values()) == pytest.approx(expected, rel=1e-10)
 
 

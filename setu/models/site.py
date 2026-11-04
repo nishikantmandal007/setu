@@ -59,9 +59,16 @@ class SeismicSite:
             return self._include_vertical
         return self.vertical_coefficient is not None or self.zone in VERTICAL_ALWAYS_IN_ZONES
 
+    # clause 4.2.1 (b): in zones II and III vertical shaking is still taken for bearings; an explicit include_vertical wins everywhere
+    def include_vertical_for_bearings(self):
+        if self._include_vertical is not None:
+            return self._include_vertical
+        return True
+
 class TemperatureSite:
-    # IRC:6 clause 215 inputs: the site's highest and lowest shade air temperature
-    def __init__(self, shade_max_c, shade_min_c):
+    # IRC:6 clause 215 inputs: the site's highest and lowest shade air temperature, and whether it is snowbound (215.2)
+    def __init__(self, shade_max_c, shade_min_c, snowbound=False):
         self.shade_max_c = shade_max_c
         self.shade_min_c = shade_min_c
+        self.snowbound = snowbound
 

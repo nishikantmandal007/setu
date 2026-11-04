@@ -30,7 +30,7 @@ SMALLEST_CLASS_A_GAP_M = 0.40
 
 TWO_CLASS_A_LANES_AND_KERB_CLEARANCES_M = 4.90
 
-# IRC:5-2015 Clause 104.3 - narrower than this carries no vehicle loading
+# IRC:6-2017 Table 6A row 1: '4.25 m <= CW < 5.3 m' - narrower carries no vehicle loading
 NARROWEST_LOADED_CARRIAGEWAY_M = 4.25
 
 # Table 6 - design lanes by carriageway width
@@ -42,8 +42,8 @@ DESIGN_LANES_BY_WIDTH = (
     (16.60, 20.10, 5),
     (20.10, 23.60, 6),
 )
+# Table 6 ends at 'less than 23.6 m'; wider carriageways are refused (no IRC source, decision D15)
 WIDEST_TABULATED_CARRIAGEWAY_M = 23.60
-MOST_DESIGN_LANES = 6
 MOST_70R_VEHICLES_DRAWN = 2
 
 # Clause 205, Table 8 - reduction for several lanes loaded together
@@ -66,6 +66,8 @@ FOOTWAY_LONG_SPAN_DEDUCTION_KPA = 2.6
 FOOTWAY_LONG_SPAN_KPA_M = 48.0
 FOOTWAY_WIDTH_FACTOR_BASE_M = 16.5
 FOOTWAY_WIDTH_FACTOR_DIVISOR = 15.0
+# Clause 206.2 (Amendment 10 S.No. 43): kerbs carry the footway load; 'If kerb width is less than 0.75m, no live load shall be applied'
+KERB_CARRIES_FOOTWAY_LOAD_FROM_M = 0.75
 
 # Clause 204.6, Fig. 7 (Amendment 8, kN) - the 400 kN fatigue truck: axles 120, 140, 140 kN at 4.5 m and 1.4 m; dual tyres 310 mm wide in 710 mm pairs,
 # 2390 mm overall so the pair centres are 1.68 m apart; one truck, single passage, outer tyre edge at least 150 mm off the kerb;
@@ -78,6 +80,9 @@ FATIGUE_TRUCK_TYRE_WIDTH_M = 0.31
 FATIGUE_TRUCK_KERB_CLEARANCE_M = 0.15
 FATIGUE_IMPACT_SHARE = 0.5
 
+# Amendment 10 S.No. 11, Table 1 note: 'For wet concrete the unit weights given in the table above shall be increased by 1 kN/m3'
+WET_CONCRETE_EXTRA_KN_M3 = 1.0
+
 # Clause 208, Figure 9 - dynamic impact allowance for a steel bridge
 SHORTEST_TABULATED_SPAN_M = 3.0
 LONGEST_TABULATED_SPAN_M = 45.0
@@ -86,7 +91,8 @@ TRACKED_IMPACT_FRACTION_FLOOR = 0.10
 SHORT_SPAN_UPPER_LIMIT_M = 9.0
 TRACKED_TRANSITION_START_SPAN_M = 5.0
 TRACKED_TRANSITION_SPAN_WIDTH_M = 4.0
-WHEELED_70R_IMPACT_CURVE_TAKES_OVER_M = 23.0
+# Amendment 10 S.No. 55, cl. 208.3 (b)(ii)(4): steel / composite wheeled 25 % up to 22.5 m, then the Fig. 9 curve
+WHEELED_70R_IMPACT_CURVE_TAKES_OVER_M = 22.5
 
 
 # Clause 209.1 - where these wind rules apply
@@ -175,19 +181,20 @@ OTHER_DIRECTIONS_FRACTION = 0.3
 # Clause 4.6 - live load in the seismic mass (impact excluded)
 LIVE_LOAD_SEISMIC_FRACTION = 0.2
 
-# Clause 215.2 - effective temperature of a metallic bridge
+# Clause 215.2 - effective temperature of a metallic bridge: other areas shade max + 15 C to shade min - 10 C; snowbound areas -35 C to +50 C
 METALLIC_ABOVE_SHADE_MAX_C = 15.0
 METALLIC_BELOW_SHADE_MIN_C = 10.0
+SNOWBOUND_EFFECTIVE_RANGE_C = (-35.0, 50.0)
 
-# Clause 215.3, Fig. 17b / Table 15B (same as EN 1991-1-5 Fig. 6.2b) - temperature difference across a steel/concrete composite deck.
-# Heating: dT1 at the top, dT2 at h1, 0 at h1 + h2. Cooling: dT1 at the top, 0 at h1, dT2 at h1 + h2. h1 = 0.6h, h2 = 0.4 m in both.
-# Rows are slab depth h, columns surfacing thickness; the published figure gives 50 mm, Table 15B of the draft amendment adds 100 mm.
-TABLE_15B_SLAB_DEPTHS_M = (0.2, 0.3)
-TABLE_15B_SURFACINGS_M = (0.05, 0.10)
-TABLE_15B_HEATING_DT1_C = ((18.0, 13.0), (20.5, 16.0))
-TABLE_15B_COOLING_DT1_C = ((-4.4, -3.5), (-6.8, -5.0))
-TABLE_15B_HEATING_DT2_C = 4.0
-TABLE_15B_COOLING_DT2_C = -8.0
+# Clause 215.3, Fig. 16b (IRC:6-2017 p. 58) - temperature difference across steel / composite decks, drawn for 50 mm surfacing.
+# Heating: T1 at the top, 4 C at h1, 0 at h1 + h2. Cooling: T1 at the top, 0 at h1, 8 C at h1 + h2. h1 = 0.6h, h2 = 0.4 m.
+# T1 by slab depth h; 'for intermediate slab thickness, T1 may be interpolated'. Used for any surfacing, as IRC:SP:120-2018
+# (p. 57, 59) does with 65-90 mm surfacing (decision D13).
+FIG_16B_SLAB_DEPTHS_M = (0.2, 0.3)
+FIG_16B_HEATING_T1_C = (18.0, 20.5)
+FIG_16B_COOLING_T1_C = (-4.4, -6.8)
+FIG_16B_HEATING_AT_H1_C = 4.0
+FIG_16B_COOLING_AT_H1_PLUS_H2_C = -8.0
 TEMPERATURE_H1_FRACTION_OF_SLAB = 0.6
 TEMPERATURE_H2_M = 0.4
 

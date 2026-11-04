@@ -87,9 +87,9 @@ CLASS_70R_WHEELED = AxleVehicle(
     axle_loads_kn=(80.0, 120.0, 120.0, 170.0, 170.0, 170.0, 170.0),
     axle_spacing_m=(3.96, 1.52, 2.13, 1.37, 3.05, 1.37),
     transverse_gauge_m=1.93,
-    lead_clearance_m=0.81,
+    lead_clearance_m=0.61,  # Amendment 10 Fig. 1 (base 2017 printed 0.81; decision D14)
     trail_clearance_m=0.91,
-    min_nose_to_tail_m=28.28,
+    min_nose_to_tail_m=28.48,  # Fig. 1 note 1: >= 30 m rear axle to next front axle = 30 - 0.61 - 0.91
 )
 CLASS_70R_TRACKED = TrackedVehicle(
     name="Class_70R_Tracked",

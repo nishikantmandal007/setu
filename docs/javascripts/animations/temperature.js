@@ -1,13 +1,13 @@
-// temperature difference through the depth (IRC:6 cl. 215, Fig. 17b / Table 15B)
+// temperature difference through the depth (IRC:6 cl. 215, Fig. 16b)
 (() => {
   const { svg, html, lerp, clamp, ease, STEEL, label, player, register } = window.SetuAnim;
 
   function temperatureAnim(root) {
-    // a 0.23 m slab with 75 mm surfacing on a 2.2 m girder: h1 = 0.6 h, h2 = 0.4 m below it
+    // a 0.23 m slab on a 2.2 m girder, IRC:6 Fig. 16b: T1 interpolated at h = 0.23 m (18.75 heating, 5.12 cooling), h1 = 0.6 h, h2 = 0.4 m below it
     const SLAB = 0.23, DEPTH = 2.4, H1 = 0.6 * SLAB, H2 = 0.4;
     const PROFILES = [
-      { name: "Heating: the sun warms the slab", colour: "#e8792b", pts: [[0, 16.3], [H1, 4], [H1 + H2, 0], [DEPTH, 0]] },
-      { name: "Cooling: the slab loses heat faster", colour: "#2b8ad6", pts: [[0, -4.5], [H1, 0], [H1 + H2, -8], [DEPTH, -8]] },
+      { name: "Heating: the sun warms the slab", colour: "#e8792b", pts: [[0, 18.75], [H1, 4], [H1 + H2, 0], [DEPTH, 0]] },
+      { name: "Cooling: the slab loses heat faster", colour: "#2b8ad6", pts: [[0, -5.12], [H1, 0], [H1 + H2, -8], [DEPTH, -8]] },
     ];
     const s = svg("svg", { viewBox: "0 0 700 372", class: "anim-svg" });
     const Y0 = 40, PXY = 120, Y = d => Y0 + d * PXY, CX = 150;
@@ -37,10 +37,10 @@
       curve.setAttribute("d", "M" + pts.map(([d, v]) => `${T(v)},${Y(d)}`).join(" L")); curve.setAttribute("stroke", p.colour);
       area.setAttribute("d", `M${T(0)},${Y(0)} ` + pts.map(([d, v]) => `L${T(v)},${Y(d)}`).join(" ") + ` L${T(0)},${Y(DEPTH)} Z`); area.setAttribute("fill", p.colour);
       glow.setAttribute("fill", p.colour); glow.setAttribute("opacity", 0.35 * f);
-      caption.textContent = `${p.name}. The deck cannot bend freely to follow this uneven temperature, so it locks in stresses through the depth (Fig. 17b / Table 15B). `
+      caption.textContent = `${p.name}. The deck cannot bend freely to follow this uneven temperature, so it locks in stresses through the depth (Fig. 16b). `
         + "On a simply supported span with a free bearing these stresses balance inside each section: no girder force, only the stresses Setu reports and the bearing movement.";
     }, { hold: 2 });
   }
 
-  register("temperature", temperatureAnim, "Animation of the IRC:6 temperature difference through the depth of a composite deck: the heating profile (slab hotter, 16.3 °C at the top falling to 4 °C at h1 and zero 0.4 m lower) and the cooling profile (slab colder, reversing to minus 8 °C). The locked-in stresses balance within each section, so a simply supported girder with a free bearing gets no force.");
+  register("temperature", temperatureAnim, "Animation of the IRC:6 temperature difference through the depth of a composite deck: the heating profile (slab hotter, 18.75 °C at the top falling to 4 °C at h1 and zero 0.4 m lower) and the cooling profile (slab colder, reversing to minus 8 °C). The locked-in stresses balance within each section, so a simply supported girder with a free bearing gets no force.");
 })();

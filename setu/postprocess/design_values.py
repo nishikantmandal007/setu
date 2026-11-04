@@ -122,7 +122,9 @@ def load_effects(analysis, dead_stages, live, read, target, target_key, seismic,
     if analysis.wind_forces:
         effects[WIND] = wind_alternatives(analysis.wind_forces, read, *target, with_the_live_load=False)
     if seismic is not None:
-        own = seismic_load_cases(analysis.model, seismic, live[BIGGER_IS_WORSE])
+        place = target[1]
+        for_bearing = isinstance(place, tuple) and place[0] == BEARING_REACTION
+        own = seismic_load_cases(analysis.model, seismic, live[BIGGER_IS_WORSE], for_bearing=for_bearing)
         effects[SEISMIC] = combine_directions(*[read(own[name], *target) for name in ("longitudinal", "transverse", "vertical") if name in own])
     for group, forces in analysis.custom_forces.items():
         effects[group] = add_to(effects.get(group, NO_EFFECT), read(forces, *target))
@@ -415,15 +417,15 @@ def governing_by_limit_state(effects, combinations, wind_forces, read, girder, p
     return governing, by_combination
 
 
-# Fig. 17b heating and cooling primary stresses in every girder, and the bearing movement; None with no temperature input
+# Fig. 16b heating and cooling primary stresses in every girder, and the bearing movement; None with no temperature input
 def thermal_results(bridge, temperature):
     if temperature is None:
         return None
-    profiles = temperature_difference_profiles(bridge.deck.thickness_m, bridge.wearing_course_thickness_m)
+    profiles = temperature_difference_profiles(bridge.deck.thickness_m)
     results = {"profiles": profiles,
                "girders": {girder: {kind: primary_thermal_stresses(bridge, girder, profile) for kind, profile in profiles.items()}
                            for girder in range(bridge.girders.count)}}
-    temperature_range_c = effective_temperature_range(temperature.shade_max_c, temperature.shade_min_c)
+    temperature_range_c = effective_temperature_range(temperature.shade_max_c, temperature.shade_min_c, temperature.snowbound)
     results["effective range c"] = temperature_range_c
     results["free bearing movement m"] = free_bearing_movement_m(bridge.span_m, temperature_range_c)
     return results

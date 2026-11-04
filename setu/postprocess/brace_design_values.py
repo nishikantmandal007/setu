@@ -77,8 +77,9 @@ def member_values(analysis, seismic, braking_height_above_deck_m, member, surfac
 
 
 # worst traffic for one member in both directions; a surface holding only deck ordinates is all a search worker needs
+# Brace members are cross girders / diaphragms: IRC:6 Amendment 10 Table 8 note 3 excludes them from the lane reduction.
 def search_member(surface, cross_section, span_m, wearing_course_thickness_m):
-    found = {adverse: find_critical_position(surface, cross_section, span_m, adverse, wearing_course_thickness_m) for adverse in BOTH_DIRECTIONS}
+    found = {adverse: find_critical_position(surface, cross_section, span_m, adverse, wearing_course_thickness_m, lane_reduction=False) for adverse in BOTH_DIRECTIONS}
     vehicle_responses.cache_clear()  # both directions are done, and no other member shares these grids
     return found
 
@@ -125,7 +126,7 @@ def brace_surface(solver, model, member):
 
 # worst legal traffic on the bridge for each brace member and adverse direction
 def brace_live_positions(surfaces, bridge):
-    return {(*member, adverse): find_critical_position(surface, bridge.cross_section, bridge.span_m, adverse, bridge.wearing_course_thickness_m)
+    return {(*member, adverse): find_critical_position(surface, bridge.cross_section, bridge.span_m, adverse, bridge.wearing_course_thickness_m, lane_reduction=False)
             for member, surface in surfaces.items() for adverse in BOTH_DIRECTIONS}
 
 

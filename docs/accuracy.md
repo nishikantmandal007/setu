@@ -36,7 +36,7 @@ application permits different member-design selections.
 |---|---|
 | Kerbs 0.6 m or wider do not yet carry footway load (IRC:6 206.2) | Name a wide kerb as a footpath for now. |
 | Automatic vertical seismic uses the zone IV/V rule and a fixed spectral ordinate | For bearings and other required components in zones II/III, explicitly include vertical seismic. Supply effective coefficients where the automatic method is unsuitable; accepted overrides do not establish code compliance. |
-| Surfacing outside 50–100 mm is refused | Table 15B has no values there. |
+| Slab depth outside 0.2–0.3 m is refused | IRC:6 Fig. 16b gives T1 only for those depths (interpolation allowed). |
 | The moment is designed only at midspan and 0.02L, 0.04L, 0.06L towards the bearing | The true peak can fall between two sections: on a 35 m, four-girder bridge an inner girder's governing load gives 0.05 % more moment 0.36 m off the checked section. Small, but unconservative. |
 
 ## Checks built in

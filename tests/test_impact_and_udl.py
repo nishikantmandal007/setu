@@ -105,3 +105,13 @@ def test_only_the_adverse_area_is_loaded(sagging_surface, hogging_surface):
 
     one_sign = response_to_area_load(sagging_surface, strips, "maximum", RESIDUAL_UDL_KPA, DEFAULT_SAMPLING)
     assert one_sign > 0
+
+
+@pytest.mark.parametrize("span_m, fraction", [(22.4, 0.25), (22.5, 0.25), (22.6, 9 / (13.5 + 22.6)), (23.0, 9 / 36.5), (33.5, 9 / 47.0)])
+def test_70r_wheeled_steel_takes_the_curve_beyond_22_5_m(span_m, fraction):
+    """IRC:6-2017 Amendment 10 S.No. 55: 25 percent up to 22.5 m, then Fig. 9 (9 / (13.5 + L) for steel / composite)."""
+    assert impact_fraction("Class_70R_Wheeled", span_m) == pytest.approx(fraction)
+
+
+def test_the_curve_meets_25_percent_at_22_5_m():
+    assert 9 / (13.5 + 22.5) == pytest.approx(0.25)

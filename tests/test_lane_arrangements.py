@@ -29,7 +29,7 @@ from setu.utils.constants import CLASS_A_LANE, ZONE_70R
         (13.10, 4),
         (16.60, 5),
         (20.10, 6),
-        (30.00, 6),
+        (23.59, 6),
     ],
 )
 def test_table_6_lane_counts(carriageway_width_m, design_lanes):
@@ -75,7 +75,7 @@ def test_partly_loaded_arrangements_are_included():
 
 
 def test_arrangements_never_exceed_the_carriageway():
-    for carriageway_width_m in (4.5, 5.3, 7.0, 9.6, 13.1, 16.6, 20.1, 24.0):
+    for carriageway_width_m in (4.5, 5.3, 7.0, 9.6, 13.1, 16.6, 20.1, 23.5):
         for arrangement in list_admissible_arrangements(carriageway_width_m):
             assert arrangement.narrowest_carriageway_m <= carriageway_width_m + 1e-9
             assert arrangement.sliding_room_m >= 0.0
@@ -130,7 +130,7 @@ def test_two_70r_vehicles_are_searched_wherever_they_fit():
 
 
 @pytest.mark.parametrize(
-    "carriageway_width_m", [4.25, 5.30, 6.10, 7.50, 9.60, 11.0, 13.10, 16.60, 20.10, 23.60]
+    "carriageway_width_m", [4.25, 5.30, 6.10, 7.50, 9.60, 11.0, 13.10, 16.60, 20.10, 23.59]
 )
 def test_nothing_that_fits_is_left_out(carriageway_width_m):
     """Everything that fits, uses no more lanes than Table 6 allows and is drawn in Table 6A must be searched."""
@@ -155,7 +155,7 @@ def test_nothing_that_fits_is_left_out(carriageway_width_m):
 
 
 @pytest.mark.parametrize(
-    "carriageway_width_m", [4.25, 5.30, 9.60, 13.10, 16.60, 20.10, 23.60]
+    "carriageway_width_m", [4.25, 5.30, 9.60, 13.10, 16.60, 20.10, 23.59]
 )
 def test_by_default_a_70r_is_never_boxed_in(carriageway_width_m):
     """A 70R must reach a kerb through 70R zones only, as the drawings place them."""
@@ -236,3 +236,11 @@ def test_a_fully_loaded_case_uses_every_lane():
     for arrangement in list_admissible_arrangements(13.10):
         if arrangement.is_fully_loaded:
             assert arrangement.design_lanes == count_design_lanes(13.10)
+
+
+@pytest.mark.parametrize("carriageway_width_m", [23.60, 30.0])
+def test_a_carriageway_beyond_table_6_is_refused(carriageway_width_m):
+    """IRC:6-2017 Table 6 ends at 'less than 23.6 m'; no IRC source gives wider carriageways (decision D15)."""
+    from setu.errors import NoAdmissibleArrangementError
+    with pytest.raises(NoAdmissibleArrangementError, match="Table 6"):
+        count_design_lanes(carriageway_width_m)

@@ -15,7 +15,7 @@ Setu follows the code text, clause by clause. Every value in `setu/irc6/irc_cons
 | Impact for steel bridges | 208, Fig. 9 |
 | Wind | 209, Table 12 |
 | Braking | 211 |
-| Temperature, including the temperature difference through the depth | 215, Fig. 17b, Table 15B |
+| Temperature, including the temperature difference through the depth | 215.2, 215.3, Fig. 16b |
 | Load combinations and partial factors | Annex B, Tables B.2 and B.3 |
 
 ## IRC:22-2015, composite construction

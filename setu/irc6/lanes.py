@@ -18,10 +18,10 @@ from setu.irc6.irc_constants import (
     FOOTWAY_WIDTH_FACTOR_BASE_M,
     FOOTWAY_WIDTH_FACTOR_DIVISOR,
     FOOTWAY_WIDTH_MATTERS_ABOVE_SPAN_M,
+    KERB_CARRIES_FOOTWAY_LOAD_FROM_M,
     LANE_REDUCTION_BY_LANE_COUNT,
     LANE_REDUCTION_FOR_FOUR_OR_MORE_LANES,
     MOST_70R_VEHICLES_DRAWN,
-    MOST_DESIGN_LANES,
     NARROWEST_LOADED_CARRIAGEWAY_M,
     RESIDUAL_UDL_APPLIES_BELOW_M,
     SMALLEST_CLASS_A_GAP_M,
@@ -33,8 +33,9 @@ from setu.irc6.irc_constants import (
     ZONE_70R_AT_EDGE_M,
     ZONE_70R_INSIDE_M,
 )
+from setu.errors import NoAdmissibleArrangementError
 from setu.helpers import where_a_load_hurts
-from setu.utils.constants import CLASS_A_LANE, NOTHING_THERE_M, ROUND_TO_DECIMALS, TOLERANCE_M, ZONE_70R
+from setu.utils.constants import CLASS_A_LANE, KERB_PREFIX, NOTHING_THERE_M, ROUND_TO_DECIMALS, TOLERANCE_M, ZONE_70R
 
 DESIGN_LANES_PER_70R_ZONE = 2
 DESIGN_LANES_PER_CLASS_A_LANE = 1
@@ -70,7 +71,8 @@ def count_design_lanes(carriageway_width_m):
         if width_from <= carriageway_width_m < width_up_to:
             return design_lanes
     if carriageway_width_m >= WIDEST_TABULATED_CARRIAGEWAY_M:
-        return MOST_DESIGN_LANES
+        raise NoAdmissibleArrangementError(f"carriageway {carriageway_width_m} m: IRC:6 Table 6 stops below {WIDEST_TABULATED_CARRIAGEWAY_M} m and no IRC source gives "
+                                           "the design lanes beyond it; split the deck into carriageways or get the engineer's ruling")
     return NOT_LOADED_AT_ALL
 
 # is the carriageway wide enough to load at all
@@ -270,9 +272,15 @@ def footway_pressure_kpa(span_m, footway_width_m):
     width_factor = (FOOTWAY_WIDTH_FACTOR_BASE_M - footway_width_m) / FOOTWAY_WIDTH_FACTOR_DIVISOR
     return long_span_kpa * width_factor
 
-# each footway strip with its pressure
+# every strip carrying the footway live load: footways, and kerbs 0.75 m or wider (clause 206.2)
+def footway_live_load_strips(cross_section):
+    wide_kerbs = [strip for strip in cross_section.strips if strip.name.startswith(KERB_PREFIX) and strip.width_m >= KERB_CARRIES_FOOTWAY_LOAD_FROM_M - TOLERANCE_M]
+    return sorted(cross_section.footways() + wide_kerbs, key=lambda strip: strip.z_from_m)
+
+
+# each strip carrying footway live load, with its pressure
 def footway_loaded_strips(cross_section, span_m):
-    return [(strip.z_from_m, strip.z_to_m, footway_pressure_kpa(span_m, strip.width_m)) for strip in cross_section.footways()]
+    return [(strip.z_from_m, strip.z_to_m, footway_pressure_kpa(span_m, strip.width_m)) for strip in footway_live_load_strips(cross_section)]
 
 # response to the footway load on every footway
 def footway_response(surface, cross_section, adverse, span_m, sampling):

@@ -22,7 +22,7 @@
   // IRC:6-2017 Figs. 1 and 3, the same numbers as setu/irc6/vehicles.py
   const CATALOGUE = {
     "Class A": { axle_loads_kn: [27, 27, 114, 114, 68, 68, 68, 68], axles_m: positions([1.1, 3.2, 1.2, 4.3, 3.0, 3.0, 3.0]), gauge_m: 1.8, lead_m: 0.6, trail_m: 0.9 },
-    "Class 70R Wheeled": { axle_loads_kn: [80, 120, 120, 170, 170, 170, 170], axles_m: positions([3.96, 1.52, 2.13, 1.37, 3.05, 1.37]), gauge_m: 1.93, lead_m: 0.81, trail_m: 0.91 },
+    "Class 70R Wheeled": { axle_loads_kn: [80, 120, 120, 170, 170, 170, 170], axles_m: positions([3.96, 1.52, 2.13, 1.37, 3.05, 1.37]), gauge_m: 1.93, lead_m: 0.61, trail_m: 0.91 },
     "Class 70R Tracked": { axle_loads_kn: [700], tracked: true, track_m: [4.57, 0.84], gauge_m: 2.06 },
   };
 

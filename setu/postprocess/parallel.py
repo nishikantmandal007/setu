@@ -50,11 +50,11 @@ def solve(kind, args):
 
 
 # search both directions consecutively so they share their vehicle-response grids
-def live_positions(surface):
+def live_positions(surface, lane_reduction=True):
     from setu.postprocess.design_values import BOTH_DIRECTIONS
 
     bridge = model.bridge
-    return {adverse: find_critical_position(surface, bridge.cross_section, bridge.span_m, adverse, bridge.wearing_course_thickness_m)
+    return {adverse: find_critical_position(surface, bridge.cross_section, bridge.span_m, adverse, bridge.wearing_course_thickness_m, lane_reduction=lane_reduction)
             for adverse in BOTH_DIRECTIONS}
 
 
@@ -80,7 +80,7 @@ def stress_task(surface, girder, face, y_m, station):
 
 # search both directions on one solved brace surface
 def brace_task(surface, member):
-    return surface, live_positions(surface)
+    return surface, live_positions(surface, lane_reduction=False)
 
 
 # forward a completed process result or its exception to the whole task's future

@@ -22,7 +22,7 @@ class SeismicLoadCases(dict):
 
 
 # longitudinal, transverse and (zones IV, V) vertical seismic load cases
-def seismic_load_cases(model, site, live_critical=None):
+def seismic_load_cases(model, site, live_critical=None, *, for_bearing=False):
     dead_kn, longitudinal = dead_weight_inertia(model, site)
     live_total = None if site.live_weight_kn is None else LIVE_LOAD_SEISMIC_FRACTION * site.live_weight_kn
     live_kn = override_weight(model, live_weight_at_nodes(model, live_critical), live_total)
@@ -35,7 +35,7 @@ def seismic_load_cases(model, site, live_critical=None):
         "longitudinal": longitudinal,
         "transverse": inertia(with_live_kn, ah, 3, "seismic, transverse"),
     }
-    if site.include_vertical:
+    if site.include_vertical_for_bearings() if for_bearing else site.include_vertical:
         cases["vertical"] = inertia(with_live_kn, -av, 2, "seismic, vertical")
     return SeismicLoadCases(cases, sum(dead_kn.values()), sum(live_kn.values()), ah, av)
 
