@@ -124,8 +124,11 @@ def load_effects(analysis, dead_stages, live, read, target, target_key, seismic,
     if seismic is not None:
         place = target[1]
         for_bearing = isinstance(place, tuple) and place[0] == BEARING_REACTION
-        own = seismic_load_cases(analysis.model, seismic, live[BIGGER_IS_WORSE], for_bearing=for_bearing)
-        effects[SEISMIC] = combine_directions(*[read(own[name], *target) for name in ("longitudinal", "transverse", "vertical") if name in own])
+        masses = [live[BIGGER_IS_WORSE]] + ([live[BIGGER_IS_WORSE].searched] if live[BIGGER_IS_WORSE].searched is not None else [])
+        effects[SEISMIC] = []
+        for mass in masses:
+            own = seismic_load_cases(analysis.model, seismic, mass, for_bearing=for_bearing)
+            effects[SEISMIC] += combine_directions(*[read(own[name], *target) for name in ("longitudinal", "transverse", "vertical") if name in own])
     for group, forces in analysis.custom_forces.items():
         effects[group] = add_to(effects.get(group, NO_EFFECT), read(forces, *target))
     return effects
@@ -203,10 +206,13 @@ def girder_values(analysis, bridge, seismic, temperature, braking_height_above_d
 
     live = {(girder, place, adverse): work.places[girder, place].result()[1][adverse] if work is not None else find_critical_position(surfaces[girder, place], bridge.cross_section, bridge.span_m, adverse, bridge.wearing_course_thickness_m) for girder in girders for place in places for adverse in BOTH_DIRECTIONS}
     read = reader(surfaces)
+    searched = dict(live)
     by_place, combinations_at_place, braking = {}, {}, {}
     for girder in girders:
         for place in places:
-            effects = load_effects(analysis, dead.stages, {adverse: live[girder, place, adverse] for adverse in BOTH_DIRECTIONS}, read,
+            settled = settle_braking(model, {adverse: live[girder, place, adverse] for adverse in BOTH_DIRECTIONS}, read, (girder, place), braking_height_above_deck_m)
+            live.update({(girder, place, adverse): critical for adverse, critical in settled.items()})
+            effects = load_effects(analysis, dead.stages, settled, read,
                                    (girder, place), (girder, place), seismic, braking_height_above_deck_m, braking)
             by_place[girder, place], combinations_at_place[girder, place] = governing_by_limit_state(
                 effects, analysis.combinations, analysis.wind_forces, read, girder, place, model.mesh.length_mesh_m[place[1]])
@@ -222,7 +228,7 @@ def girder_values(analysis, bridge, seismic, temperature, braking_height_above_d
         stations[girder, MIDSPAN_DEFLECTION, BIGGER_IS_WORSE] = model.mesh.stations_along_span // 2
     fatigue = {girder: fatigue_ranges(surfaces, girder, places, bridge, model, work) for girder in girders}
     fatigue_stresses = {girder: fatigue_stress_ranges(solver, girder, places, bridge, model, work) for girder in girders}
-    live_shear_range_kn = {girder: max(max(live[girder, place, BIGGER_IS_WORSE].response, 0.0) - min(live[girder, place, SMALLER_IS_WORSE].response, 0.0)
+    live_shear_range_kn = {girder: max(max(searched[girder, place, BIGGER_IS_WORSE].response, 0.0) - min(searched[girder, place, SMALLER_IS_WORSE].response, 0.0)
                                      for place in places if place[0] == SUPPORT_SHEAR)
                            for girder in girders}
     return DesignValues(results, dead, deflections, fatigue, live_shear_range_kn, thermal_results(bridge, temperature), surfaces_out, criticals, stations,
@@ -349,6 +355,21 @@ def fatigue_stress(solver, model, bridge, girder, face, y_m, station):
 # one flange-stress surface before its fatigue search
 def stress_surface(solver, model, girder, face, y_m, station):
     return solver.for_girder_stress_mpa(f"girder {girder}, {face} stress at {model.mesh.length_mesh_m[station]:.3f} m", model.element_of_girder_at(girder, station), model.girders[girder], y_m)
+
+
+# of each direction's candidate placements (the search's worst and every other arrangement's worst), the one whose live load plus
+# braking is worst: vehicles 'occupy any position which will produce maximum load effects' (cl. 204.1.2) and braking is part of them
+def settle_braking(model, live, read, target, height_above_deck_m):
+    settled = {}
+    for adverse, critical in live.items():
+        candidates = [critical, *critical.alternatives]
+        totals = [live_with_braking(model, candidate, read, *target, height_above_deck_m=height_above_deck_m) for candidate in candidates]
+        worst = max(totals) if adverse == BIGGER_IS_WORSE else min(totals)
+        chosen = candidates[totals.index(worst)]
+        if chosen is not critical:
+            chosen.searched = critical
+        settled[adverse] = chosen
+    return settled
 
 
 # live load response plus the worse of the two braking directions

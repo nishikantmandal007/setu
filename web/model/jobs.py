@@ -213,9 +213,9 @@ _live_braking = design_values.live_with_braking
 _combine = design_values.governing_by_limit_state
 
 
-# publish both solved braking directions
+# publish both solved braking directions; candidate checks (no details asked) are not shown or counted
 def observe_braking(model, critical, read, girder, place, **kwargs):
-    job = _running
+    job = _running if kwargs.get("details") is not None else None
     if job is not None:
         job.phase("Searching traffic", "Applying braking with traffic", girder=girder, response=place[0], adverse=critical.adverse)
     value = _live_braking(model, critical, read, girder, place, **kwargs)

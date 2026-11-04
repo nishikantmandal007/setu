@@ -4,7 +4,7 @@ from setu.analysis.along_span import vehicle_responses
 from setu.analysis.critical_position import find_critical_position
 from setu.analysis.influence_surface import response_to_load_case
 from setu.loads.load_cases import LoadCase
-from setu.postprocess.design_values import BOTH_DIRECTIONS, girder_values, governing_by_limit_state, load_effects
+from setu.postprocess.design_values import BOTH_DIRECTIONS, girder_values, governing_by_limit_state, load_effects, settle_braking
 from setu.postprocess.parallel import analysis_for
 from setu.postprocess.governing_diagrams import bridge_diagrams
 
@@ -58,8 +58,8 @@ def brace_values(analysis, bridge, seismic, braking_height_above_deck_m, *, keep
             members[member], combinations_by_member[member] = governing, combinations
         return BraceDesignValues(members, surfaces, criticals, combinations_by_member)
     for member, surface, found in solved_members(analysis, bridge, search_pool):
-        criticals.update({(*member, adverse): found[adverse] for adverse in BOTH_DIRECTIONS})
         members[member], combinations_by_member[member] = member_values(analysis, seismic, braking_height_above_deck_m, member, surface, found)
+        criticals.update({(*member, adverse): found[adverse] for adverse in BOTH_DIRECTIONS})
         # A member's surface is finished with here: on a wide deck hundreds of them are gigabytes.
         if keep_surfaces:
             surfaces[member] = surface
@@ -71,6 +71,7 @@ def brace_values(analysis, bridge, seismic, braking_height_above_deck_m, *, keep
 # one member's governing values from its surface and worst traffic
 def member_values(analysis, seismic, braking_height_above_deck_m, member, surface, found):
     read = brace_reader({member: surface})
+    found.update(settle_braking(analysis.model, found, read, (member, None), braking_height_above_deck_m))
     effects = load_effects(analysis, analysis.dead.brace_stages, found, read, (member, None), member, seismic, braking_height_above_deck_m, {})
     at_m = analysis.model.mesh.brace_lines_m[member[1]]
     return governing_by_limit_state(effects, analysis.combinations, analysis.wind_forces, read, member, None, at_m)

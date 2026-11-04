@@ -40,6 +40,10 @@ class CriticalPosition:
         self.residual_udl_strips = residual_udl_strips
         self.footway_strips = footway_strips
         self.wearing_course_thickness_m = wearing_course_thickness_m
+        # every other lane arrangement's worst placement, for choosing with braking added (cl. 204.1.2, 211.2)
+        self.alternatives = []
+        # the search's own worst placement, when braking settled on another: its live mass still counts for seismic
+        self.searched = None
 
     # printed summary of the critical position
     def describe(self):

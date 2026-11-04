@@ -8,8 +8,12 @@ from setu.analysis.across_carriageway import carries_a_residual_udl, envelope_ev
 
 
 # the worst legal IRC:6 traffic for this influence surface; lane_reduction=False for cross girders and diaphragms (Table 8 note 3, Amendment 10)
+# Every other arrangement's worst placement rides along as .alternatives: braking, added later on the real solve, can make one of them worse.
 def find_critical_position(surface, cross_section, span_m, adverse, wearing_course_thickness_m, sampling=DEFAULT_SAMPLING, lane_reduction=True):
-    return next(described_positions(surface, cross_section, span_m, adverse, wearing_course_thickness_m, sampling, lane_reduction))
+    ranked = list(described_positions(surface, cross_section, span_m, adverse, wearing_course_thickness_m, sampling, lane_reduction))
+    worst = ranked[0]
+    worst.alternatives = ranked[1:]
+    return worst
 
 
 # every legal IRC:6 lane layout for this surface, worst first: vehicles, residual UDL and footway load
