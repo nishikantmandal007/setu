@@ -317,7 +317,7 @@ def find_worst_trains(response_to_one_vehicle, positions_m, pitch_m, most_vehicl
     came_from_each_vehicle = []
     still_fits = np.ones(signed_one.shape[0], bool)
     signed_worst = np.full(signed_one.shape[0], -np.inf)
-    worst_train = [None] * signed_one.shape[0]  # (chosen positions of its length, its column among them) of each row's worst train
+    worst_train = [None] * signed_one.shape[0]  # (positions of its length, its column among them, responses of its length) of each row's worst train
     for vehicles in range(1, int(most_vehicles) + 1):
         if vehicles > 1:
             signed_total, came_from = add_a_vehicle(signed_one, signed_total, vehicle_in_front)
@@ -332,17 +332,11 @@ def find_worst_trains(response_to_one_vehicle, positions_m, pitch_m, most_vehicl
             response = response + across_then_along[columns, position]
         signed_response = adverse_sign(adverse) * response
         is_worse_here = signed_response > signed_worst[columns]  # strictly worse, so a longer train must beat a shorter one
+        chosen_m = positions_m[np.stack(chosen, axis=1)]
         for k in np.flatnonzero(is_worse_here):
-            worst_train[columns[k]] = (chosen, k)
+            worst_train[columns[k]] = (chosen_m, k, response)
         signed_worst[columns[is_worse_here]] = signed_response[is_worse_here]
-    return [None if train is None else placed_train(across_then_along, positions_m, train[0], train[1], row) for row, train in enumerate(worst_train)]
-
-# a row's worst train with its response summed front to back, as it was compared
-def placed_train(across_then_along, positions_m, chosen, k, row):
-    response = 0.0
-    for position in chosen:
-        response = response + across_then_along[row, position[k]]
-    return TrainPlacement(response=float(response), positions_m=tuple(float(positions_m[position[k]]) for position in chosen))
+    return [None if train is None else TrainPlacement(response=float(train[2][train[1]]), positions_m=tuple(train[0][train[1]].tolist())) for train in worst_train]
 
 # the worst train's positions for the chosen rows across, front vehicle first, read back from the last vehicle
 def walk_back_every_column(signed_total, came_from_each_vehicle, columns):

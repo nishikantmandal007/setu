@@ -9,6 +9,8 @@ from setu.utils.constants import (
     END_I_FORCE_TO_INTERNAL_FORCE,
     LOAD_CASE_PATTERN_BASE,
     LONG_TERM,
+    MY_I,
+    MY_J,
     MZ_I,
     MZ_J,
     N_I,
@@ -16,6 +18,8 @@ from setu.utils.constants import (
     T_I,
     T_J,
     VY_I,
+    VZ_I,
+    VZ_J,
     VY_J,
 )
 
@@ -25,7 +29,7 @@ from setu.utils.constants import (
 class GirderForces:
 
     # one girder's internal forces and downward deflection along it, and the reactions on its bearings at x = 0 and at the far end
-    def __init__(self, stations_m, moment_kn_m, shear_kn, torsion_kn_m, axial_kn, composite_lever_arm_m, deflection_m, reaction_kn, end_reaction_kn):
+    def __init__(self, stations_m, moment_kn_m, shear_kn, torsion_kn_m, axial_kn, composite_lever_arm_m, deflection_m, reaction_kn, end_reaction_kn, *, weak_axis_shear_kn=None, weak_axis_moment_kn_m=None, displacements_m=None):
         self.stations_m = np.asarray(stations_m, float)
         self.moment_kn_m = np.asarray(moment_kn_m, float)
         self.shear_kn = np.asarray(shear_kn, float)
@@ -35,6 +39,10 @@ class GirderForces:
         self.deflection_m = np.asarray(deflection_m, float)
         self.reaction_kn = float(reaction_kn)
         self.end_reaction_kn = float(end_reaction_kn)
+        # for full result plots: shear and moment about the other axis, and the six displacements of each station
+        self.weak_axis_shear_kn = None if weak_axis_shear_kn is None else np.asarray(weak_axis_shear_kn, float)
+        self.weak_axis_moment_kn_m = None if weak_axis_moment_kn_m is None else np.asarray(weak_axis_moment_kn_m, float)
+        self.displacements_m = None if displacements_m is None else np.asarray(displacements_m, float)
 
     # steel moment plus the axial couple about the slab
     @property
@@ -51,22 +59,29 @@ def girder_forces(model, girder_index):
     shear = np.zeros(n_stations)
     torsion = np.zeros(n_stations)
     axial = np.zeros(n_stations)
+    weak_shear = np.zeros(n_stations)
+    weak_moment = np.zeros(n_stations)
     for e in range(n_elements):
         f = backend.element_local_forces(model.girder_elements[girder_index, e])
         axial[e] = END_I_FORCE_TO_INTERNAL_FORCE * f[N_I]
         shear[e] = END_I_FORCE_TO_INTERNAL_FORCE * f[VY_I]
         torsion[e] = END_I_FORCE_TO_INTERNAL_FORCE * f[T_I]
         moment[e] = END_I_FORCE_TO_INTERNAL_FORCE * f[MZ_I]
+        weak_shear[e] = END_I_FORCE_TO_INTERNAL_FORCE * f[VZ_I]
+        weak_moment[e] = END_I_FORCE_TO_INTERNAL_FORCE * f[MY_I]
         if e == n_elements - 1:
             axial[e + 1] = f[N_J]
             shear[e + 1] = f[VY_J]
             torsion[e + 1] = f[T_J]
             moment[e + 1] = f[MZ_J]
+            weak_shear[e + 1] = f[VZ_J]
+            weak_moment[e + 1] = f[MY_J]
     deflection_m = [-backend.node_displacement(model.girder_nodes[girder_index, i], VERTICAL_DOF) for i in range(n_stations)]
     reaction_kn = -BEARING_VERTICAL_STIFFNESS_KN_PER_M * backend.node_displacement(model.bearings[girder_index, 0], VERTICAL_DOF)
     end_reaction_kn = -BEARING_VERTICAL_STIFFNESS_KN_PER_M * backend.node_displacement(model.bearings[girder_index, n_stations - 1], VERTICAL_DOF)
     return GirderForces(stations_m, moment, shear, torsion, axial, model.composite_lever_arm_m(girder_index), deflection_m, reaction_kn,
-                        end_reaction_kn=end_reaction_kn)
+                        end_reaction_kn=end_reaction_kn, weak_axis_shear_kn=weak_shear, weak_axis_moment_kn_m=weak_moment,
+                        displacements_m=[backend.node_displacements(model.girder_nodes[girder_index, i]) for i in range(n_stations)])
 
 # Upward vertical spring reactions, keyed by (girder index, bearing station index).
 def bearing_reactions(model):
@@ -110,10 +125,14 @@ class DeadLoadForces:
         return {girder: sum_of(scaled(forces[girder], factors[STAGE_IS_FACTORED_AS[name]]) for name, forces in self.stages.items()) for girder in girders}
 
 
+OPTIONAL_RESULTS = ("weak_axis_shear_kn", "weak_axis_moment_kn_m", "displacements_m")
+
+
 # girder forces times a factor
 def scaled(forces, factor):
+    optional = {name: None if getattr(forces, name) is None else factor * getattr(forces, name) for name in OPTIONAL_RESULTS}
     return GirderForces(forces.stations_m, factor * forces.moment_kn_m, factor * forces.shear_kn, factor * forces.torsion_kn_m, factor * forces.axial_kn,
-                        forces.composite_lever_arm_m, factor * forces.deflection_m, factor * forces.reaction_kn, factor * forces.end_reaction_kn)
+                        forces.composite_lever_arm_m, factor * forces.deflection_m, factor * forces.reaction_kn, factor * forces.end_reaction_kn, **optional)
 
 
 # girder forces added up
@@ -130,6 +149,7 @@ def sum_of(girder_forces):
         sum(forces.deflection_m for forces in girder_forces),
         sum(forces.reaction_kn for forces in girder_forces),
         sum(forces.end_reaction_kn for forces in girder_forces),
+        **{name: None if getattr(first, name) is None else sum(getattr(forces, name) for forces in girder_forces) for name in OPTIONAL_RESULTS},
     )
 
 

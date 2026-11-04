@@ -29,8 +29,8 @@ def test_fig_17b_heating_and_cooling_with_50_mm_surfacing():
     """h = 0.25 m: dT1 halfway between 18 and 20.5 heating, -4.4 and -6.8 cooling; h1 = 0.15 m, h1 + h2 = 0.55 m."""
     profiles = temperature_difference_profiles(0.25, 0.05)
 
-    assert profiles[HEATING] == pytest.approx([(0.0, 19.25), (0.15, 4.0), (0.55, 0.0)])
-    assert profiles[COOLING] == pytest.approx([(0.0, -5.6), (0.15, 0.0), (0.55, -8.0)])
+    assert [point for pair in profiles[HEATING] for point in pair] == pytest.approx([0.0, 19.25, 0.15, 4.0, 0.55, 0.0])
+    assert [point for pair in profiles[COOLING] for point in pair] == pytest.approx([0.0, -5.6, 0.15, 0.0, 0.55, -8.0])
 
 
 @pytest.mark.parametrize("slab_m, surfacing_m, heating_c, cooling_c", [
