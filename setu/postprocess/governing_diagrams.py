@@ -9,7 +9,7 @@ from setu.loads.load_builders import live_load
 from setu.loads.load_cases import LoadCase
 from setu.postprocess import progress
 from setu.postprocess.design_values import BOTH_DIRECTIONS, effects_in, load_effects, reader, wind_alternatives, wind_on_the_vehicles
-from setu.postprocess.girder_response import analyze_load_case, scaled, sum_of
+from setu.postprocess.girder_response import analyze_load_case, brace_force_array, scaled, sum_of
 from setu.solver import backend
 
 REPLAY_REL_TOLERANCE = 1e-12  # Python sums plain floats with compensation and recipes without, so the last bits can differ
@@ -64,26 +64,29 @@ class LiveArrangement:
 
 
 class GoverningDiagram:
-    # one governing design value replayed along every girder: where and how it governs, and each girder's factored forces
-    def __init__(self, girder, response, limit_state, adverse, governing, forces):
+    # one governing design value replayed along every girder: where and how it governs, each girder's factored forces, and every
+    # brace member's factored axial force (kN, in BridgeDiagrams.brace_members order) under the same loads
+    def __init__(self, girder, response, limit_state, adverse, governing, forces, brace_forces_kn=None):
         self.girder = girder
         self.response = response
         self.limit_state = limit_state
         self.adverse = adverse
         self.governing = governing
         self.forces = forces
+        self.brace_forces_kn = brace_forces_kn
 
 
 class BridgeDiagrams:
     # forces along every girder for every solved load state beyond the dead load stages: each critical live arrangement and
     # its braking, the wind cases and every governing combination; and the plan position (x, z) of every girder node and deck edge node
-    def __init__(self, live, braking, wind, governing, girder_positions_m, edge_positions_m):
+    def __init__(self, live, braking, wind, governing, girder_positions_m, edge_positions_m, brace_members=()):
         self.live = live
         self.braking = braking
         self.wind = wind
         self.governing = governing
         self.girder_positions_m = girder_positions_m
         self.edge_positions_m = edge_positions_m
+        self.brace_members = list(brace_members)  # (pair, station, role) of each entry in a governing diagram's brace_forces_kn
 
 
 # the value of a response or of a number
@@ -114,10 +117,14 @@ def station_at(model, at_m):
 
 # solves each distinct load once and keeps every girder's forces under it
 class LoadSolver:
-    # nothing solved yet
-    def __init__(self, model):
+    # nothing solved yet; dead: the dead load stages, whose brace forces were read when they were solved
+    def __init__(self, model, dead=None):
         self.model = model
         self.solved = {}
+        self.braces = {}
+        order = list(model.brace_elements)
+        self.dead_braces = {} if dead is None else {id(dead.stages[stage]): np.array([dead.brace_stages[stage][member] for member in order])
+                                                    for stage in dead.stages}
 
     # every girder's forces under one source: dead stage forces as they are, a load case or a live arrangement solved once
     def forces(self, source):
@@ -126,8 +133,18 @@ class LoadSolver:
             return source
         if key not in self.solved:
             case = live_load(self.model, source.critical, source.surface) if isinstance(source, LiveArrangement) else source
-            self.solved[key] = (source, analyze_load_case(self.model, case))
+            self.solved[key] = (source, analyze_load_case(self.model, case, on_solved=lambda _: self.braces.__setitem__(key, brace_force_array(self.model))))
         return self.solved[key][1]
+
+    # every brace member's axial force under one source, read off the same solve as its girder forces
+    def brace_forces(self, source):
+        key = source_key(source)
+        if key is None:
+            if id(source) not in self.dead_braces:
+                raise SetuError("a load state term is neither a solved load nor a dead load stage, so its brace forces are unknown")
+            return self.dead_braces[id(source)]
+        self.forces(source)
+        return self.braces[key]
 
     # queue each distinct physical load once, then keep the solved forces in source order
     def prepare(self, sources, work):
@@ -138,12 +155,18 @@ class LoadSolver:
                 case = live_load(self.model, source.critical, source.surface) if isinstance(source, LiveArrangement) else source
                 pending[key] = (source, work.load(case))
         progress.start(len(pending))
-        self.solved = {key: (source, progress.passing(future.result())) for key, (source, future) in pending.items()}
+        results = {key: (source, progress.passing(future.result())) for key, (source, future) in pending.items()}
+        self.solved = {key: (source, girders) for key, (source, (girders, _)) in results.items()}
+        self.braces = {key: braces for key, (_, (_, braces)) in results.items()}
 
     # every girder's forces under a sum of factored sources
     def combined(self, terms):
         parts = [(coefficient, self.forces(source)) for coefficient, source in terms]
         return {girder: sum_of(scaled(forces[girder], coefficient) for coefficient, forces in parts) for girder in parts[0][1]}
+
+    # every brace member's axial force under the same sum
+    def combined_braces(self, terms):
+        return sum(coefficient * self.brace_forces(source) for coefficient, source in terms)
 
 
 # the existing identity keys for traffic and content keys for ordinary load cases
@@ -176,7 +199,7 @@ def diagram_sources(analysis, values, seismic, braking_height_above_deck_m, term
 
 # every governing girder design value replayed as forces along all girders, with the dead stages, live arrangements, braking and wind
 def bridge_diagrams(analysis, values, seismic, braking_height_above_deck_m):
-    solver = LoadSolver(analysis.model)
+    solver = LoadSolver(analysis.model, analysis.dead)
     terms_by_key = {}
     if analysis.work is not None:
         solver.prepare(diagram_sources(analysis, values, seismic, braking_height_above_deck_m, terms_by_key), analysis.work)
@@ -195,10 +218,11 @@ def bridge_diagrams(analysis, values, seismic, braking_height_above_deck_m):
             for limit_state, by_adverse in by_limit_state.items():
                 for adverse, value in by_adverse.items():
                     terms = terms_by_key[girder, response, limit_state, adverse] if analysis.work is not None else replayed_terms(analysis, values, seismic, braking_height_above_deck_m, girder, response, adverse, value)
-                    governing[girder, response, limit_state, adverse] = GoverningDiagram(girder, response, limit_state, adverse, value, solver.combined(terms))
+                    governing[girder, response, limit_state, adverse] = GoverningDiagram(girder, response, limit_state, adverse, value, solver.combined(terms),
+                                                                                         solver.combined_braces(terms))
                     if analysis.work is None:
                         progress.step()
-    return BridgeDiagrams(live, braking, wind, governing, *plan_positions(analysis.model))
+    return BridgeDiagrams(live, braking, wind, governing, *plan_positions(analysis.model), brace_members=analysis.model.brace_elements)
 
 
 # plan position (x, z) of each girder's nodes and of the deck's left and right edge nodes, station by station

@@ -94,6 +94,11 @@ def brace_forces(model):
     return {key: backend.truss_axial_force(element) for key, element in model.brace_elements.items()}
 
 
+# every brace member's axial force (kN, tension positive) in the model's brace order, read off the load state solved now
+def brace_force_array(model):
+    return np.array([backend.truss_axial_force(element) for element in model.brace_elements.values()])
+
+
 # solve one load case and read every girder's forces
 def analyze_load_case(model, load_case, pattern_tag=None, *, on_solved=None):
     tag = pattern_tag if pattern_tag is not None else LOAD_CASE_PATTERN_BASE
@@ -102,6 +107,13 @@ def analyze_load_case(model, load_case, pattern_tag=None, *, on_solved=None):
         if on_solved is not None:
             on_solved(forces)
         return forces
+
+
+# a load case's girder forces, and its brace members' forces read off the same solve
+def analyze_with_braces(model, load_case):
+    braces = []
+    forces = analyze_load_case(model, load_case, on_solved=lambda _: braces.append(brace_force_array(model)))
+    return forces, braces[0]
 
 
 STEEL_SELF_WEIGHT = "steel self weight"

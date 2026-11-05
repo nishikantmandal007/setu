@@ -11,7 +11,7 @@ from setu.postprocess import progress
 from setu.postprocess.construction import construction_design_values
 from setu.postprocess.governing_diagrams import bridge_diagrams
 from setu.postprocess.special_vehicle import keep_worst, special_vehicle_combinations, special_vehicle_effects, special_vehicle_member, special_vehicle_values
-from setu.postprocess.girder_response import analyze_load_case
+from setu.postprocess.girder_response import analyze_with_braces
 from setu.loads.wind_loads import wind_load_cases
 from setu.loads.seismic_loads import seismic_load_cases
 from setu.utils.constants import BASIC, BIGGER_IS_WORSE
@@ -97,7 +97,7 @@ def special_vehicle_member_task(member):
 
 
 def load_task(load_case):
-    return analyze_load_case(shared[0].model, load_case)
+    return analyze_with_braces(shared[0].model, load_case)
 
 
 class Pending:
