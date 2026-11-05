@@ -7,6 +7,7 @@ from concurrent.futures import ProcessPoolExecutor
 from setu.postprocess.brace_design_values import BridgeDesignValues, brace_values, member_values, search_member
 from setu.postprocess.design_values import (MIDSPAN_DEFLECTION, MAX_MOMENT, girder_values, midspan_deck_node_over, search_deflection,
                                             search_place, search_stress, shared_analysis, stress_surface, surface_for, places_to_design)
+from setu.postprocess import progress
 from setu.postprocess.construction import construction_design_values
 from setu.postprocess.governing_diagrams import bridge_diagrams
 from setu.postprocess.special_vehicle import keep_worst, special_vehicle_combinations, special_vehicle_effects, special_vehicle_member, special_vehicle_values
@@ -49,6 +50,17 @@ def stress_task(girder, face, y_m, station):
     return search_stress(surface, float(analysis.model.mesh.length_mesh_m[station]), *search_args()[:2])
 
 
+# Once braking has settled each direction's placement, the other arrangements' placements (hundreds per response on a wide deck) are
+# never read again; only values leave this process, so they are let go rather than carried back and held.
+def settled_only(criticals):
+    for critical in criticals:
+        if critical is None:
+            continue
+        critical.alternatives = []
+        if critical.searched is not None:
+            critical.searched.alternatives = []
+
+
 def member_task(member):
     from setu.postprocess.brace_design_values import brace_surface
     analysis, bridge, seismic, braking_height_m = shared
@@ -56,7 +68,9 @@ def member_task(member):
     analysis.solver.surfaces.clear()
     found = search_member(surface, *search_args())
     special = special_vehicle_member(analysis, bridge, member, surface) if with_special_vehicle else None
-    return (member, found, *member_values(analysis, seismic, braking_height_m, member, surface, found), special)
+    values = member_values(analysis, seismic, braking_height_m, member, surface, found)
+    settled_only(found.values())
+    return (member, found, *values, special)
 
 
 def special_vehicle_place_task(args):
@@ -130,6 +144,11 @@ def site_forces(model, wind, seismic, girders):
     return forces
 
 
+# only this process talks to the caller: a forked worker that counted would write on its pipe alongside it
+def progress_stays_here():
+    progress.report = None
+
+
 # girders, braces and diagrams: forked workers where the platform can fork, light search workers where it cannot
 # special_vehicle: also design for Class SV; construction: a ConstructionLoads for the bare-steel stage (wind and construction_seismic,
 # a site with importance factor 1, go with it)
@@ -145,7 +164,7 @@ def run_analysis(bridge, wind, seismic, temperature, braking_height_m, workers, 
     surface_for(analysis.solver, analysis.model, 0, places[0])
     analysis.solver.surfaces.clear()
     if workers > 1 and "fork" in multiprocessing.get_all_start_methods():
-        with multiprocessing.get_context("fork").Pool(workers) as pool:
+        with multiprocessing.get_context("fork").Pool(workers, initializer=progress_stays_here) as pool:
             analysis.work = ForkedWork(pool, analysis.model, girders_range, places)
             phase("solving and searching the girders")
             girder_results = girder_values(analysis, bridge, seismic, temperature, braking_height_m)
@@ -183,6 +202,7 @@ def run_analysis(bridge, wind, seismic, temperature, braking_height_m, workers, 
     forces = site_forces(analysis.model, wind, seismic, girder_results)
     # Only values leave this process: influence surfaces stay behind and vanish with it.
     girder_results.surfaces = girder_results.place_surfaces = {}
+    settled_only([*girder_results.criticals.values(), *girder_results.place_criticals.values(), *brace_results.criticals.values()])
     if construction is not None:
         phase("the construction stage on the bare steel")
         construction = construction_design_values(bridge, construction, wind, construction_seismic)
@@ -193,6 +213,7 @@ def own_process_main(connection, arguments, options):
     if hasattr(os, "setsid"):
         os.setsid()  # so a Stop can end this process and its forked workers together
     try:
+        progress.report = lambda done, total: connection.send(("progress", (done, total)))
         connection.send(("done", run_analysis(*arguments, lambda text: connection.send(("phase", text)), **options)))
     except Exception:
         connection.send(("error", traceback.format_exc()))
@@ -200,9 +221,9 @@ def own_process_main(connection, arguments, options):
 
 
 # run the whole analysis in a process of its own: no GUI to fork under, and every byte of it returns to the system when it ends.
-# check() may raise to stop the run; phase(text) reports progress.
+# check() may raise to stop the run; phase(text) names each stage as it starts and progress(done, total) counts its items.
 def solve_in_own_process(bridge, wind, seismic, temperature, braking_height_m, *, workers, phase=lambda text: None, check=lambda: None,
-                         special_vehicle=False, construction=None, construction_seismic=None):
+                         special_vehicle=False, construction=None, construction_seismic=None, progress=lambda done, total: None):
     context = multiprocessing.get_context("spawn")
     ours, theirs = context.Pipe()
     process = context.Process(target=own_process_main, args=(theirs, (bridge, wind, seismic, temperature, braking_height_m, workers),
@@ -230,6 +251,8 @@ def solve_in_own_process(bridge, wind, seismic, temperature, braking_height_m, *
                 raise RuntimeError(f"the setu analysis process ended unexpectedly (exit code {process.exitcode})") from None
             if kind == "phase":
                 phase(payload)
+            elif kind == "progress":
+                progress(*payload)
             elif kind == "error":
                 raise RuntimeError(f"setu analysis failed:\n{payload}")
             else:

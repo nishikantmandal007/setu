@@ -4,6 +4,7 @@ from setu.analysis.along_span import vehicle_responses
 from setu.analysis.critical_position import find_critical_position
 from setu.analysis.influence_surface import response_to_load_case
 from setu.loads.load_cases import LoadCase
+from setu.postprocess import progress
 from setu.postprocess.design_values import BOTH_DIRECTIONS, girder_values, governing_by_limit_state, load_effects, settle_braking
 from setu.postprocess.parallel import analysis_for
 from setu.postprocess.governing_diagrams import bridge_diagrams
@@ -59,6 +60,7 @@ def brace_values(analysis, bridge, seismic, braking_height_above_deck_m, *, keep
     members, combinations_by_member = {}, {}
     special_vehicle_by_member = {} if special_vehicle else None
     work = analysis.work
+    progress.start(len(analysis.model.brace_elements))
     if hasattr(work, "members"):
         # Forked workers finish each member themselves: only its values come back.
         for member, found, governing, combinations, special in work.members(analysis.model):
@@ -66,6 +68,7 @@ def brace_values(analysis, bridge, seismic, braking_height_above_deck_m, *, keep
             members[member], combinations_by_member[member] = governing, combinations
             if special_vehicle:
                 special_vehicle_by_member[member] = special
+            progress.step()
         return BraceDesignValues(members, surfaces, criticals, combinations_by_member, special_vehicle_by_member)
     for member, surface, found in solved_members(analysis, bridge, search_pool):
         members[member], combinations_by_member[member] = member_values(analysis, seismic, braking_height_above_deck_m, member, surface, found)
@@ -77,6 +80,7 @@ def brace_values(analysis, bridge, seismic, braking_height_above_deck_m, *, keep
             surfaces[member] = surface
         else:
             analysis.solver.surfaces.pop(surface.name, None)
+        progress.step()
     return BraceDesignValues(members, surfaces, criticals, combinations_by_member, special_vehicle_by_member)
 
 

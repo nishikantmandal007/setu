@@ -7,6 +7,7 @@ from setu.errors import SetuError
 from setu.irc6.combinations import design_value
 from setu.loads.load_builders import live_load
 from setu.loads.load_cases import LoadCase
+from setu.postprocess import progress
 from setu.postprocess.design_values import BOTH_DIRECTIONS, effects_in, load_effects, reader, wind_alternatives, wind_on_the_vehicles
 from setu.postprocess.girder_response import analyze_load_case, scaled, sum_of
 from setu.solver import backend
@@ -136,7 +137,8 @@ class LoadSolver:
             if key is not None and key not in pending:
                 case = live_load(self.model, source.critical, source.surface) if isinstance(source, LiveArrangement) else source
                 pending[key] = (source, work.load(case))
-        self.solved = {key: (source, future.result()) for key, (source, future) in pending.items()}
+        progress.start(len(pending))
+        self.solved = {key: (source, progress.passing(future.result())) for key, (source, future) in pending.items()}
 
     # every girder's forces under a sum of factored sources
     def combined(self, terms):
@@ -186,12 +188,16 @@ def bridge_diagrams(analysis, values, seismic, braking_height_above_deck_m):
             braking[girder, response, adverse] = solver.forces(details["cases"][details["selected"]])
     wind = {name: solver.forces(case) for name, case in analysis.wind_forces.items()}
     governing = {}
+    if analysis.work is None:  # solved one by one below, so count the governing values as they are replayed
+        progress.start(sum(len(by_adverse) for by_response in values.girders.values() for by_limit_state in by_response.values() for by_adverse in by_limit_state.values()))
     for girder, by_response in values.girders.items():
         for response, by_limit_state in by_response.items():
             for limit_state, by_adverse in by_limit_state.items():
                 for adverse, value in by_adverse.items():
                     terms = terms_by_key[girder, response, limit_state, adverse] if analysis.work is not None else replayed_terms(analysis, values, seismic, braking_height_above_deck_m, girder, response, adverse, value)
                     governing[girder, response, limit_state, adverse] = GoverningDiagram(girder, response, limit_state, adverse, value, solver.combined(terms))
+                    if analysis.work is None:
+                        progress.step()
     return BridgeDiagrams(live, braking, wind, governing, *plan_positions(analysis.model))
 
 

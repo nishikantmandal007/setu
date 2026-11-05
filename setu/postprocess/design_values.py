@@ -10,6 +10,7 @@ from setu.builder.assembly import BEARING_VERTICAL_STIFFNESS_KN_PER_M, build_bri
 from setu.irc6.combinations import design_value, irc6_combinations
 from setu.irc6.seismic import combine_directions
 from setu.irc6.temperature import effective_temperature_range, temperature_difference_profiles
+from setu.postprocess import progress
 from setu.loads.braking_loads import BrakingField, braking_load_cases
 from setu.loads.custom_loads import custom_load_cases
 from setu.loads.load_cases import LoadCase
@@ -198,15 +199,24 @@ class SearchWork:
         return SolvedHere(surface, pool.submit(search_deflection, surface.deck_only(), *search), lambda ranked: (ranked,))
 
 
+# one direction's worst traffic for a place searched in this process; the place is counted done with its last direction
+def searched_here(surface, bridge, adverse):
+    found = find_critical_position(surface, bridge.cross_section, bridge.span_m, adverse, bridge.wearing_course_thickness_m)
+    if adverse == BOTH_DIRECTIONS[-1]:
+        progress.step()
+    return found
+
+
 def girder_values(analysis, bridge, seismic, temperature, braking_height_above_deck_m, *, search_pool=None):
     dead, model, solver = analysis.dead, analysis.model, analysis.solver
     girders = range(bridge.girders.count)
     places = places_to_design(model)
     work = analysis.work if search_pool is None else SearchWork(search_pool, solver, model, bridge, girders, places)
-    surfaces = {(girder, place): work.places[girder, place].result()[0] if work is not None else surface_for(solver, model, girder, place) for girder in girders for place in places}
+    progress.start(len(girders) * len(places))  # each place counted once it is solved and searched
+    surfaces = {(girder, place): progress.passing(work.places[girder, place].result()[0]) if work is not None else surface_for(solver, model, girder, place) for girder in girders for place in places}
     deflection_surfaces = {girder: work.deflections[girder].result()[0] if work is not None else solver.for_deflection(f"girder {girder}, {MIDSPAN_DEFLECTION}", midspan_deck_node_over(model, girder)) for girder in girders}
 
-    live = {(girder, place, adverse): work.places[girder, place].result()[1][adverse] if work is not None else find_critical_position(surfaces[girder, place], bridge.cross_section, bridge.span_m, adverse, bridge.wearing_course_thickness_m) for girder in girders for place in places for adverse in BOTH_DIRECTIONS}
+    live = {(girder, place, adverse): work.places[girder, place].result()[1][adverse] if work is not None else searched_here(surfaces[girder, place], bridge, adverse) for girder in girders for place in places for adverse in BOTH_DIRECTIONS}
     read = reader(surfaces)
     searched = dict(live)
     by_place, combinations_at_place, braking = {}, {}, {}
