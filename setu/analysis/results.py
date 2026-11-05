@@ -44,6 +44,8 @@ class CriticalPosition:
         self.alternatives = []
         # the search's own worst placement, when braking settled on another: its live mass still counts for seismic
         self.searched = None
+        # braking goes with it (cl. 211); not with a congested or crowd case (cl. 204.4)
+        self.takes_braking = True
 
     # printed summary of the critical position
     def describe(self):

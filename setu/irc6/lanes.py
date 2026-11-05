@@ -8,6 +8,9 @@ from setu.irc6.irc_constants import (
     CLASS_A_LANE_WIDTH_M,
     CLASS_A_VEHICLE_GAP_M,
     DESIGN_LANES_BY_WIDTH,
+    CONGESTION_FACTORS,
+    CONGESTION_SPANS_M,
+    CROWD_LOAD_KPA,
     FOOTWAY_FULL_LOAD_UP_TO_SPAN_M,
     FOOTWAY_LONG_SPAN_DEDUCTION_KPA,
     FOOTWAY_LONG_SPAN_KPA_M,
@@ -278,9 +281,17 @@ def footway_live_load_strips(cross_section):
     return sorted(cross_section.footways() + wide_kerbs, key=lambda strip: strip.z_from_m)
 
 
-# each strip carrying footway live load, with its pressure
+# each strip carrying footway live load, with its pressure: 5 kN/m2 with no span reduction where crowd load is considered (206.1, 206.3)
 def footway_loaded_strips(cross_section, span_m):
-    return [(strip.z_from_m, strip.z_to_m, footway_pressure_kpa(span_m, strip.width_m)) for strip in footway_live_load_strips(cross_section)]
+    return [(strip.z_from_m, strip.z_to_m, CROWD_LOAD_KPA if cross_section.crowd_load else footway_pressure_kpa(span_m, strip.width_m))
+            for strip in footway_live_load_strips(cross_section)]
+
+
+# Table 7 congestion factor; the table starts above 10 m
+def congestion_factor(span_m):
+    if span_m <= CONGESTION_SPANS_M[0]:
+        raise ValueError(f"IRC:6 Table 7 gives the congestion factor for spans above {CONGESTION_SPANS_M[0]:.0f} m, got {span_m} m")
+    return float(np.interp(span_m, CONGESTION_SPANS_M, CONGESTION_FACTORS))
 
 # response to the footway load on every footway
 def footway_response(surface, cross_section, adverse, span_m, sampling):

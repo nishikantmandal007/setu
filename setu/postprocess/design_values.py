@@ -374,6 +374,10 @@ def settle_braking(model, live, read, target, height_above_deck_m):
 
 # live load response plus the worse of the two braking directions
 def live_with_braking(model, critical, read, girder, place, *, height_above_deck_m=None, details=None):
+    if not critical.takes_braking:
+        if details is not None:
+            details.update(cases={}, responses={}, selected=None, live=critical.response, combined=critical.response)
+        return critical.response
     cases = braking_load_cases(model, critical, height_above_deck_m=height_above_deck_m)
     responses = {name: read(case, girder, place) for name, case in cases.items()}
     choose = max if critical.adverse == BIGGER_IS_WORSE else min

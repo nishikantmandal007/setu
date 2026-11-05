@@ -64,6 +64,14 @@ FOOTWAY_LONG_SPAN_DEDUCTION_KPA = 2.6
 FOOTWAY_LONG_SPAN_KPA_M = 48.0
 FOOTWAY_WIDTH_FACTOR_BASE_M = 16.5
 FOOTWAY_WIDTH_FACTOR_DIVISOR = 15.0
+# Clause 206.1 (Amendment 10 S.No. 42): where crowd loads are likely (decided for the site), footways take 5 kN/m2 with no 206.3
+# reduction (206.3 last paragraph) and the bridge is also designed for the whole carriageway occupied by crowd load
+CROWD_LOAD_KPA = 5.0
+# Clause 204.4 (Amendment 10 S.No. 29) and Table 7: where the authority decides on congestion, a factor on the vertical load effects of
+# vehicular live load after impact (Table 8 reduction still applies); no braking, centrifugal, thermal or transverse eccentricity with it;
+# not with Class SV. Table 7: above 10 m up to 30 m 1.15, then 1.30 at 40 m, 1.45 at 50 m, 1.60 at 60 m, 1.70 at 70 m and beyond; interpolate
+CONGESTION_SPANS_M = (10.0, 30.0, 40.0, 50.0, 60.0, 70.0)
+CONGESTION_FACTORS = (1.15, 1.15, 1.30, 1.45, 1.60, 1.70)
 # Clause 206.2 (Amendment 10 S.No. 43): kerbs carry the footway load; 'If kerb width is less than 0.75m, no live load shall be applied'
 KERB_CARRIES_FOOTWAY_LOAD_FROM_M = 0.75
 

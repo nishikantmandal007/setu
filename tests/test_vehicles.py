@@ -132,6 +132,12 @@ def test_a_measurement_cannot_be_zero_or_negative():
         )
 
 
-def test_the_registry_holds_the_three_standard_vehicles():
-    assert set(IRC_VEHICLES) == {"Class_A", "Class_70R_Wheeled", "Class_70R_Tracked"}
+def test_the_registry_holds_the_irc_vehicles():
+    """Class A, 70R wheeled and tracked, and Fig. 1's maximum single axle (200 kN) and bogie (2 x 200 kN at 1.22 m)."""
+    assert set(IRC_VEHICLES) == {"Class_A", "Class_70R_Wheeled", "Class_70R_Tracked", "Class_70R_Single_Axle", "Class_70R_Bogie"}
+    bogie, axle = IRC_VEHICLES["Class_70R_Bogie"], IRC_VEHICLES["Class_70R_Single_Axle"]
+    assert bogie.total_load_kn() == pytest.approx(400.0) and bogie.axle_spacing_m == (1.22,)
+    assert axle.total_load_kn() == pytest.approx(200.0)
+    for vehicle in (bogie, axle):  # Fig. 1 note 1: at least 30 m from the rear axle to the next vehicle's first axle
+        assert vehicle.trail_clearance_m + vehicle.min_nose_to_tail_m + vehicle.lead_clearance_m == pytest.approx(30.0)
     assert np.isfinite([v.total_load_kn() for v in IRC_VEHICLES.values()] ).all()

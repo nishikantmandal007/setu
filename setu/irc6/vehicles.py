@@ -87,7 +87,7 @@ CLASS_70R_WHEELED = AxleVehicle(
     axle_loads_kn=(80.0, 120.0, 120.0, 170.0, 170.0, 170.0, 170.0),
     axle_spacing_m=(3.96, 1.52, 2.13, 1.37, 3.05, 1.37),
     transverse_gauge_m=1.93,
-    lead_clearance_m=0.61,  # Amendment 10 Fig. 1 (base 2017 printed 0.81; decision D14)
+    lead_clearance_m=0.61,  # Amendment 10 Fig. 1 (base 2017 printed 0.81; decision D14); NPTEL IIT Kharagpur RC Road Bridges lecture 4 also reads 610 mm
     trail_clearance_m=0.91,
     min_nose_to_tail_m=28.48,  # Fig. 1 note 1: >= 30 m rear axle to next front axle = 30 - 0.61 - 0.91
 )
@@ -108,12 +108,34 @@ CLASS_A = AxleVehicle(
     trail_clearance_m=0.9,
     min_nose_to_tail_m=18.5,
 )
+# Fig. 1 (Amendment 10) and its note 3: 'The maximum loads for the wheeled vehicle shall be 200 kN for a single axle or 400 kN for a bogie
+# of two axles spaced not more than 1.22 m centres', drawn as MAX. SINGLE AXLE LOAD (1.220 m either side) and MAX. BOGIE LOAD (1.830,
+# 1.220, 1.830 m); wheel lines as the 70R wheeled (2.79 m over the tyres less 0.86 m tyre groups); note 1: at least 30 m from the
+# rear axle to the next vehicle's first axle. Checked as loads in their own right (NPTEL, IIT Kharagpur, RC Road Bridges, lecture 4).
+CLASS_70R_SINGLE_AXLE = AxleVehicle(
+    name="Class_70R_Single_Axle",
+    axle_loads_kn=(200.0,),
+    axle_spacing_m=(),
+    transverse_gauge_m=1.93,
+    lead_clearance_m=1.22,
+    trail_clearance_m=1.22,
+    min_nose_to_tail_m=30.0 - 1.22 - 1.22,
+)
+CLASS_70R_BOGIE = AxleVehicle(
+    name="Class_70R_Bogie",
+    axle_loads_kn=(200.0, 200.0),
+    axle_spacing_m=(1.22,),
+    transverse_gauge_m=1.93,
+    lead_clearance_m=1.83,
+    trail_clearance_m=1.83,
+    min_nose_to_tail_m=30.0 - 1.83 - 1.83,
+)
 IRC_VEHICLES = {
-    vehicle.name: vehicle for vehicle in (CLASS_70R_WHEELED, CLASS_70R_TRACKED, CLASS_A)
+    vehicle.name: vehicle for vehicle in (CLASS_70R_WHEELED, CLASS_70R_TRACKED, CLASS_70R_SINGLE_AXLE, CLASS_70R_BOGIE, CLASS_A)
 }
 VEHICLES_ALLOWED_IN_BLOCK = {
     "class_a": ("Class_A",),
-    "zone_70r": ("Class_70R_Wheeled", "Class_70R_Tracked"),
+    "zone_70r": ("Class_70R_Wheeled", "Class_70R_Tracked", "Class_70R_Single_Axle", "Class_70R_Bogie"),
 }
 
 # vehicle name without the reversed suffix

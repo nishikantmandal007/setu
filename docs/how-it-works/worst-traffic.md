@@ -14,6 +14,9 @@ With an influence surface in hand, finding the worst position means placing code
 | **Class A** train | 8 axles, 554 kN, 1.8 m wheel gauge; trains follow each other at least 18.5 m apart | 204.1, Fig. 3 |
 | **70R wheeled** | 7 axles, 1000 kN, wheel lines 1.93 m apart | 204.1, Fig. 1 |
 | **70R tracked** | two 4.57 m × 0.84 m tracks, 700 kN | 204.1, Fig. 1 |
+| **70R single axle / bogie** | 200 kN on one axle; 2 × 200 kN at 1.22 m; wheeled 70R impact, 2 lanes for braking, 30 m to the next vehicle | 204.1, Fig. 1 note 3 |
+| **Congestion** (`DeckCrossSection(congestion=True)`, set by the authority) | each placement also tried with the vehicles × Table 7 (1.15 to 30 m … 1.70 from 70 m), after impact, lane reduction kept, no braking; never with SV | 204.4, Table 7 |
+| **Crowd load** (`DeckCrossSection(crowd_load=True)`) | footways 5 kN/m² with no span reduction, and a case with 5 kN/m² over every carriageway and footway (no impact, no braking) | 206.1, 206.3 |
 | **Class SV** (`special_vehicle_design_values`) | 3850 kN: 60, 95, 95 kN prime mover, 5.427 m, 20 trailer axles of 180 kN at 1.5 m, 8 tyres an axle; centreline within 300 mm of its carriageway's centreline; nothing else on that carriageway or its footways, no impact or braking on it; other carriageways keep their traffic; factor 1.15 / 1.0 / 0.75; required for new bridges except rural, district and village roads | 201.1 (Amendment 10), 204.5, Fig. 6, 6A, 6B |
 | **Lanes** | how many design lanes fit, from the carriageway width | Table 6, 6A |
 | **Where vehicles may stand** | clearances to the kerb and to each other | 204.3, Table 3 |
