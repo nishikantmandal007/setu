@@ -14,6 +14,7 @@ With an influence surface in hand, finding the worst position means placing code
 | **Class A** train | 8 axles, 554 kN, 1.8 m wheel gauge; trains follow each other at least 18.5 m apart | 204.1, Fig. 3 |
 | **70R wheeled** | 7 axles, 1000 kN, wheel lines 1.93 m apart | 204.1, Fig. 1 |
 | **70R tracked** | two 4.57 m × 0.84 m tracks, 700 kN | 204.1, Fig. 1 |
+| **Class SV** (`special_vehicle_design_values`) | 3850 kN: 60, 95, 95 kN prime mover, 5.427 m, 20 trailer axles of 180 kN at 1.5 m, 8 tyres an axle; centreline within 300 mm of its carriageway's centreline; nothing else on that carriageway or its footways, no impact or braking on it; other carriageways keep their traffic; factor 1.15 / 1.0 / 0.75; required for new bridges except rural, district and village roads | 201.1 (Amendment 10), 204.5, Fig. 6, 6A, 6B |
 | **Lanes** | how many design lanes fit, from the carriageway width | Table 6, 6A |
 | **Where vehicles may stand** | clearances to the kerb and to each other | 204.3, Table 3 |
 | **Impact** | vehicle loads are increased by the impact factor for a steel bridge | 208 |

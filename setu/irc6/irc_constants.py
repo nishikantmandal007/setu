@@ -85,6 +85,20 @@ FATIGUE_IMPACT_SHARE = 0.5
 # Amendment 10 S.No. 11, Table 1 note: 'For wet concrete the unit weights given in the table above shall be increased by 1 kN/m3'
 WET_CONCRETE_EXTRA_KN_M3 = 1.0
 
+# Clause 204.5, Class SV (IRC:6-2017 base text with Amendment 10 S.No. 4, 33, 34). Required for all new bridges except on rural,
+# district and village roads (cl. 201.1, Amendment 10). Fig. 6 (Amendment 10): prime mover 60, 95, 95 kN at 3.200 and 1.370 m, then
+# 5.427 m to 20 trailer axles of 180 kN at 1.500 m (3850 kN). Fig. 6A: 8 tyres per axle, tyre centres 403, 647, 1153, 1397 mm either side
+# of the vehicle centreline (bogie struts at 900 mm, dual pairs 375 mm either side of a strut, tyres 244 mm apart in a pair; checks:
+# 403 and 1153 - 647 = 506 as printed), contact 156 x 274 mm, 22.5 kN a tyre. 204.5.3: centreline within 300 mm of the carriageway
+# centreline (Fig. 6B). 204.5.4: no other live load (footway included) on its carriageway, no impact or braking on it, no wind,
+# seismic or temperature gradient with it, no fatigue; partial factor on SV 1.15 ULS basic, 1.0 SLS rare, 0.75 SLS frequent.
+SPECIAL_VEHICLE_AXLE_LOADS_KN = (60.0, 95.0, 95.0) + (180.0,) * 20
+SPECIAL_VEHICLE_AXLE_SPACING_M = (3.200, 1.370, 5.427) + (1.500,) * 19
+SPECIAL_VEHICLE_TYRE_OFFSETS_M = (0.403, 0.647, 1.153, 1.397)
+SPECIAL_VEHICLE_WIDTH_M = 3.0
+SPECIAL_VEHICLE_ECCENTRICITY_M = 0.300
+SPECIAL_VEHICLE_FACTORS = {"ultimate, basic": 1.15, "serviceability, rare": 1.0, "serviceability, frequent": 0.75}
+
 # Clause 208, Figure 9 - dynamic impact allowance for a steel bridge
 SHORTEST_TABULATED_SPAN_M = 3.0
 LONGEST_TABULATED_SPAN_M = 45.0
