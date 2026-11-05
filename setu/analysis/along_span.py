@@ -77,26 +77,19 @@ class VehicleResponses:
         worst = self.worst_train_at_each_position(vehicle, response_to_one_vehicle, x_positions_m, adverse)
         factor = impact_factor(class_of(vehicle), self.span_m)
         shift_m = self.skew * z_positions_m
-        train_x_front_m = [tuple(x_m + float(shift) for x_m in train) for train, shift in zip(worst.train_x_front_m, shift_m, strict=True)]
+        train_x_front_m = worst.train_x_front_m.shifted(shift_m)
         return ResponseCurve(vehicle_name=vehicle.name, z_positions_m=z_positions_m, response=factor * worst.response, x_positions_m=worst.x_positions_m + shift_m, vehicles_in_train=worst.vehicles_in_train, train_x_front_m=train_x_front_m, impact_factor=factor)
 
     # worst train of any length at each position across
     def worst_train_at_each_position(self, vehicle, response_to_one_vehicle, x_positions_m, adverse):
         pitch_m = pitch_between_vehicles_m(vehicle)
         longest_train = most_vehicles_that_fit(vehicle, float(x_positions_m[0]), float(x_positions_m[-1]))
-        positions_across_the_width = response_to_one_vehicle.shape[1]
-        response = np.empty(positions_across_the_width)
-        leading_x_m = np.empty(positions_across_the_width)
-        vehicles_in_train = np.empty(positions_across_the_width, int)
-        trains = []
-        for z_index, worst in enumerate(find_worst_trains(response_to_one_vehicle, x_positions_m, pitch_m, longest_train, adverse)):
-            if worst is None:
-                raise RuntimeError('no legal placement was found for even a single vehicle at one of the positions across the width, but one vehicle should always fit')
-            response[z_index] = worst.response
-            leading_x_m[z_index] = worst.positions_m[0]
-            vehicles_in_train[z_index] = worst.vehicles_in_train()
-            trains.append(worst.positions_m)
-        return WorstAlongSpan(response=response, x_positions_m=leading_x_m, vehicles_in_train=vehicles_in_train, train_x_front_m=trains)
+        x_positions_m = np.asarray(x_positions_m, float)
+        lengths, response, chosen_at = worst_trains_as_arrays(response_to_one_vehicle, x_positions_m, pitch_m, longest_train, adverse)
+        if not lengths.all():
+            raise RuntimeError('no legal placement was found for even a single vehicle at one of the positions across the width, but one vehicle should always fit')
+        leading_x_m = x_positions_m[chosen_at[:, 0]]
+        return WorstAlongSpan(response=response, x_positions_m=leading_x_m, vehicles_in_train=lengths, train_x_front_m=TrainsAcross(x_positions_m, chosen_at, lengths))
 
 # the vehicle responses for one surface, shared by the searches in both directions that follow each other
 @lru_cache(maxsize=SURFACES_SEARCHED_TOGETHER)
@@ -306,47 +299,99 @@ def place_train(response_to_one_vehicle, positions_m, pitch_m, vehicles_in_train
 def find_worst_train(response_to_one_vehicle, positions_m, pitch_m, most_vehicles, adverse):
     return find_worst_trains(np.asarray(response_to_one_vehicle, float)[:, None], positions_m, pitch_m, most_vehicles, adverse)[0]
 
-# worst train of one up to the most vehicles that fit, for every position across the width in one pass;
-# each length grows the previous one, a longer train wins only if strictly worse, a position stops at its first length that cannot fit
-def find_worst_trains(response_to_one_vehicle, positions_m, pitch_m, most_vehicles, adverse):
+# worst train of one up to the most vehicles that fit, for every position across the width in one pass, as arrays: each row's train
+# length (0 when not even one vehicle fits), its response, and the index of each vehicle's position, front vehicle first.
+# Each length grows the previous one, a longer train wins only if strictly worse, a row stops at its first length that cannot fit,
+# and the vehicle in front sits where the best total behind it first reached its maximum.
+def worst_trains_as_arrays(response_to_one_vehicle, positions_m, pitch_m, most_vehicles, adverse):
     across_then_along = np.ascontiguousarray(np.asarray(response_to_one_vehicle, float).T)  # one row per position across, so each running best reads memory in order
     positions_m = np.asarray(positions_m, float)
-    signed_one = adverse_sign(adverse) * across_then_along
+    rows, along = across_then_along.shape
+    most_vehicles = int(most_vehicles)
+    sign = adverse_sign(adverse)
+    signed_one = sign * across_then_along
     vehicle_in_front = last_position_a_vehicle_in_front_could_take(positions_m, pitch_m)
-    signed_total = signed_one
-    came_from_each_vehicle = []
-    still_fits = np.ones(signed_one.shape[0], bool)
-    signed_worst = np.full(signed_one.shape[0], -np.inf)
-    worst_train = [None] * signed_one.shape[0]  # (positions of its length, its column among them, responses of its length) of each row's worst train
-    for vehicles in range(1, int(most_vehicles) + 1):
+    first_with_room = int(np.searchsorted(vehicle_in_front, 0, side='left'))  # vehicle_in_front never decreases along the span
+    in_front_of_those = vehicle_in_front[first_with_room:]
+    totals = [signed_one]  # signed best total of each train length
+    running_best = [None]  # running maximum of the previous length's totals
+    still_fits = np.ones(rows, bool)
+    signed_worst = np.full(rows, -np.inf)
+    lengths = np.zeros(rows, int)
+    responses = np.zeros(rows)
+    chosen_at = np.zeros((rows, max(most_vehicles, 1)), int)
+    every_index = np.arange(along)
+    for vehicles in range(1, most_vehicles + 1):
         if vehicles > 1:
-            signed_total, came_from = add_a_vehicle(signed_one, signed_total, vehicle_in_front)
-            came_from_each_vehicle.append(came_from)
-        still_fits &= np.isfinite(signed_total).any(axis=1)
+            best_behind = np.maximum.accumulate(totals[-1], axis=-1)
+            with_one_more = np.full((rows, along), -np.inf)
+            with_one_more[:, first_with_room:] = signed_one[:, first_with_room:] + best_behind[:, in_front_of_those]
+            totals.append(with_one_more)
+            running_best.append(best_behind)
+        current = totals[-1]
+        still_fits &= np.isfinite(current).any(axis=1)
         columns = np.flatnonzero(still_fits)
         if not len(columns):
             break
-        chosen = walk_back_every_column(signed_total, came_from_each_vehicle, columns)
+        everyone = len(columns) == rows
+        position = np.argmax(current if everyone else current[columns], axis=1)
+        chosen = [position]
+        for length in range(len(totals) - 1, 0, -1):
+            limit = vehicle_in_front[position]
+            behind = totals[length - 1] if everyone else totals[length - 1][columns]
+            best = (running_best[length] if everyone else running_best[length][columns])[np.arange(len(columns)), limit]
+            first_reached = (behind == best[:, None]) & (every_index[None, :] <= limit[:, None])
+            position = np.argmax(first_reached, axis=1)
+            chosen.append(position)
+        chosen.reverse()
         response = np.zeros(len(columns))  # 0 + first, then left to right, exactly as Python's sum over these numpy values
-        for position in chosen:
-            response = response + across_then_along[columns, position]
-        signed_response = adverse_sign(adverse) * response
-        is_worse_here = signed_response > signed_worst[columns]  # strictly worse, so a longer train must beat a shorter one
-        chosen_m = positions_m[np.stack(chosen, axis=1)]
-        for k in np.flatnonzero(is_worse_here):
-            worst_train[columns[k]] = (chosen_m, k, response)
-        signed_worst[columns[is_worse_here]] = signed_response[is_worse_here]
-    return [None if train is None else TrainPlacement(response=float(train[2][train[1]]), positions_m=tuple(train[0][train[1]].tolist())) for train in worst_train]
+        for at in chosen:
+            response = response + across_then_along[columns, at]
+        is_worse_here = sign * response > signed_worst[columns]  # strictly worse, so a longer train must beat a shorter one
+        rows_worse = columns[is_worse_here]
+        signed_worst[rows_worse] = sign * response[is_worse_here]
+        responses[rows_worse] = response[is_worse_here]
+        lengths[rows_worse] = vehicles
+        chosen_at[rows_worse, :vehicles] = np.stack(chosen, axis=1)[is_worse_here]
+    return lengths, responses, chosen_at
 
-# the worst train's positions for the chosen rows across, front vehicle first, read back from the last vehicle
-def walk_back_every_column(signed_total, came_from_each_vehicle, columns):
-    position = np.argmax(signed_total[columns], axis=1)
-    chosen = [position]
-    for came_from in reversed(came_from_each_vehicle):
-        position = came_from[columns, position]
-        chosen.append(position)
-    chosen.reverse()
-    return chosen
+
+class TrainsAcross:
+    # each position across's worst train as the front x of each vehicle, built only when asked for (most are never read):
+    # the positions along, each row's chosen indices and train length, and an optional shift per row (skew)
+    def __init__(self, positions_m, chosen_at, lengths, shift_m=None):
+        self.positions_m = positions_m
+        self.chosen_at = chosen_at
+        self.lengths = lengths
+        self.shift_m = shift_m
+
+    def __len__(self):
+        return len(self.lengths)
+
+    def __getitem__(self, row):
+        if isinstance(row, slice):
+            return [self[k] for k in range(*row.indices(len(self)))]
+        fronts_m = self.positions_m[self.chosen_at[row, :self.lengths[row]]].tolist()
+        if self.shift_m is None:
+            return tuple(fronts_m)
+        shift = float(self.shift_m[row])
+        return tuple(x_m + shift for x_m in fronts_m)
+
+    def __iter__(self):
+        return (self[row] for row in range(len(self)))
+
+    # the same trains moved by a shift per row
+    def shifted(self, shift_m):
+        return TrainsAcross(self.positions_m, self.chosen_at, self.lengths, shift_m)
+
+
+# worst train of one up to the most vehicles that fit, for every position across the width, as a TrainPlacement per row (None when
+# not even one vehicle fits)
+def find_worst_trains(response_to_one_vehicle, positions_m, pitch_m, most_vehicles, adverse):
+    positions_m = np.asarray(positions_m, float)
+    lengths, responses, chosen_at = worst_trains_as_arrays(response_to_one_vehicle, positions_m, pitch_m, most_vehicles, adverse)
+    trains = TrainsAcross(positions_m, chosen_at, lengths)
+    return [None if not lengths[row] else TrainPlacement(response=float(responses[row]), positions_m=trains[row]) for row in range(len(lengths))]
 
 # read the vehicles' positions back from the last one
 def walk_back_through_the_train(signed_best_total, position_of_the_vehicle_in_front):

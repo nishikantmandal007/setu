@@ -122,7 +122,7 @@ def train(trace, args, worst):
                                "values": responses[np.ix_(along, across)], "full_shape": list(responses.shape),
                                "minimum": float(responses.min()), "maximum": float(responses.max()),
                                "train": {"response": factor * worst.response,
-                                         "x_front_m": worst.train_x_front_m, "ordinates": ordinates}})
+                                         "x_front_m": list(worst.train_x_front_m), "ordinates": ordinates}})
 
 
 observe(critical_position, "positions_across_width", grid)
