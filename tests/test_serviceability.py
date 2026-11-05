@@ -8,7 +8,7 @@ from setu.analysis.fatigue import fatigue_range
 from setu.analysis.influence_surface import InfluenceSolver
 from setu.builder.assembly import BEARING_VERTICAL_STIFFNESS_KN_PER_M, build_bridge_model
 from setu.helpers import DEFAULT_SAMPLING
-from setu.irc6.fatigue import centreline_band_m, fatigue_impact_factor, fatigue_truck_offsets
+from setu.irc6.fatigue import centreline_band_m, fatigue_impact_factor, fatigue_train_offsets, fatigue_truck_offsets
 from setu.loads.load_cases import LoadCase
 from setu.postprocess.design_values import places_to_design
 from setu.postprocess.girder_response import analyze_load_case, dead_load_forces
@@ -90,7 +90,7 @@ def test_the_deck_is_symmetric_end_to_end_so_one_side_of_midspan_is_enough():
 
 
 def test_the_fatigue_truck_is_clause_204_6():
-    """12, 14 and 14 t on four tyres per axle, pair centres 1.68 m apart; 50% of the clause 208 impact."""
+    """120, 140 and 140 kN on four tyres per axle, pair centres 1.68 m apart; 50% of the clause 208 impact."""
     offsets = fatigue_truck_offsets()
 
     assert offsets[:, 2].sum() == pytest.approx(400.0)
@@ -132,7 +132,7 @@ def test_fatigue_stress_extremes_match_the_truck_solved_in_opensees(skew):
         station = int(np.argmin(abs(model.mesh.length_mesh_m - stress.at_m)))
         for front, expected in ((stress.x_front_at_largest_m, stress.largest), (stress.x_front_at_smallest_m, stress.smallest)):
             nodal = {}
-            for dx, dz, load in fatigue_truck_offsets():
+            for dx, dz, load in fatigue_train_offsets(stress.trucks_ahead, stress.trucks_behind):
                 share_between_nodes(model, front + dx, stress.z_centre_m + dz, load * stress.impact_factor, nodal)
             forces = analyze_load_case(model, as_a_load_case(model, nodal, "fatigue truck"))[1]
             directly_mpa = (forces.axial_kn[station] / section.area_m2

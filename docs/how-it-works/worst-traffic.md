@@ -39,4 +39,4 @@ This happens for **every girder separately**. The worst position for an edge gir
 
 ## Fatigue
 
-For fatigue, IRC:6 cl. 204.6 uses a single 400 kN truck making one passage. Setu rolls it along the worst line (outer tyre at least 150 mm from the kerb) with half the normal impact. The fatigue **range** is the largest effect minus the smallest, including the empty bridge.
+For fatigue, IRC:6 cl. 204.6 uses the Fig. 7A Fatigue Load Train of Amendment 8: the 400 kN truck, which must be included, with 120 kN trucks ahead and behind at 20 m from rear axle to front axle, as many as the influence line holds. Setu tries every such train, rolls each along the worst line (outer tyre at least 150 mm from the kerb) in one passage with half the normal impact, and keeps the worst. The fatigue **range** is the largest effect minus the smallest, including the empty bridge.

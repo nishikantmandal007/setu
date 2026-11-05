@@ -67,10 +67,14 @@ FOOTWAY_WIDTH_FACTOR_DIVISOR = 15.0
 # Clause 206.2 (Amendment 10 S.No. 43): kerbs carry the footway load; 'If kerb width is less than 0.75m, no live load shall be applied'
 KERB_CARRIES_FOOTWAY_LOAD_FROM_M = 0.75
 
-# Clause 204.6, Fig. 7 (Amendment 8, kN) - the 400 kN fatigue truck: axles 120, 140, 140 kN at 4.5 m and 1.4 m; dual tyres 310 mm wide in 710 mm pairs,
-# 2390 mm overall so the pair centres are 1.68 m apart; one truck, single passage, outer tyre edge at least 150 mm off the kerb;
-# 50% of the clause 208 impact
+# Clause 204.6 and Fig. 7 (Amendment 8, reprinted in Amendment 10 S.No. 35, kN). Fig. 7A Fatigue Load Train: the 400 kN truck
+# (axles 120, 140, 140 kN at 4.5 m and 1.4 m) 'must be included'; 120 kN trucks (36, 42, 42 kN, same spacings) ahead of and behind it,
+# 20 m (min) from one truck's rear axle to the next truck's front axle, 'only such number ... as can be accommodated in influence line'.
+# Fig. 7B: dual tyres 310 mm wide in 710 mm pairs, 2390 mm overall (pair centres 1.68 m apart). Base cl. 204.6: single passage, worst
+# position, outer tyre edge at least 150 mm off the kerb, 50 % of the clause 208 impact (Amendment 8's clause text not obtained).
 FATIGUE_TRUCK_AXLE_LOADS_KN = (120.0, 140.0, 140.0)
+FATIGUE_TRAIN_LIGHT_TRUCK_AXLE_LOADS_KN = (36.0, 42.0, 42.0)
+FATIGUE_TRAIN_GAP_M = 20.0
 FATIGUE_TRUCK_AXLE_SPACING_M = (4.5, 1.4)
 FATIGUE_TRUCK_OVERALL_WIDTH_M = 2.39
 FATIGUE_TRUCK_TYRE_PAIR_WIDTH_M = 0.71
