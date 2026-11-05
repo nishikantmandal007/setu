@@ -176,19 +176,56 @@ def block_contribution(block, block_width_m, packed_left_m, offsets_m, curves, s
         return (read_curve(curves[block], centres_m), centres_m)
     return worst_spot_inside_the_zone(block, packed_left_m, nearest_m, furthest_m, offsets_m, curves, search)
 
-# worst spot for a 70R vehicle inside its zone at each offset
+# the worse of two (signed value, position) candidates, element by element: bigger signed value, then the smaller position
+def better(value_a, position_a, value_b, position_b):
+    takes_b = (value_b > value_a) | ((value_b == value_a) & (position_b < position_a))
+    return np.where(takes_b, value_b, value_a), np.where(takes_b, position_b, position_a)
+
+
+# sparse table over the sorted kinks: level j holds the worst of each run of 2**j kinks
+def kink_table(signed, positions):
+    levels = [(signed, positions)]
+    width = 1
+    while 2 * width <= len(signed):
+        value, position = levels[-1]
+        levels.append(better(value[:-width], position[:-width], value[width:], position[width:]))
+        width *= 2
+    return levels
+
+
+# worst spot for a 70R vehicle inside its zone at every offset at once: the zone's ends, an even spread and the kinks inside it,
+# the same candidates as before, the worst signed value and the smallest position on a tie
 def worst_spot_inside_the_zone(block, packed_left_m, nearest_m, furthest_m, offsets_m, curves, search):
+    curve = curves[block]
+    sign = adverse_sign(search.adverse)
+    offsets_m = np.asarray(offsets_m, float)
     zone_from_m = packed_left_m + offsets_m + nearest_m
     zone_to_m = packed_left_m + offsets_m + furthest_m
-    values = np.empty(len(offsets_m))
-    centres_m = np.empty(len(offsets_m))
-    for i, (from_m, to_m) in enumerate(zip(zone_from_m, zone_to_m, strict=True)):
-        inside_the_zone_m = positions_inside_zone(from_m, to_m, search.curve_breakpoints_m, search.sampling)
-        responses = read_curve(curves[block], inside_the_zone_m)
-        worst = int(index_of_worst(responses, search.adverse))
-        values[i] = responses[worst]
-        centres_m[i] = inside_the_zone_m[worst]
-    return (values, centres_m)
+    spread_m = np.linspace(zone_from_m, zone_to_m, search.sampling.positions_inside_a_70r_zone_to_try, axis=1)
+    fixed_m = np.round(np.concatenate([zone_from_m[:, None], zone_to_m[:, None], spread_m], axis=1), ROUND_TO_DECIMALS)
+    fixed_signed = sign * read_curve(curve, fixed_m.ravel()).reshape(fixed_m.shape)
+    worst = fixed_signed.max(axis=1, keepdims=True)
+    position = np.where(fixed_signed == worst, fixed_m, np.inf).min(axis=1)
+    value = worst[:, 0]
+    kinks_m = np.asarray(search.curve_breakpoints_m, float)
+    if len(kinks_m):
+        kink_signed = sign * read_curve(curve, np.round(kinks_m, ROUND_TO_DECIMALS))
+        levels = kink_table(kink_signed, np.round(kinks_m, ROUND_TO_DECIMALS))
+        first = np.searchsorted(kinks_m, zone_from_m - TOLERANCE_M, side="left")
+        last = np.searchsorted(kinks_m, zone_to_m + TOLERANCE_M, side="right")
+        has_kinks = last > first
+        span = np.where(has_kinks, last - first, 1)
+        level = np.floor(np.log2(span)).astype(int)
+        left_value = np.full(len(first), -np.inf); left_position = np.full(len(first), np.inf)
+        right_value = left_value.copy(); right_position = left_position.copy()
+        for j in np.unique(level[has_kinks]):
+            rows = has_kinks & (level == j)
+            table_value, table_position = levels[j]
+            left_value[rows], left_position[rows] = table_value[first[rows]], table_position[first[rows]]
+            right_value[rows], right_position[rows] = table_value[last[rows] - 2 ** j], table_position[last[rows] - 2 ** j]
+        kink_value, kink_position = better(left_value, left_position, right_value, right_position)
+        value, position = better(value, position, kink_value, kink_position)
+    return sign * value, position
 
 # every mix of one case per carriageway, with the lane reduction for the total
 def combine_across_carriageways(cases_per_carriageway, search):
