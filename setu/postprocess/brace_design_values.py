@@ -15,11 +15,13 @@ MEMBERS_QUEUED = 4
 
 class BraceDesignValues:
     # store the governing member forces, the surfaces, the critical positions and every combination's value
-    def __init__(self, members, surfaces, criticals, combinations):
+    def __init__(self, members, surfaces, criticals, combinations, special_vehicle=None):
         self.members = members
         self.surfaces = surfaces
         self.criticals = criticals
         self.combinations = combinations
+        # each member's Class SV values when asked for, worked out from the same surface, else None
+        self.special_vehicle = special_vehicle
 
 
 class BridgeDesignValues:
@@ -50,25 +52,32 @@ def bridge_design_values(bridge, wind=None, seismic=None, temperature=None, cust
 
 
 # brace design values from an analysis already set up; the dead forces are the brace forces its dead stages recorded
-def brace_values(analysis, bridge, seismic, braking_height_above_deck_m, *, keep_surfaces=True, search_pool=None):
+# special_vehicle: also each member's Class SV values, from the surface already solved for it (cl. 204.5)
+def brace_values(analysis, bridge, seismic, braking_height_above_deck_m, *, keep_surfaces=True, search_pool=None, special_vehicle=False):
+    from setu.postprocess.special_vehicle import special_vehicle_member
     surfaces, criticals = {}, {}
     members, combinations_by_member = {}, {}
+    special_vehicle_by_member = {} if special_vehicle else None
     work = analysis.work
     if hasattr(work, "members"):
         # Forked workers finish each member themselves: only its values come back.
-        for member, found, governing, combinations in work.members(analysis.model):
+        for member, found, governing, combinations, special in work.members(analysis.model):
             criticals.update({(*member, adverse): found[adverse] for adverse in BOTH_DIRECTIONS})
             members[member], combinations_by_member[member] = governing, combinations
-        return BraceDesignValues(members, surfaces, criticals, combinations_by_member)
+            if special_vehicle:
+                special_vehicle_by_member[member] = special
+        return BraceDesignValues(members, surfaces, criticals, combinations_by_member, special_vehicle_by_member)
     for member, surface, found in solved_members(analysis, bridge, search_pool):
         members[member], combinations_by_member[member] = member_values(analysis, seismic, braking_height_above_deck_m, member, surface, found)
         criticals.update({(*member, adverse): found[adverse] for adverse in BOTH_DIRECTIONS})
+        if special_vehicle:
+            special_vehicle_by_member[member] = special_vehicle_member(analysis, bridge, member, surface)
         # A member's surface is finished with here: on a wide deck hundreds of them are gigabytes.
         if keep_surfaces:
             surfaces[member] = surface
         else:
             analysis.solver.surfaces.pop(surface.name, None)
-    return BraceDesignValues(members, surfaces, criticals, combinations_by_member)
+    return BraceDesignValues(members, surfaces, criticals, combinations_by_member, special_vehicle_by_member)
 
 
 # one member's governing values from its surface and worst traffic

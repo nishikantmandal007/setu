@@ -63,6 +63,15 @@ def keep_worst(by_limit_state, effects_by_carriageway, combinations, at_m):
                     by_limit_state[combination.limit_state][adverse] = GoverningValue(value, combination.name, adverse, shares, at_m)
 
 
+# one brace member's Class SV values from its surface, solved once for the brace values and the SV alike; braces are cross girders /
+# diaphragms, so no Table 8 reduction (note 3, Amendment 10)
+def special_vehicle_member(analysis, bridge, member, surface):
+    found = special_vehicle_effects(analysis, bridge, surface, brace_reader({member: surface}), (member, None), analysis.dead.brace_stages, lane_reduction=False)
+    by_limit_state = {}
+    keep_worst(by_limit_state, found, special_vehicle_combinations(), None)
+    return by_limit_state
+
+
 # Class SV design values for every girder place and brace member (cl. 204.5; required for new bridges except on rural, district
 # and village roads, cl. 201.1 as amended)
 def special_vehicle_design_values(bridge, *, workers=1):
@@ -71,7 +80,8 @@ def special_vehicle_design_values(bridge, *, workers=1):
 
 
 # Class SV design values from an analysis already set up, reusing its dead stages, model, solver and any already-solved place surfaces
-def special_vehicle_values(analysis, bridge, place_surfaces=None):
+# brace_by_member: the members' SV values when the brace pass already worked them out from its own surfaces
+def special_vehicle_values(analysis, bridge, place_surfaces=None, brace_by_member=None):
     combinations = special_vehicle_combinations()
     girders, braces, placements = {}, {}, {}
     model, solver, work = analysis.model, analysis.solver, analysis.work
@@ -93,7 +103,9 @@ def special_vehicle_values(analysis, bridge, place_surfaces=None):
                 found = special_vehicle_effects(analysis, bridge, surface, reader({(girder, place): surface}), (girder, place), analysis.dead.stages)
                 keep_worst(girders[girder][place[0]], found, combinations, float(model.mesh.length_mesh_m[place[1]]))
                 placements[girder, place] = [placement for _, pair in found for placement in pair]
-    if hasattr(work, "special_vehicle_members"):
+    if brace_by_member is not None:
+        braces = dict(brace_by_member)
+    elif hasattr(work, "special_vehicle_members"):
         for member, by_limit_state in work.special_vehicle_members(model):
             braces[member] = by_limit_state
     else:
