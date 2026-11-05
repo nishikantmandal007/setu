@@ -214,6 +214,25 @@ def worst_spot_inside_the_zone(block, packed_left_m, nearest_m, furthest_m, offs
     offsets_m = np.asarray(offsets_m, float)
     zone_from_m = packed_left_m + offsets_m + nearest_m
     zone_to_m = packed_left_m + offsets_m + furthest_m
+    # each zone's worst spot depends only on its two ends, the envelope and the kinks, fixed within a search; zones come back across
+    # lane layouts, so each is worked out once per search and envelope
+    memos = getattr(search, "zone_memos", None)
+    if memos is None:
+        memos = search.zone_memos = {}
+    curve_memo = memos.setdefault((id(curve), sign), (curve, {}))[1]  # the curve is kept so its id stays its own
+    ends = list(zip(zone_from_m.tolist(), zone_to_m.tolist()))
+    new_ends = [end for end in dict.fromkeys(ends) if end not in curve_memo]
+    if new_ends:
+        new_from_m, new_to_m = (np.array(column, float) for column in zip(*new_ends))
+        values, positions = zone_worst_spots(curve, sign, new_from_m, new_to_m, search)
+        curve_memo.update(zip(new_ends, zip(values.tolist(), positions.tolist())))
+    found = [curve_memo[end] for end in ends]
+    return np.array([value for value, _ in found], float), np.array([position for _, position in found], float)
+
+
+# the worst spot inside each zone given by its ends: the zone ends, an even spread and the kinks inside it, the worst signed value
+# and the smallest position on a tie; every zone row is worked out on its own
+def zone_worst_spots(curve, sign, zone_from_m, zone_to_m, search):
     spread_m = np.linspace(zone_from_m, zone_to_m, search.sampling.positions_inside_a_70r_zone_to_try, axis=1)
     fixed_m = np.round(np.concatenate([zone_from_m[:, None], zone_to_m[:, None], spread_m], axis=1), ROUND_TO_DECIMALS)
     fixed_signed = sign * read_curve(curve, fixed_m.ravel()).reshape(fixed_m.shape)
