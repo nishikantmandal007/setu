@@ -66,21 +66,42 @@ def keep_worst(by_limit_state, effects_by_carriageway, combinations, at_m):
 # Class SV design values for every girder place and brace member (cl. 204.5; required for new bridges except on rural, district
 # and village roads, cl. 201.1 as amended)
 def special_vehicle_design_values(bridge, *, workers=1):
+    with analysis_for(bridge, None, (), (), workers, girders=True, braces=True) as analysis:
+        return special_vehicle_values(analysis, bridge)
+
+
+# Class SV design values from an analysis already set up, reusing its dead stages, model, solver and any already-solved place surfaces
+def special_vehicle_values(analysis, bridge, place_surfaces=None):
     combinations = special_vehicle_combinations()
     girders, braces, placements = {}, {}, {}
-    with analysis_for(bridge, None, (), (), workers, girders=True, braces=True) as analysis:
-        model, solver = analysis.model, analysis.solver
+    model, solver, work = analysis.model, analysis.solver, analysis.work
+    places = places_to_design(model)
+    for girder in range(bridge.girders.count):
+        girders[girder] = {response: {} for response in RESPONSES}
+    if hasattr(work, "special_vehicle_places"):
+        for girder, place, by_limit_state, pair in work.special_vehicle_places(range(bridge.girders.count), places):
+            for limit_state, by_adverse in by_limit_state.items():
+                for adverse, candidate in by_adverse.items():
+                    current = girders[girder][place[0]].setdefault(limit_state, {}).get(adverse)
+                    if current is None or adverse_sign(adverse) * candidate.value > adverse_sign(adverse) * current.value:
+                        girders[girder][place[0]][limit_state][adverse] = candidate
+            placements[girder, place] = pair
+    else:
         for girder in range(bridge.girders.count):
-            girders[girder] = {response: {} for response in RESPONSES}
-            for place in places_to_design(model):
-                surface = surface_for(solver, model, girder, place)
+            for place in places:
+                surface = place_surfaces[girder, place] if place_surfaces is not None else surface_for(solver, model, girder, place)
                 found = special_vehicle_effects(analysis, bridge, surface, reader({(girder, place): surface}), (girder, place), analysis.dead.stages)
                 keep_worst(girders[girder][place[0]], found, combinations, float(model.mesh.length_mesh_m[place[1]]))
                 placements[girder, place] = [placement for _, pair in found for placement in pair]
+    if hasattr(work, "special_vehicle_members"):
+        for member, by_limit_state in work.special_vehicle_members(model):
+            braces[member] = by_limit_state
+    else:
         for member in model.brace_elements:
             surface = brace_surface(solver, model, member)
             # braces are cross girders / diaphragms: no Table 8 reduction (note 3, Amendment 10)
             found = special_vehicle_effects(analysis, bridge, surface, brace_reader({member: surface}), (member, None), analysis.dead.brace_stages, lane_reduction=False)
+            analysis.solver.surfaces.pop(surface.name, None)
             braces[member] = {}
             keep_worst(braces[member], found, combinations, None)
     return SpecialVehicleValues(girders, braces, placements)

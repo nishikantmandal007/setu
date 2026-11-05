@@ -9,7 +9,7 @@ from setu.postprocess.design_values import (MIDSPAN_DEFLECTION, MAX_MOMENT, gird
                                             search_place, search_stress, shared_analysis, stress_surface, surface_for, places_to_design)
 from setu.postprocess.construction import construction_design_values
 from setu.postprocess.governing_diagrams import bridge_diagrams
-from setu.postprocess.special_vehicle import special_vehicle_design_values
+from setu.postprocess.special_vehicle import keep_worst, special_vehicle_combinations, special_vehicle_effects, special_vehicle_values
 from setu.postprocess.girder_response import analyze_load_case
 from setu.loads.wind_loads import wind_load_cases
 from setu.loads.seismic_loads import seismic_load_cases
@@ -57,6 +57,29 @@ def member_task(member):
     return (member, found, *member_values(analysis, seismic, braking_height_m, member, surface, found))
 
 
+def special_vehicle_place_task(args):
+    from setu.postprocess.design_values import reader
+    girder, place = args
+    analysis, bridge, _, _ = shared
+    surface = surface_for(analysis.solver, analysis.model, girder, place)
+    analysis.solver.surfaces.clear()
+    found = special_vehicle_effects(analysis, bridge, surface, reader({(girder, place): surface}), (girder, place), analysis.dead.stages)
+    by_limit_state = {}
+    keep_worst(by_limit_state, found, special_vehicle_combinations(), float(analysis.model.mesh.length_mesh_m[place[1]]))
+    return girder, place, by_limit_state, [placement for _, pair in found for placement in pair]
+
+
+def special_vehicle_member_task(member):
+    from setu.postprocess.brace_design_values import brace_reader, brace_surface
+    analysis, bridge, _, _ = shared
+    surface = brace_surface(analysis.solver, analysis.model, member)
+    analysis.solver.surfaces.clear()
+    found = special_vehicle_effects(analysis, bridge, surface, brace_reader({member: surface}), (member, None), analysis.dead.brace_stages, lane_reduction=False)
+    by_limit_state = {}
+    keep_worst(by_limit_state, found, special_vehicle_combinations(), None)
+    return member, by_limit_state
+
+
 def load_task(load_case):
     return analyze_load_case(shared[0].model, load_case)
 
@@ -81,6 +104,12 @@ class ForkedWork:
 
     def members(self, model):
         return self.pool.imap(member_task, list(model.brace_elements))
+
+    def special_vehicle_places(self, girders, places):
+        return self.pool.imap(special_vehicle_place_task, [(girder, place) for girder in girders for place in places])
+
+    def special_vehicle_members(self, model):
+        return self.pool.imap(special_vehicle_member_task, list(model.brace_elements))
 
     def load(self, load_case):
         return Pending(self.pool.apply_async(load_task, (load_case,)))
@@ -119,6 +148,10 @@ def run_analysis(bridge, wind, seismic, temperature, braking_height_m, workers, 
             girder_results = girder_values(analysis, bridge, seismic, temperature, braking_height_m)
             phase("solving and searching the braces")
             brace_results = brace_values(analysis, bridge, seismic, braking_height_m, keep_surfaces=False)
+            if special_vehicle:
+                phase("solving and searching the Class SV")
+                special_vehicle = special_vehicle_values(analysis, bridge, girder_results.place_surfaces)
+                special_vehicle.placements = {}
             phase("replaying the governing load states")
             diagrams = bridge_diagrams(analysis, girder_results, seismic, braking_height_m)
     elif workers > 1:
@@ -127,6 +160,10 @@ def run_analysis(bridge, wind, seismic, temperature, braking_height_m, workers, 
             girder_results = girder_values(analysis, bridge, seismic, temperature, braking_height_m, search_pool=pool)
             phase("searching the braces")
             brace_results = brace_values(analysis, bridge, seismic, braking_height_m, keep_surfaces=False, search_pool=pool)
+        if special_vehicle:
+            phase("solving and searching the Class SV")
+            special_vehicle = special_vehicle_values(analysis, bridge, girder_results.place_surfaces)
+            special_vehicle.placements = {}
         phase("replaying the governing load states")
         diagrams = bridge_diagrams(analysis, girder_results, seismic, braking_height_m)
     else:
@@ -134,16 +171,15 @@ def run_analysis(bridge, wind, seismic, temperature, braking_height_m, workers, 
         girder_results = girder_values(analysis, bridge, seismic, temperature, braking_height_m)
         phase("solving and searching the braces")
         brace_results = brace_values(analysis, bridge, seismic, braking_height_m, keep_surfaces=False)
+        if special_vehicle:
+            phase("solving and searching the Class SV")
+            special_vehicle = special_vehicle_values(analysis, bridge, girder_results.place_surfaces)
+            special_vehicle.placements = {}
         phase("replaying the governing load states")
         diagrams = bridge_diagrams(analysis, girder_results, seismic, braking_height_m)
     forces = site_forces(analysis.model, wind, seismic, girder_results)
     # Only values leave this process: influence surfaces stay behind and vanish with it.
     girder_results.surfaces = girder_results.place_surfaces = {}
-    # ponytail: SV builds its own analysis (about 10 s on a 35 m bridge); share the factor if that shows in the run time
-    if special_vehicle:
-        phase("solving and searching the Class SV")
-        special_vehicle = special_vehicle_design_values(bridge)
-        special_vehicle.placements = {}
     if construction is not None:
         phase("the construction stage on the bare steel")
         construction = construction_design_values(bridge, construction, wind, construction_seismic)
