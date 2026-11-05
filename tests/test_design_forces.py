@@ -9,7 +9,7 @@ Three claims:
 
 import pytest
 
-from slab_reading import slab_moment_read_off_the_shells
+from slab_reading import VERTICAL, slab_moment_read_off_the_shells
 from setu.analysis.critical_position import find_critical_position
 from setu.analysis.influence_surface import InfluenceSolver
 from setu.builder.assembly import build_bridge_model
@@ -73,10 +73,15 @@ BRIDGE = BridgeInput(
 
 
 def _read_directly(element, component, case, pattern_tag, lever_arm_m=0.0, model=None):
-    """Internal force at end i; with a lever arm, the composite moment M + N e plus the girder's share of the slab's own bending."""
+    """Internal force at end i; with a lever arm, the composite moment M + N e, and with the model, plus the girder's share of the
+    slab's own bending (moment) or vertical shear (shear)."""
     with backend.solved(case.nodal_loads, case.element_loads, pattern=pattern_tag):
         forces = backend.element_local_forces(element)
-        slab = slab_moment_read_off_the_shells(model, element) if lever_arm_m and model is not None else 0.0
+        slab = 0.0
+        if model is not None and component == MOMENT_AT_END_I and lever_arm_m:
+            slab = slab_moment_read_off_the_shells(model, element)
+        elif model is not None and component == SHEAR_AT_END_I:
+            slab = slab_moment_read_off_the_shells(model, element, component=VERTICAL)
         return END_I_FORCE_TO_INTERNAL_FORCE * (forces[component] + lever_arm_m * forces[AXIAL_AT_END_I]) + slab
 
 

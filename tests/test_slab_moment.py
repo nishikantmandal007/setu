@@ -48,3 +48,15 @@ def test_the_slab_share_is_counted(built):
     slab = sum(float(forces[g].slab_moment_kn_m[station]) for g in range(BRIDGE.girders.count))
     total = sum(float(forces[g].composite_moment_kn_m[station]) for g in range(BRIDGE.girders.count))
     assert 0.001 < slab / total < 0.2
+
+
+# Just inside the support the girders' shears (steel plus each girder's share of the slab's vertical shear, which the web resists)
+# must add up to the shear the load leaves there, P (L - x) / L; close to the bearing the slab carries a large part of it.
+@pytest.mark.parametrize("probe", [(1, 1), (1, 4), (2, 2), (4, 6), (9, 3)])
+def test_the_girders_carry_the_whole_shear_at_the_support(built, probe):
+    model, _, _ = built
+    node = model.deck_nodes[probe]
+    x_m = backend.node_coordinates(node)[0]
+    forces = analyze_load_case(model, LoadCase("point", [(node, 0.0, -LOAD_KN, 0.0, 0.0, 0.0, 0.0)]))
+    girders = sum(float(forces[g].shear_kn[0]) for g in range(BRIDGE.girders.count))
+    assert -girders == pytest.approx(LOAD_KN * (BRIDGE.span_m - x_m) / BRIDGE.span_m, rel=1e-6)

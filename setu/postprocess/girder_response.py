@@ -54,7 +54,8 @@ class GirderForces:
 
 
 # read one girder's forces, deflection and bearing reaction off the solved model
-def girder_forces(model, girder_index, slab_moment_kn_m=None):
+# slab_moment_kn_m, slab_shear_kn: this girder's share of the slab's own bending and vertical shear along it, on a composite model
+def girder_forces(model, girder_index, slab_moment_kn_m=None, slab_shear_kn=None):
     n_stations = model.mesh.stations_along_span
     n_elements = n_stations - 1
     stations_m = np.array(model.mesh.length_mesh_m, float)
@@ -79,6 +80,8 @@ def girder_forces(model, girder_index, slab_moment_kn_m=None):
             moment[e + 1] = f[MZ_J]
             weak_shear[e + 1] = f[VZ_J]
             weak_moment[e + 1] = f[MY_J]
+    if slab_shear_kn is not None:
+        shear = shear + slab_shear_kn  # the web resists the composite section's vertical shear: the steel's and its share of the slab's
     deflection_m = [-backend.node_displacement(model.girder_nodes[girder_index, i], VERTICAL_DOF) for i in range(n_stations)]
     reaction_kn = -BEARING_VERTICAL_STIFFNESS_KN_PER_M * backend.node_displacement(model.bearings[girder_index, 0], VERTICAL_DOF)
     end_reaction_kn = -BEARING_VERTICAL_STIFFNESS_KN_PER_M * backend.node_displacement(model.bearings[girder_index, n_stations - 1], VERTICAL_DOF)
@@ -107,8 +110,12 @@ def brace_force_array(model):
 def analyze_load_case(model, load_case, pattern_tag=None, *, on_solved=None):
     tag = pattern_tag if pattern_tag is not None else LOAD_CASE_PATTERN_BASE
     with backend.solved(load_case.nodal_loads, load_case.element_loads, pattern=tag):
-        slab = None if model.slab_moments is None else model.slab_moments.from_displacements(backend.every_node_displacement()[1])
-        forces = {k: girder_forces(model, k, None if slab is None else slab[k]) for k in range(model.bridge.girders.count)}
+        if model.slab_moments is None:
+            forces = {k: girder_forces(model, k) for k in range(model.bridge.girders.count)}
+        else:
+            displacements = backend.every_node_displacement()[1]
+            moments, shears = model.slab_moments.from_displacements(displacements), model.slab_shears.from_displacements(displacements)
+            forces = {k: girder_forces(model, k, moments[k], shears[k]) for k in range(model.bridge.girders.count)}
         if on_solved is not None:
             on_solved(forces)
         return forces

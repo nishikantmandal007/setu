@@ -1,5 +1,5 @@
 import numpy as np
-from setu.builder.slab_moment import SlabMoments
+from setu.builder.slab_moment import ABOUT_THE_TRANSVERSE_AXIS, VERTICAL, SlabShare
 from setu.solver import backend
 from setu.builder.mesh import DeckModel
 from setu.models.sections import girder_properties
@@ -271,6 +271,7 @@ class BridgeModel:
         self.brace_elements = {}
         self.bearings = {}
         self.slab_moments = None  # the deck slab's own bending shared to the girders, on a composite model
+        self.slab_shears = None  # and its vertical shear
 
     # the numbers the influence solver needs from this model
     def as_deck_model(self):
@@ -280,7 +281,7 @@ class BridgeModel:
                          composite_lever_arm_m=self.composite_lever_arm_m(), skew=self.bridge.skew,
                          girder_sections={tag: sections[k] for (k, _), tag in self.girder_elements.items()},
                          composite_lever_arms_m={tag: self.composite_lever_arm_m(k) for (k, _), tag in self.girder_elements.items()},
-                         brace_area_m2=self.bridge.bracing.area_m2, slab_moments=self.slab_moments,
+                         brace_area_m2=self.bridge.bracing.area_m2, slab_moments=self.slab_moments, slab_shears=self.slab_shears,
                          girder_station_of_element={tag: key for key, tag in self.girder_elements.items()})
 
     # slab mid-plane to girder centroid, for the composite moment
@@ -319,7 +320,8 @@ def build_bridge_model(bridge, load_duration=SHORT_TERM, composite=True):
         tie_steel_girder_translations(bridge, girders, girder_nodes)
     model.bearings = support_the_girders(bridge, mesh, girder_nodes, max(backend.node_tags()) + 1, max(backend.element_tags()) + 1)
     if composite:
-        model.slab_moments = SlabMoments(model)
+        model.slab_moments = SlabShare(model, ABOUT_THE_TRANSVERSE_AXIS)
+        model.slab_shears = SlabShare(model, VERTICAL, model.slab_moments.stiffness_by_shape)
     report_what_was_built(model)
     return model
 
