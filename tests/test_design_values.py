@@ -3,7 +3,7 @@
 import pytest
 
 from setu.models.custom_load import CustomLoad
-from setu.models.site import SeismicSite, TemperatureSite, WindSite
+from setu.models.site import SeismicSite, TemperatureSite
 from setu.irc6.combinations import custom_combination
 from setu.postprocess.design_values import girder_design_values
 from setu.utils.constants import (
@@ -12,7 +12,6 @@ from setu.utils.constants import (
     DEAD,
     LIVE,
     MAX_MOMENT,
-    PLAIN_TERRAIN,
     POINT,
     SEISMIC_COMBINATION,
     SMALLER_IS_WORSE,
@@ -25,7 +24,8 @@ pytest.importorskip("setu.solver.backend", reason="needs a finite element solver
 
 from test_design_forces import BRIDGE  # noqa: E402
 
-WIND_SITE = WindSite(basic_wind_speed_mps=39.0, terrain=PLAIN_TERRAIN, height_m=12.0, funnelling=False, solid_barrier_height_m=1.1)
+from test_wind import SITE as WIND_SITE  # noqa: E402
+from test_wind import site as wind_site  # noqa: E402
 SEISMIC_SITE = SeismicSite(zone="IV", soil="II", importance_factor=1.2, period_s=0.8, response_reduction=1.0)
 HOARDING = CustomLoad("hoarding", POINT, 40.0, x_from_bearing_m=17.5, z_from_left_edge_m=3.0)
 
@@ -109,8 +109,10 @@ def test_temperature_comes_back_as_stresses_and_bearing_movement(results):
 
 
 def test_high_wind_keeps_live_load_off(results):
-    """Vb 55 m/s at 30 m: hourly mean speed above 36 m/s, so wind and live load never act together."""
-    stormy = girder_design_values(BRIDGE, wind=WindSite(basic_wind_speed_mps=55.0, terrain=PLAIN_TERRAIN, height_m=30.0, funnelling=False, solid_barrier_height_m=0.0))
+    """Vb 55 m/s, deck 30 m up, 100 years: Vz = 55 x 1.08 x 1.12 = 66.5 m/s at deck level, above 36 m/s (209.5.2.4),
+    so wind and live load never act together."""
+    stormy = girder_design_values(BRIDGE, wind=wind_site(basic_wind_speed_mps=55.0, return_period_years=100, superstructure_top_m=31.0,
+                                                         road_level_m=30.0, solid_barrier_height_m=0.0))
 
     for by_response in stormy.girders.values():
         for by_direction in by_response[MAX_MOMENT].values():

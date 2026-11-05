@@ -1,4 +1,6 @@
 from functools import lru_cache
+import numpy as np
+
 from setu.builder.mesh import tributary_length_m
 from setu.irc6.braking import wheels_on_the_span
 from setu.irc6.irc_constants import LIVE_LOAD_SEISMIC_FRACTION
@@ -6,7 +8,7 @@ from setu.irc6.seismic import horizontal_seismic_coefficient, vertical_seismic_c
 from setu.irc6.vehicles import find_vehicle_or_its_reverse
 from setu.loads.dead_loads import bracing_weight_at_its_ends, deck_loads, superimposed_dead_load, surfacing_load
 from setu.loads.load_builders import share_between_nodes
-from setu.loads.load_cases import LoadCase
+from setu.loads.load_cases import ArrayLoadCase
 
 
 class SeismicLoadCases(dict):
@@ -20,7 +22,7 @@ class SeismicLoadCases(dict):
 
 
 # longitudinal, transverse and (zones IV, V) vertical seismic load cases
-def seismic_load_cases(model, site, live_critical=None):
+def seismic_load_cases(model, site, live_critical=None, *, for_bearing=False):
     dead_kn, longitudinal = dead_weight_inertia(model, site)
     live_total = None if site.live_weight_kn is None else LIVE_LOAD_SEISMIC_FRACTION * site.live_weight_kn
     live_kn = override_weight(model, live_weight_at_nodes(model, live_critical), live_total)
@@ -33,7 +35,7 @@ def seismic_load_cases(model, site, live_critical=None):
         "longitudinal": longitudinal,
         "transverse": inertia(with_live_kn, ah, 3, "seismic, transverse"),
     }
-    if site.include_vertical:
+    if site.include_vertical_for_bearings() if for_bearing else site.include_vertical:
         cases["vertical"] = inertia(with_live_kn, -av, 2, "seismic, vertical")
     return SeismicLoadCases(cases, sum(dead_kn.values()), sum(live_kn.values()), ah, av)
 
@@ -89,9 +91,7 @@ def override_weight(model, weights_kn, total_kn):
 
 # coefficient times weight at every node, in one direction
 def inertia(weights_kn, coefficient, direction, name):
-    nodal_loads = []
-    for node, weight_kn in weights_kn.items():
-        force = [0.0] * 6
-        force[direction - 1] = coefficient * weight_kn
-        nodal_loads.append((node, *force))
-    return LoadCase(name=name, nodal_loads=nodal_loads)
+    nodes = np.fromiter(weights_kn, int, len(weights_kn))
+    forces = np.zeros((len(weights_kn), 6))
+    forces[:, direction - 1] = coefficient * np.fromiter(weights_kn.values(), float, len(weights_kn))
+    return ArrayLoadCase(name, nodes, forces)

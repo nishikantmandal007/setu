@@ -312,3 +312,9 @@ def test_this_bridge_exercises_both_area_loads(built):
     critical = _critical(surfaces["girder 0, midspan moment"])
 
     assert critical.residual_udl_strips and critical.footway_strips and critical.footway_response != 0.0
+
+
+# the moment sections are close enough that the replayed governing state cannot peak far above the design value
+def test_moment_sections_are_finely_spaced():
+    from setu.postprocess.design_values import MOMENT_SECTIONS_OFF_MIDSPAN
+    assert max(b - a for a, b in zip(MOMENT_SECTIONS_OFF_MIDSPAN, MOMENT_SECTIONS_OFF_MIDSPAN[1:])) == pytest.approx(0.01)

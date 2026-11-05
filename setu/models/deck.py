@@ -30,13 +30,16 @@ class Carriageway:
 
 
 class DeckCrossSection:
-    # the strips across the deck, left to right
-    def __init__(self, strips):
+    # the strips across the deck, left to right, and two site conditions the authority decides (both off unless set): crowd load
+    # (IRC:6 cl. 206.1) and congestion of heavy vehicles (cl. 204.4)
+    def __init__(self, strips, *, crowd_load=False, congestion=False):
         self.strips = tuple(strips)
+        self.crowd_load = crowd_load
+        self.congestion = congestion
 
     # build the strips from {name: width}, laid out left to right
     @staticmethod
-    def from_widths(widths):
+    def from_widths(widths, *, crowd_load=False, congestion=False):
         strips = []
         edge_m = 0.0
         for name, width_m in widths.items():
@@ -50,7 +53,7 @@ class DeckCrossSection:
             ))
             edge_m += width_m
 
-        cs = DeckCrossSection(strips)
+        cs = DeckCrossSection(strips, crowd_load=crowd_load, congestion=congestion)
         if not cs.has_carriageway():
             raise CrossSectionError("cross-section has no carriageway")
         return cs

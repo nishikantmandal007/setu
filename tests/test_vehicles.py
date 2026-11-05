@@ -22,13 +22,21 @@ from setu.irc6.wheel_loads import wheel_load_offsets
 
 
 def test_class_a_is_the_tabulated_vehicle():
-    assert CLASS_A.axle_loads_t == (2.7, 2.7, 11.4, 11.4, 6.8, 6.8, 6.8, 6.8)
-    assert CLASS_A.total_load_t() == pytest.approx(55.4)
+    """Fig. 2 and Table 2 as Amendment 10 prints them, in kN."""
+    assert CLASS_A.axle_loads_kn == (27.0, 27.0, 114.0, 114.0, 68.0, 68.0, 68.0, 68.0)
+    assert CLASS_A.total_load_kn() == pytest.approx(554.0)
     assert CLASS_A.length_m() == pytest.approx(0.6 + 18.8 + 0.9)
 
 
 def test_70r_wheeled_is_the_tabulated_vehicle():
-    assert CLASS_70R_WHEELED.total_load_t() == pytest.approx(100.0)
+    """Fig. 1 as Amendment 10 prints it: 80, 120, 120 and four 170 kN axles."""
+    assert CLASS_70R_WHEELED.axle_loads_kn == (80.0, 120.0, 120.0, 170.0, 170.0, 170.0, 170.0)
+    assert CLASS_70R_WHEELED.total_load_kn() == pytest.approx(1000.0)
+
+
+def test_70r_tracked_is_the_tabulated_vehicle():
+    """Fig. 1 as Amendment 10 prints it: 350 kN per track, 700 kN in all."""
+    assert CLASS_70R_TRACKED.total_load_kn() == pytest.approx(700.0)
     assert len(CLASS_70R_WHEELED.axle_positions_m()) == 7
 
 
@@ -41,14 +49,14 @@ def test_70r_wheel_lines_are_centred_on_their_tyre_groups():
 def test_every_axle_becomes_two_wheels():
     offsets = wheel_load_offsets(CLASS_A, 0.0, DEFAULT_SAMPLING)
 
-    assert len(offsets) == 2 * len(CLASS_A.axle_loads_t)
-    assert offsets[:, 2].sum() == pytest.approx(CLASS_A.total_load_t() * 9.81)
+    assert len(offsets) == 2 * len(CLASS_A.axle_loads_kn)
+    assert offsets[:, 2].sum() == pytest.approx(554.0)
 
 
 def test_a_tracked_vehicle_keeps_its_total_load_however_it_is_sampled():
     for wearing_course_m in (0.0, 0.075, 0.15):
         offsets = wheel_load_offsets(CLASS_70R_TRACKED, wearing_course_m, DEFAULT_SAMPLING)
-        assert offsets[:, 2].sum() == pytest.approx(2 * 35.0 * 9.81)
+        assert offsets[:, 2].sum() == pytest.approx(700.0)
 
 
 def test_the_wearing_course_spreads_the_footprint_wider():
@@ -65,10 +73,10 @@ def test_reversing_class_a_reverses_its_axles():
     backwards = facing_backwards(CLASS_A)
     assert isinstance(backwards, type(CLASS_A))
 
-    assert backwards.axle_loads_t == tuple(reversed(CLASS_A.axle_loads_t))
+    assert backwards.axle_loads_kn == tuple(reversed(CLASS_A.axle_loads_kn))
     assert backwards.lead_clearance_m == CLASS_A.trail_clearance_m
     assert backwards.length_m() == pytest.approx(CLASS_A.length_m())
-    assert backwards.total_load_t() == pytest.approx(CLASS_A.total_load_t())
+    assert backwards.total_load_kn() == pytest.approx(CLASS_A.total_load_kn())
 
 
 def test_reversing_a_tracked_vehicle_changes_nothing():
@@ -102,7 +110,7 @@ def test_axle_loads_and_spacings_have_to_agree():
     with pytest.raises(VehicleDefinitionError, match="spacings"):
         AxleVehicle(
             name="broken",
-            axle_loads_t=(10, 10, 10),
+            axle_loads_kn=(100, 100, 100),
             axle_spacing_m=(2.0,),
             transverse_gauge_m=1.8,
             lead_clearance_m=0.5,
@@ -115,7 +123,7 @@ def test_a_measurement_cannot_be_zero_or_negative():
     with pytest.raises(VehicleDefinitionError, match="greater than zero"):
         AxleVehicle(
             name="broken",
-            axle_loads_t=(10, -10),
+            axle_loads_kn=(100, -100),
             axle_spacing_m=(2.0,),
             transverse_gauge_m=1.8,
             lead_clearance_m=0.5,
@@ -124,6 +132,12 @@ def test_a_measurement_cannot_be_zero_or_negative():
         )
 
 
-def test_the_registry_holds_the_three_standard_vehicles():
-    assert set(IRC_VEHICLES) == {"Class_A", "Class_70R_Wheeled", "Class_70R_Tracked"}
-    assert np.isfinite([v.total_load_t() for v in IRC_VEHICLES.values()] ).all()
+def test_the_registry_holds_the_irc_vehicles():
+    """Class A, 70R wheeled and tracked, and Fig. 1's maximum single axle (200 kN) and bogie (2 x 200 kN at 1.22 m)."""
+    assert set(IRC_VEHICLES) == {"Class_A", "Class_70R_Wheeled", "Class_70R_Tracked", "Class_70R_Single_Axle", "Class_70R_Bogie"}
+    bogie, axle = IRC_VEHICLES["Class_70R_Bogie"], IRC_VEHICLES["Class_70R_Single_Axle"]
+    assert bogie.total_load_kn() == pytest.approx(400.0) and bogie.axle_spacing_m == (1.22,)
+    assert axle.total_load_kn() == pytest.approx(200.0)
+    for vehicle in (bogie, axle):  # Fig. 1 note 1: at least 30 m from the rear axle to the next vehicle's first axle
+        assert vehicle.trail_clearance_m + vehicle.min_nose_to_tail_m + vehicle.lead_clearance_m == pytest.approx(30.0)
+    assert np.isfinite([v.total_load_kn() for v in IRC_VEHICLES.values()] ).all()

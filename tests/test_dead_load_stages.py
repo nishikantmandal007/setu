@@ -32,7 +32,7 @@ def test_the_steel_alone_carries_the_wet_slab():
     midspan = model.mesh.stations_along_span // 2
     girder = 2
     spacing_m = model.mesh.girder_lines_m[girder + 1] - model.mesh.girder_lines_m[girder]
-    w_kn_m = SLAB_UNIT_WEIGHT_KN_M3 * bridge.deck.thickness_m * spacing_m + bridge.steel.unit_weight_kn_m3 * model.girder.area_m2
+    w_kn_m = (SLAB_UNIT_WEIGHT_KN_M3 + 1.0) * bridge.deck.thickness_m * spacing_m + bridge.steel.unit_weight_kn_m3 * model.girder.area_m2  # wet concrete + 1 kN/m3 (Amendment 10)
 
     steel = analyze_load_case(model, steel_self_weight_load(model))[girder].moment_kn_m[midspan]
     slab = analyze_load_case(model, wet_slab_load(model))[girder].moment_kn_m[midspan]
@@ -43,7 +43,7 @@ def test_the_steel_alone_carries_the_wet_slab():
 def test_the_construction_stage_puts_down_the_whole_slab():
     bridge = _bridge()
     model = build_bridge_model(bridge, composite=False)
-    slab_kn = SLAB_UNIT_WEIGHT_KN_M3 * bridge.deck.thickness_m * bridge.width_m() * SPAN_M
+    slab_kn = (SLAB_UNIT_WEIGHT_KN_M3 + 1.0) * bridge.deck.thickness_m * bridge.width_m() * SPAN_M  # wet concrete + 1 kN/m3 (Amendment 10)
     steel_kn = bridge.steel.unit_weight_kn_m3 * model.girder.area_m2 * SPAN_M * bridge.girders.count
 
     steel, slab = steel_self_weight_load(model), wet_slab_load(model)

@@ -43,7 +43,7 @@ IRC:22 cl. 604.3.2. Live deflection is the worst ranked arrangement on the defle
 
 ## Fatigue
 
-IRC:6 cl. 204.6 (`setu/analysis/fatigue.py`). The 40 t fatigue truck runs along every line on each carriageway that keeps the outer tyre edge 150 mm from the kerb, with half the cl. 208 impact. For each line the range of one passage is $\max(R_{\max}, 0) - \min(R_{\min}, 0)$: the empty bridge counts. The worst line is kept, for the moment near midspan and the shear at the support.
+IRC:6 cl. 204.6 (`setu/analysis/fatigue.py`). The Fig. 7A fatigue load train (the 400 kN truck with 0 to n 120 kN trucks ahead and behind at the 20 m minimum gap, Amendment 8) runs along every line on each carriageway that keeps the outer tyre edge 150 mm from the kerb, with half the cl. 208 impact. For each line the range of one passage is $\max(R_{\max}, 0) - \min(R_{\min}, 0)$: the empty bridge counts. The worst line is kept, for the moment near midspan and the shear at the support.
 
 The web report shows the **nominal longitudinal steel stress range in MPa**. For each checked section near midspan, stress influence surfaces are formed at the top and bottom steel faces using the composite FE model's steel axial force and steel bending moment:
 
@@ -59,6 +59,6 @@ IRC:6 cl. 211. 20 % of the first train in a lane plus 10 % of those following, p
 
 ## Wind, seismic, temperature
 
-- **Wind** (cl. 209): hourly mean speed and pressure from Table 12 at the deck height, scaled for the basic wind speed; gust factor 2.0; drag 2.2 for one girder, 2(1 + c/20d) up to 4.0 for several; lift 0.75; longitudinal 25 %; wind on traffic with C<sub>D</sub> = 1.2 over 3 m at 1.5 m above the road.
+- **Wind** (cl. 209 as replaced by Amendment 10): V<sub>z</sub> = V<sub>b</sub> k<sub>1</sub> k<sub>2</sub> k<sub>3</sub> k<sub>4</sub> (Tables 1, 3), P<sub>z</sub> = 0.6 V<sub>z</sub><sup>2</sup>; F<sub>T</sub> = P<sub>z</sub> A<sub>1</sub> C<sub>D</sub> with A<sub>1</sub> from Fig. 5 / Table 7 and C<sub>D</sub> from Table 8 by B/d (Fig. 7), +3 % per degree of camber; F<sub>L</sub> = 0.25 F<sub>T</sub>; F<sub>V</sub> = P<sub>z</sub> A<sub>2</sub> × 0.9 at B/4. Spans over 40 m or piers over 20 m take the larger of that and the hourly mean method (Table 4, gust factor by terrain category), resolved by the Table 6 skew coefficients. Wind on traffic: C<sub>D</sub> = 1.2 over 3 m above the road, at 1.5 m, pressure at road level + 3 m. Over 36 m/s at deck level no traffic is taken. Read literally, Table 7 also puts the traffic in the deck's area while 209.5.2.3 adds wind on the traffic (decision D18).
 - **Seismic** (IRC:SP:114): $A_h = (Z/2)(S_a/g)/(R/I)$ with the Fig. 5.1(a) spectrum, never below Table 5.2; vertical at 2/3 of Z in zones IV and V; weights lumped at the nodes.
-- **Temperature** (cl. 215): no girder force on a simply supported span with a free bearing. Heating and cooling primary stresses through each girder's composite section (Fig. 17b / Table 15B profiles on the IRC:22 cl. 603.2.1 effective width) and the free bearing movement $\alpha\,\Delta T\,L$.
+- **Temperature** (cl. 215): no girder force on a simply supported span with a free bearing. Heating and cooling primary stresses through each girder's composite section (Fig. 16b profiles, used for any surfacing as IRC:SP:120 does, on the IRC:22 cl. 603.2.1 effective width) and the free bearing movement $\alpha\,\Delta T\,L$.

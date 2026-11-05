@@ -2,15 +2,19 @@
 
 ## How fine the mesh should be
 
-Tested on a 35 m bridge with five plate girders, a 13.5 m deck and a 0.23 m slab (the web app's default inputs):
+IRC does not specify a mesh; these are numerical choices, measured. Along the span the mesh is set by **element length**, not by panels per brace bay: on a 35 m bridge with 2 brace bays and with 6, the same element length gave the same accuracy. Support shear is read in the first element at the bearing and converges only as that element shrinks, so elements are made short within 1.5 m of each bearing. (Swapping in the bearing reaction would not do: the converged support shear stays 3-6 % below the reaction, the rest going straight into the bearing through the end diaphragm.)
 
-- **Along the span**, results settle by 16 panels between braces. Moment, reaction, deflection and fatigue change by under 0.1 % beyond that.
-- **Across the deck**, the middle girders settle quickly, but the **edge girder** converges slowly: at 0.25 m its moment is about 1.6 % low, and at 0.10 m about 0.6 % low.
-- **Support shear** is read in the first girder element and converges slowly (about 1.5 % low at 25 panels). The **bearing reaction** is converged and never smaller, so use it where a safe support shear is needed.
+`MeshSettings.preset(name)`, measured on a 35 m, five-girder, 6-bay bridge with girders, braces and every load, against 16 panels per bay x 0.10 m (one process):
 
-**Use 16–25 panels between braces and 0.10–0.15 m across the deck for design.**
+| Preset | Along span / at bearings / across | Time | Edge, inner moment | Support shear | Worst brace carrying over 25 % of the largest force |
+|---|---|---|---|---|---|
+| `fast` | 3.0 m / 0.2 m / 0.25 m | 22 s | -0.35 %, -0.31 % | -0.01 %, +0.60 % | -2.0 % |
+| `standard` | 1.5 m / 0.1 m / 0.15 m | 36 s | -0.24 %, -0.12 % | +0.60 %, +1.51 % | -0.8 % |
+| `fine` | 0.75 m / 0.05 m / 0.10 m | 95 s | +0.02 %, 0.00 % | +0.95 %, +2.46 % | -0.2 % |
 
-At 16 panels between braces and 0.25 m across the five-girder test deck, the sum of girder midspan composite moments under a uniform deck load agrees with `w L² / 8` within 0.5% (measured shortfall 0.30%). This sum omits the slab's small longitudinal plate-bending share.
+The previous fixed setting, 16 panels per bay x 0.15 m, took 74 s for -0.37 %, -0.03 % moment and -0.23 %, -0.09 % shear. Small end top chords near the bearings (about 3 % of the largest brace force) converge slowly on coarse meshes; they do not govern.
+
+**The edge girder converges slowly across the deck**: the 0.10 m reference itself is about 0.7 % low on the edge girder's moment, extrapolating 0.15 m to 0.10 m. Tying the girder to the slab across its top flange width instead of one line of nodes should help; to be checked against an independent model before changing.
 
 ## What Setu covers
 
@@ -36,7 +40,7 @@ application permits different member-design selections.
 |---|---|
 | Kerbs 0.6 m or wider do not yet carry footway load (IRC:6 206.2) | Name a wide kerb as a footpath for now. |
 | Automatic vertical seismic uses the zone IV/V rule and a fixed spectral ordinate | For bearings and other required components in zones II/III, explicitly include vertical seismic. Supply effective coefficients where the automatic method is unsuitable; accepted overrides do not establish code compliance. |
-| Surfacing outside 50–100 mm is refused | Table 15B has no values there. |
+| Slab depth outside 0.2–0.3 m is refused | IRC:6 Fig. 16b gives T1 only for those depths (interpolation allowed). |
 | The moment is designed only at midspan and 0.02L, 0.04L, 0.06L towards the bearing | The true peak can fall between two sections: on a 35 m, four-girder bridge an inner girder's governing load gives 0.05 % more moment 0.36 m off the checked section. Small, but unconservative. |
 
 ## Checks built in

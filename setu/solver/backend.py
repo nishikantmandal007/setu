@@ -204,7 +204,8 @@ def node_displacements(node):
 # every node tag in increasing order, and the six displacements of each in the same order
 def every_node_displacement():
     nodes = np.sort(np.array(node_tags(), int))
-    return nodes, np.array([node_displacements(int(node)) for node in nodes], float)
+    node_disp = opensees.nodeDisp  # called for every node of every influence surface
+    return nodes, np.array([node_disp(node) for node in nodes.tolist()], float)
 
 
 # calculate nodal reactions while the loads are active

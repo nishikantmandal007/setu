@@ -1,3 +1,7 @@
+import multiprocessing
+import time
+from concurrent.futures import ProcessPoolExecutor
+
 # Expected runtime: ~10-15 s (solves and searches 36 brace influence surfaces across both adverse directions).
 import pytest
 
@@ -17,6 +21,11 @@ from setu.analysis.results import CriticalPosition, VehiclePlacement
 from setu.helpers import adverse_sign
 from setu.irc6.impact import impact_factor
 from setu.loads.load_cases import LoadCase
+from setu.loads.seismic_loads import inertia
+from setu.postprocess.brace_design_values import brace_values
+from setu.postprocess.design_values import girder_values
+from setu.postprocess.own_process import solve_in_own_process
+from setu.postprocess.parallel import analysis_for
 from setu.utils.constants import (
     BASIC,
     BIGGER_IS_WORSE,
@@ -193,3 +202,96 @@ def test_brace_design_values_keys_match_brace_forces_keys(results):
 
     assert set(results.members.keys()) == direct_keys
     assert set(results.criticals.keys()) == {(*key, adverse) for key in direct_keys for adverse in (BIGGER_IS_WORSE, SMALLER_IS_WORSE)}
+
+
+# light search workers and freed surfaces give the same girder and brace values, bit for bit
+def test_search_workers_match_the_serial_search():
+    bridge = BRACE_BRIDGE
+    with analysis_for(bridge, None, (), (), 1, girders=True, braces=True) as analysis:
+        serial_girders = girder_values(analysis, bridge, None, None, None)
+        serial = brace_values(analysis, bridge, None, None)
+    with ProcessPoolExecutor(2, mp_context=multiprocessing.get_context("spawn")) as pool:
+        with analysis_for(bridge, None, (), (), 1, girders=True, braces=True) as analysis:
+            parallel_girders = girder_values(analysis, bridge, None, None, None, search_pool=pool)
+            kept = len(analysis.solver.surfaces)
+            parallel = brace_values(analysis, bridge, None, None, keep_surfaces=False, search_pool=pool)
+            assert len(analysis.solver.surfaces) == kept
+    assert parallel.surfaces == {}
+    assert set(parallel.members) == set(serial.members)
+    for member, by_state in serial.members.items():
+        for state, by_direction in by_state.items():
+            for direction, governing in by_direction.items():
+                assert parallel.members[member][state][direction].value == governing.value
+    assert parallel_girders.fatigue_stresses_mpa.keys() == serial_girders.fatigue_stresses_mpa.keys()
+    for girder, by_response in serial_girders.girders.items():
+        for response, by_state in by_response.items():
+            for state, by_direction in by_state.items():
+                for direction, governing in by_direction.items():
+                    assert parallel_girders.girders[girder][response][state][direction].value == governing.value
+
+
+# an array seismic load case is the same load case as the list it replaces
+def test_array_load_case_holds_the_same_loads():
+    case = inertia({5: 2.0, 9: 3.0}, 0.5, 3, "seismic")
+    assert case.nodal_loads == [(5, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0), (9, 0.0, 0.0, 1.5, 0.0, 0.0, 0.0)]
+    nodes, forces = case.nodal_arrays
+    assert nodes.tolist() == [5, 9] and forces[:, 2].tolist() == [1.0, 1.5]
+
+
+# the whole analysis in its own process with forked workers gives the serial values, bit for bit
+def test_own_process_matches_the_serial_values():
+    with analysis_for(BRACE_BRIDGE, None, (), (), 1, girders=True, braces=True) as analysis:
+        girders = girder_values(analysis, BRACE_BRIDGE, None, None, None)
+        braces = brace_values(analysis, BRACE_BRIDGE, None, None)
+    values, _ = solve_in_own_process(BRACE_BRIDGE, None, None, None, None, workers=2)
+    assert values.braces.surfaces == {} and values.girders.surfaces == {}
+    for member, by_state in braces.members.items():
+        for state, by_direction in by_state.items():
+            for direction, governing in by_direction.items():
+                assert values.braces.members[member][state][direction].value == governing.value
+    for girder, by_response in girders.girders.items():
+        for response, by_state in by_response.items():
+            for state, by_direction in by_state.items():
+                for direction, governing in by_direction.items():
+                    assert values.girders.girders[girder][response][state][direction].value == governing.value
+
+
+# a stop ends the analysis process and its workers at once
+def test_stop_leaves_no_process_behind():
+    started = time.monotonic()
+
+    def stop_after_two_seconds():
+        if time.monotonic() - started > 2:
+            raise KeyboardInterrupt
+
+    with pytest.raises(KeyboardInterrupt):
+        solve_in_own_process(BRACE_BRIDGE, None, None, None, None, workers=2, check=stop_after_two_seconds)
+    assert not multiprocessing.active_children()
+
+
+def test_class_sv_and_construction_come_back_from_the_own_process():
+    from setu.utils.constants import MAX_MOMENT
+    from setu.postprocess.construction import ConstructionLoads, construction_design_values
+    from setu.postprocess.special_vehicle import special_vehicle_design_values
+    loads = ConstructionLoads(shuttering_kpa=0.5, construction_live_load_kpa=1.5)
+    values, _ = solve_in_own_process(BRACE_BRIDGE, None, None, None, None, workers=1, special_vehicle=True, construction=loads)
+    sv, construction = special_vehicle_design_values(BRACE_BRIDGE), construction_design_values(BRACE_BRIDGE, loads)
+
+    assert values.special_vehicle.girders[0][MAX_MOMENT][BASIC][BIGGER_IS_WORSE].value == sv.girders[0][MAX_MOMENT][BASIC][BIGGER_IS_WORSE].value
+    assert values.construction.girders[0][MAX_MOMENT]["ultimate, construction"][BIGGER_IS_WORSE].value == \
+        construction.girders[0][MAX_MOMENT]["ultimate, construction"][BIGGER_IS_WORSE].value
+    plain, _ = solve_in_own_process(BRACE_BRIDGE, None, None, None, None, workers=1)
+    assert plain.special_vehicle is None and plain.construction is None
+
+
+def test_the_own_process_run_completes_when_congestion_or_crowd_governs():
+    """A congested or crowd placement takes no braking (cl. 204.4), so the governing diagrams have no braking case to replay there."""
+    import copy
+    crowded = copy.copy(BRACE_BRIDGE)
+    crowded.cross_section = copy.copy(BRACE_BRIDGE.cross_section)
+    crowded.cross_section.congestion = crowded.cross_section.crowd_load = True
+    values, _ = solve_in_own_process(crowded, None, None, None, None, workers=2)
+    patterns = [critical.lane_pattern for critical in values.girders.criticals.values()]
+
+    assert any("congested" in p or "crowd" in p for p in patterns)
+    assert values.diagrams.governing

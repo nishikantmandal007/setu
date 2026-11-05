@@ -6,7 +6,7 @@
 
 ## 1. Envelopes per block
 
-A carriageway is filled with *blocks*: **Class A lanes** and **70R zones**. For each block type, the envelope $E(z)$ is the worst response over the vehicles allowed in it, at each lateral position z, together with which vehicle gave it (`envelope_every_block`). On a carriageway narrower than 5.3 m, a Class A lane's envelope also includes the residual 500 kg/m² on the width it leaves uncovered (Table 6).
+A carriageway is filled with *blocks*: **Class A lanes** and **70R zones**. For each block type, the envelope $E(z)$ is the worst response over the vehicles allowed in it, at each lateral position z, together with which vehicle gave it (`envelope_every_block`). On a carriageway narrower than 5.3 m, a Class A lane's envelope also includes the residual 5 kN/m² on the width it leaves uncovered (Table 6).
 
 ## 2. The lane patterns the code allows
 

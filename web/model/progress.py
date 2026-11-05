@@ -3,7 +3,8 @@
 import numpy as np
 from setu.solver import backend
 
-from setu.irc6.irc_constants import FATIGUE_TRUCK_AXLE_LOADS_T, FATIGUE_TRUCK_AXLE_SPACING_M, FATIGUE_TRUCK_OVERALL_WIDTH_M, FATIGUE_TRUCK_TYRE_PAIR_WIDTH_M
+from setu.irc6.fatigue import fatigue_train_pitch_m
+from setu.irc6.irc_constants import FATIGUE_TRAIN_LIGHT_TRUCK_AXLE_LOADS_KN, FATIGUE_TRUCK_AXLE_LOADS_KN, FATIGUE_TRUCK_AXLE_SPACING_M, FATIGUE_TRUCK_OVERALL_WIDTH_M, FATIGUE_TRUCK_TYRE_PAIR_WIDTH_M
 from setu.utils.constants import MAX_MOMENT, MIDSPAN_DEFLECTION, SUPPORT_SHEAR, BEARING_REACTION
 from setu.builder.assembly import BEARING_VERTICAL_STIFFNESS_KN_PER_M
 from setu.irc6.lanes import count_design_lanes
@@ -73,15 +74,17 @@ def completed(name, value, args):
         return {"kind": "surface", "surface": surface(value), "girder": args[2], "station_m": float(args[1].mesh.length_mesh_m[args[3][1]])}
     if name == "fatigue_range":
         axles = np.r_[0., np.cumsum(FATIGUE_TRUCK_AXLE_SPACING_M)].tolist()
+        trucks = [("Fatigue train, 120 kN truck", FATIGUE_TRAIN_LIGHT_TRUCK_AXLE_LOADS_KN)] * value.trucks_ahead + [("Fatigue truck, 400 kN", FATIGUE_TRUCK_AXLE_LOADS_KN)] \
+            + [("Fatigue train, 120 kN truck", FATIGUE_TRAIN_LIGHT_TRUCK_AXLE_LOADS_KN)] * value.trucks_behind
         return {"kind": "fatigue", "name": args[0].name, "unit": response_unit(args[0].name),
                 "largest": value.largest, "smallest": value.smallest, "range": value.range,
                 "minimum_front_m": value.x_front_at_smallest_m, "maximum_front_m": value.x_front_at_largest_m,
-                "vehicles": [{"name": "Fatigue truck", "x_m": value.x_front_at_largest_m, "z_m": value.z_centre_m,
+                "vehicles": [{"name": truck, "x_m": value.x_front_at_largest_m + k * fatigue_train_pitch_m(), "z_m": value.z_centre_m,
                               "heading": -1, "tracked": False, "width_m": FATIGUE_TRUCK_OVERALL_WIDTH_M,
                               "gauge_m": FATIGUE_TRUCK_OVERALL_WIDTH_M - FATIGUE_TRUCK_TYRE_PAIR_WIDTH_M,
                               "body_m": [-FATIGUE_TRUCK_TYRE_PAIR_WIDTH_M, axles[-1] + FATIGUE_TRUCK_TYRE_PAIR_WIDTH_M],
-                              "axles_m": axles, "axle_loads_t": list(FATIGUE_TRUCK_AXLE_LOADS_T), "impact_factor": value.impact_factor,
-                              "axle_positions_only": True}]}
+                              "axles_m": axles, "axle_loads_kn": list(loads), "impact_factor": value.impact_factor,
+                              "axle_positions_only": True} for k, (truck, loads) in enumerate(trucks)]}
     return None
 
 

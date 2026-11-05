@@ -64,8 +64,10 @@ from setu import SeismicSite, TemperatureSite, WindSite
 
 results = girder_design_values(
     bridge,
-    wind=WindSite(basic_wind_speed_mps=39.0, terrain="plain", height_m=12.0,
-                  funnelling=False, solid_barrier_height_m=1.1),
+    wind=WindSite(basic_wind_speed_mps=39.0, terrain_category=2, superstructure_top_m=12.0,
+                  road_level_m=10.0, pier_height_m=8.0, return_period_years=100,
+                  valley_or_leeward_hill=False, cyclonic_region="inland",
+                  deck_cross_slope_deg=0.0, solid_barrier_height_m=1.1),
     seismic=SeismicSite(zone="IV", soil="II", importance_factor=1.2,
                         period_s=0.5, response_reduction=1.0),
     temperature=TemperatureSite(shade_max_c=45.0, shade_min_c=2.0),

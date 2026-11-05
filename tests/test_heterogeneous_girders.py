@@ -77,6 +77,7 @@ def test_each_girder_contributes_its_own_self_weight_and_seismic_weight():
     from setu.loads.dead_loads import wet_slab_load, superimposed_dead_load, surfacing_load
     vertical = case.nodal_loads + wet_slab_load(model).nodal_loads + superimposed_dead_load(model).nodal_loads + surfacing_load(model).nodal_loads
     expected = sum(by_element.values()) * bridge.span_m / (model.mesh.stations_along_span - 1) - sum(load[2] for load in vertical)
+    expected -= 1.0 * bridge.deck.thickness_m * bridge.width_m() * bridge.span_m  # seismic weight is the hardened slab; the wet stage adds 1 kN/m3 (Amendment 10)
     assert sum(dead_weight_at_nodes(model).values()) == pytest.approx(expected, rel=1e-10)
 
 
@@ -153,9 +154,9 @@ def test_unequal_depth_wind_requires_engineer_supplied_geometry_and_drag():
             wind_load_cases(model, WindSite(**{**vars(WIND_SITE), **incomplete}))
     site = WindSite(**{**vars(WIND_SITE), **overrides})
     cases = wind_load_cases(model, site)
-    from setu.irc6.wind import hourly_mean_wind
-    _, pressure_pa = hourly_mean_wind(site.height_m, site.terrain, site.basic_wind_speed_mps, site.funnelling)
-    expected = pressure_pa / 1000 * 2 * 100 * overrides["drag"]
+    from setu.irc6.wind import design_wind_speed_mps, wind_pressure_pa
+    pressure_pa = wind_pressure_pa(design_wind_speed_mps(site, site.superstructure_top_m, site.return_period_years))
+    expected = pressure_pa / 1000 * 100 * overrides["drag"]  # Table 5 column 2 (span <= 40 m, pier <= 20 m): Pz A1 CD, no gust factor
     assert cases.forces_kn["transverse"] == pytest.approx(expected)
     for name, sign in (("transverse from the left", 1), ("transverse from the right", -1)):
         assert sum(load[3] for load in cases[name].nodal_loads) == pytest.approx(sign * expected)

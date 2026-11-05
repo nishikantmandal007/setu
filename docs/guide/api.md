@@ -62,7 +62,7 @@ or `end="j"` to read the opposite element end. Influence responses use each elem
 
 ## Errors
 
-Setu raises a clear error instead of guessing: a missing input, a strip name it does not know, a load for a strip the deck does not have, a vehicle that does not fit, or surfacing outside the range Table 15B covers. The message names the value at fault.
+Setu raises a clear error instead of guessing: a missing input, a strip name it does not know, a load for a strip the deck does not have, a vehicle that does not fit, or a slab depth outside the range Fig. 16b covers. The message names the value at fault.
 
 A nonzero OpenSees analysis status raises `setu.errors.BackendError`. Temporary loads are removed after a
 failed solve so the next case starts cleanly. Exceptions while applying or reading a case also remove its temporary loads.

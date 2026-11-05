@@ -41,7 +41,7 @@ def body_of(name, x_front_m, z_m, impact):
             "from_m": float(x_front_m + body_m[0]), "to_m": float(x_front_m + body_m[1]), "heading": heading, "impact_factor": impact, "tracked": tracked,
             "width_m": CLASS_A_LANE_WIDTH_M if name.startswith("Class_A") else VEHICLE_70R_WIDTH_M, "gauge_m": vehicle.transverse_gauge_m,
             "axles_m": [] if tracked else list(vehicle.axle_positions_m()), "track_m": [vehicle.track_length_m, vehicle.track_width_m] if tracked else None,
-            "axle_loads_t": [2 * vehicle.load_per_track_t] if tracked else list(vehicle.axle_loads_t)}
+            "axle_loads_kn": [2 * vehicle.load_per_track_kn] if tracked else list(vehicle.axle_loads_kn)}
 
 
 # what the deck view needs: strips, girder lines and each girder's critical trucks, wheels and patches for every design place
@@ -153,7 +153,7 @@ def replay(bridge, results, girder, place):
     at_m = float(results.dead.total[girder].stations_m[results.stations[key]])
     details = results.braking.get((girder, (response, results.stations[key]), adverse))
     return {"at_m": at_m, "trials": trials,
-            "braking": braking_view(bridge, details, girder, at_m, response, results.criticals[key]) if details else None}
+            "braking": braking_view(bridge, details, girder, at_m, response, results.criticals[key]) if details and details["selected"] is not None else None}
 
 
 def braking_view(bridge, details, girder, station_m, response, critical):

@@ -4,7 +4,7 @@ REVERSED_SUFFIX = "_reversed"
 
 # n axles need n - 1 spacings
 def check_axle_and_spacing_counts_match(vehicle):
-    axles = len(vehicle.axle_loads_t)
+    axles = len(vehicle.axle_loads_kn)
     spacings = len(vehicle.axle_spacing_m)
     if axles != spacings + 1:
         raise VehicleDefinitionError(f"{vehicle.name}: {axles} axle loads need {axles - 1} spacings between them, but {spacings} were given")
@@ -16,12 +16,12 @@ def every_measurement_of(vehicle):
         ("min_nose_to_tail_m", vehicle.min_nose_to_tail_m),
     ]
     if isinstance(vehicle, AxleVehicle):
-        for index, axle_load_t in enumerate(vehicle.axle_loads_t):
-            measurements.append((f"axle_loads_t[{index}]", axle_load_t))
+        for index, axle_load_kn in enumerate(vehicle.axle_loads_kn):
+            measurements.append((f"axle_loads_kn[{index}]", axle_load_kn))
         for index, spacing_m in enumerate(vehicle.axle_spacing_m):
             measurements.append((f"axle_spacing_m[{index}]", spacing_m))
     else:
-        measurements.append(("load_per_track_t", vehicle.load_per_track_t))
+        measurements.append(("load_per_track_kn", vehicle.load_per_track_kn))
         measurements.append(("track_length_m", vehicle.track_length_m))
         measurements.append(("track_width_m", vehicle.track_width_m))
     return measurements
@@ -35,9 +35,9 @@ def check_all_measurements_positive(vehicle):
 
 class AxleVehicle:
     # a wheeled vehicle: axle loads, spacings, gauge and clearances
-    def __init__(self, name, axle_loads_t, axle_spacing_m, transverse_gauge_m, lead_clearance_m, trail_clearance_m, min_nose_to_tail_m):
+    def __init__(self, name, axle_loads_kn, axle_spacing_m, transverse_gauge_m, lead_clearance_m, trail_clearance_m, min_nose_to_tail_m):
         self.name = name
-        self.axle_loads_t = axle_loads_t
+        self.axle_loads_kn = axle_loads_kn
         self.axle_spacing_m = axle_spacing_m
         self.transverse_gauge_m = transverse_gauge_m
         self.lead_clearance_m = lead_clearance_m
@@ -58,14 +58,14 @@ class AxleVehicle:
         return tuple(behind_the_first_axle_m)
 
     # all the axles added up
-    def total_load_t(self):
-        return sum(self.axle_loads_t)
+    def total_load_kn(self):
+        return sum(self.axle_loads_kn)
 
 class TrackedVehicle:
     # a tracked vehicle: load per track and the track size
-    def __init__(self, name, load_per_track_t, track_length_m, track_width_m, transverse_gauge_m, min_nose_to_tail_m, lead_clearance_m=0.0, trail_clearance_m=0.0):
+    def __init__(self, name, load_per_track_kn, track_length_m, track_width_m, transverse_gauge_m, min_nose_to_tail_m, lead_clearance_m=0.0, trail_clearance_m=0.0):
         self.name = name
-        self.load_per_track_t = load_per_track_t
+        self.load_per_track_kn = load_per_track_kn
         self.track_length_m = track_length_m
         self.track_width_m = track_width_m
         self.transverse_gauge_m = transverse_gauge_m
@@ -79,21 +79,21 @@ class TrackedVehicle:
         return self.track_length_m
 
     # both tracks
-    def total_load_t(self):
-        return 2.0 * self.load_per_track_t
+    def total_load_kn(self):
+        return 2.0 * self.load_per_track_kn
 
 CLASS_70R_WHEELED = AxleVehicle(
     name="Class_70R_Wheeled",
-    axle_loads_t=(8, 12, 12, 17, 17, 17, 17),
+    axle_loads_kn=(80.0, 120.0, 120.0, 170.0, 170.0, 170.0, 170.0),
     axle_spacing_m=(3.96, 1.52, 2.13, 1.37, 3.05, 1.37),
     transverse_gauge_m=1.93,
-    lead_clearance_m=0.81,
+    lead_clearance_m=0.61,  # Amendment 10 Fig. 1 (base 2017 printed 0.81; decision D14); NPTEL IIT Kharagpur RC Road Bridges lecture 4 also reads 610 mm
     trail_clearance_m=0.91,
-    min_nose_to_tail_m=28.28,
+    min_nose_to_tail_m=28.48,  # Fig. 1 note 1: >= 30 m rear axle to next front axle = 30 - 0.61 - 0.91
 )
 CLASS_70R_TRACKED = TrackedVehicle(
     name="Class_70R_Tracked",
-    load_per_track_t=35.0,
+    load_per_track_kn=350.0,
     track_length_m=4.57,
     track_width_m=0.84,
     transverse_gauge_m=2.06,
@@ -101,19 +101,41 @@ CLASS_70R_TRACKED = TrackedVehicle(
 )
 CLASS_A = AxleVehicle(
     name="Class_A",
-    axle_loads_t=(2.7, 2.7, 11.4, 11.4, 6.8, 6.8, 6.8, 6.8),
+    axle_loads_kn=(27.0, 27.0, 114.0, 114.0, 68.0, 68.0, 68.0, 68.0),
     axle_spacing_m=(1.1, 3.2, 1.2, 4.3, 3.0, 3.0, 3.0),
     transverse_gauge_m=1.8,
     lead_clearance_m=0.6,
     trail_clearance_m=0.9,
     min_nose_to_tail_m=18.5,
 )
+# Fig. 1 (Amendment 10) and its note 3: 'The maximum loads for the wheeled vehicle shall be 200 kN for a single axle or 400 kN for a bogie
+# of two axles spaced not more than 1.22 m centres', drawn as MAX. SINGLE AXLE LOAD (1.220 m either side) and MAX. BOGIE LOAD (1.830,
+# 1.220, 1.830 m); wheel lines as the 70R wheeled (2.79 m over the tyres less 0.86 m tyre groups); note 1: at least 30 m from the
+# rear axle to the next vehicle's first axle. Checked as loads in their own right (NPTEL, IIT Kharagpur, RC Road Bridges, lecture 4).
+CLASS_70R_SINGLE_AXLE = AxleVehicle(
+    name="Class_70R_Single_Axle",
+    axle_loads_kn=(200.0,),
+    axle_spacing_m=(),
+    transverse_gauge_m=1.93,
+    lead_clearance_m=1.22,
+    trail_clearance_m=1.22,
+    min_nose_to_tail_m=30.0 - 1.22 - 1.22,
+)
+CLASS_70R_BOGIE = AxleVehicle(
+    name="Class_70R_Bogie",
+    axle_loads_kn=(200.0, 200.0),
+    axle_spacing_m=(1.22,),
+    transverse_gauge_m=1.93,
+    lead_clearance_m=1.83,
+    trail_clearance_m=1.83,
+    min_nose_to_tail_m=30.0 - 1.83 - 1.83,
+)
 IRC_VEHICLES = {
-    vehicle.name: vehicle for vehicle in (CLASS_70R_WHEELED, CLASS_70R_TRACKED, CLASS_A)
+    vehicle.name: vehicle for vehicle in (CLASS_70R_WHEELED, CLASS_70R_TRACKED, CLASS_70R_SINGLE_AXLE, CLASS_70R_BOGIE, CLASS_A)
 }
 VEHICLES_ALLOWED_IN_BLOCK = {
     "class_a": ("Class_A",),
-    "zone_70r": ("Class_70R_Wheeled", "Class_70R_Tracked"),
+    "zone_70r": ("Class_70R_Wheeled", "Class_70R_Tracked", "Class_70R_Single_Axle", "Class_70R_Bogie"),
 }
 
 # vehicle name without the reversed suffix
@@ -132,7 +154,7 @@ def facing_backwards(vehicle):
         return vehicle
     return AxleVehicle(
         name=f"{vehicle.name}{REVERSED_SUFFIX}",
-        axle_loads_t=tuple(reversed(vehicle.axle_loads_t)),
+        axle_loads_kn=tuple(reversed(vehicle.axle_loads_kn)),
         axle_spacing_m=tuple(reversed(vehicle.axle_spacing_m)),
         transverse_gauge_m=vehicle.transverse_gauge_m,
         lead_clearance_m=vehicle.trail_clearance_m,

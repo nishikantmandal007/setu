@@ -8,20 +8,23 @@ from setu.irc6.irc_constants import (
     CLASS_A_LANE_WIDTH_M,
     CLASS_A_VEHICLE_GAP_M,
     DESIGN_LANES_BY_WIDTH,
+    CONGESTION_FACTORS,
+    CONGESTION_SPANS_M,
+    CROWD_LOAD_KPA,
     FOOTWAY_FULL_LOAD_UP_TO_SPAN_M,
-    FOOTWAY_LONG_SPAN_DEDUCTION_KG_M2,
-    FOOTWAY_LONG_SPAN_KG_M2_M,
+    FOOTWAY_LONG_SPAN_DEDUCTION_KPA,
+    FOOTWAY_LONG_SPAN_KPA_M,
     FOOTWAY_MEDIUM_SPAN_DIVISOR,
-    FOOTWAY_MEDIUM_SPAN_KG_M2_PER_M,
-    FOOTWAY_MEDIUM_SPAN_OFFSET_KG_M2,
-    FOOTWAY_PEDESTRIAN_KG_M2,
+    FOOTWAY_MEDIUM_SPAN_KPA_PER_M,
+    FOOTWAY_MEDIUM_SPAN_OFFSET_KPA,
+    FOOTWAY_PEDESTRIAN_KPA,
     FOOTWAY_WIDTH_FACTOR_BASE_M,
     FOOTWAY_WIDTH_FACTOR_DIVISOR,
     FOOTWAY_WIDTH_MATTERS_ABOVE_SPAN_M,
+    KERB_CARRIES_FOOTWAY_LOAD_FROM_M,
     LANE_REDUCTION_BY_LANE_COUNT,
     LANE_REDUCTION_FOR_FOUR_OR_MORE_LANES,
     MOST_70R_VEHICLES_DRAWN,
-    MOST_DESIGN_LANES,
     NARROWEST_LOADED_CARRIAGEWAY_M,
     RESIDUAL_UDL_APPLIES_BELOW_M,
     SMALLEST_CLASS_A_GAP_M,
@@ -33,8 +36,9 @@ from setu.irc6.irc_constants import (
     ZONE_70R_AT_EDGE_M,
     ZONE_70R_INSIDE_M,
 )
+from setu.errors import NoAdmissibleArrangementError
 from setu.helpers import where_a_load_hurts
-from setu.utils.constants import CLASS_A_LANE, KPA_PER_KG_M2, NOTHING_THERE_M, ROUND_TO_DECIMALS, TOLERANCE_M, ZONE_70R
+from setu.utils.constants import CLASS_A_LANE, KERB_PREFIX, NOTHING_THERE_M, ROUND_TO_DECIMALS, TOLERANCE_M, ZONE_70R
 
 DESIGN_LANES_PER_70R_ZONE = 2
 DESIGN_LANES_PER_CLASS_A_LANE = 1
@@ -70,7 +74,8 @@ def count_design_lanes(carriageway_width_m):
         if width_from <= carriageway_width_m < width_up_to:
             return design_lanes
     if carriageway_width_m >= WIDEST_TABULATED_CARRIAGEWAY_M:
-        return MOST_DESIGN_LANES
+        raise NoAdmissibleArrangementError(f"carriageway {carriageway_width_m} m: IRC:6 Table 6 stops below {WIDEST_TABULATED_CARRIAGEWAY_M} m and no IRC source gives "
+                                           "the design lanes beyond it; split the deck into carriageways or get the engineer's ruling")
     return NOT_LOADED_AT_ALL
 
 # is the carriageway wide enough to load at all
@@ -260,19 +265,33 @@ def cells_where_it_hurts(surface, from_m, to_m, adverse, sampling):
 
 # clause 206.3 footway load for this span and width
 def footway_pressure_kpa(span_m, footway_width_m):
-    full_kg_m2 = FOOTWAY_PEDESTRIAN_KG_M2
+    full_kpa = FOOTWAY_PEDESTRIAN_KPA
     if span_m <= FOOTWAY_FULL_LOAD_UP_TO_SPAN_M:
-        return full_kg_m2 * KPA_PER_KG_M2
+        return full_kpa
     if span_m <= FOOTWAY_WIDTH_MATTERS_ABOVE_SPAN_M:
-        falls_by_kg_m2 = (FOOTWAY_MEDIUM_SPAN_KG_M2_PER_M * span_m - FOOTWAY_MEDIUM_SPAN_OFFSET_KG_M2) / FOOTWAY_MEDIUM_SPAN_DIVISOR
-        return (full_kg_m2 - falls_by_kg_m2) * KPA_PER_KG_M2
-    long_span_kg_m2 = full_kg_m2 - FOOTWAY_LONG_SPAN_DEDUCTION_KG_M2 + FOOTWAY_LONG_SPAN_KG_M2_M / span_m
+        falls_by_kpa = (FOOTWAY_MEDIUM_SPAN_KPA_PER_M * span_m - FOOTWAY_MEDIUM_SPAN_OFFSET_KPA) / FOOTWAY_MEDIUM_SPAN_DIVISOR
+        return full_kpa - falls_by_kpa
+    long_span_kpa = full_kpa - FOOTWAY_LONG_SPAN_DEDUCTION_KPA + FOOTWAY_LONG_SPAN_KPA_M / span_m
     width_factor = (FOOTWAY_WIDTH_FACTOR_BASE_M - footway_width_m) / FOOTWAY_WIDTH_FACTOR_DIVISOR
-    return long_span_kg_m2 * width_factor * KPA_PER_KG_M2
+    return long_span_kpa * width_factor
 
-# each footway strip with its pressure
+# every strip carrying the footway live load: footways, and kerbs 0.75 m or wider (clause 206.2)
+def footway_live_load_strips(cross_section):
+    wide_kerbs = [strip for strip in cross_section.strips if strip.name.startswith(KERB_PREFIX) and strip.width_m >= KERB_CARRIES_FOOTWAY_LOAD_FROM_M - TOLERANCE_M]
+    return sorted(cross_section.footways() + wide_kerbs, key=lambda strip: strip.z_from_m)
+
+
+# each strip carrying footway live load, with its pressure: 5 kN/m2 with no span reduction where crowd load is considered (206.1, 206.3)
 def footway_loaded_strips(cross_section, span_m):
-    return [(strip.z_from_m, strip.z_to_m, footway_pressure_kpa(span_m, strip.width_m)) for strip in cross_section.footways()]
+    return [(strip.z_from_m, strip.z_to_m, CROWD_LOAD_KPA if cross_section.crowd_load else footway_pressure_kpa(span_m, strip.width_m))
+            for strip in footway_live_load_strips(cross_section)]
+
+
+# Table 7 congestion factor; the table starts above 10 m
+def congestion_factor(span_m):
+    if span_m <= CONGESTION_SPANS_M[0]:
+        raise ValueError(f"IRC:6 Table 7 gives the congestion factor for spans above {CONGESTION_SPANS_M[0]:.0f} m, got {span_m} m")
+    return float(np.interp(span_m, CONGESTION_SPANS_M, CONGESTION_FACTORS))
 
 # response to the footway load on every footway
 def footway_response(surface, cross_section, adverse, span_m, sampling):

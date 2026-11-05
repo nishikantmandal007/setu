@@ -21,20 +21,20 @@
 
   // IRC:6-2017 Figs. 1 and 3, the same numbers as setu/irc6/vehicles.py
   const CATALOGUE = {
-    "Class A": { axle_loads_t: [2.7, 2.7, 11.4, 11.4, 6.8, 6.8, 6.8, 6.8], axles_m: positions([1.1, 3.2, 1.2, 4.3, 3.0, 3.0, 3.0]), gauge_m: 1.8, lead_m: 0.6, trail_m: 0.9 },
-    "Class 70R Wheeled": { axle_loads_t: [8, 12, 12, 17, 17, 17, 17], axles_m: positions([3.96, 1.52, 2.13, 1.37, 3.05, 1.37]), gauge_m: 1.93, lead_m: 0.81, trail_m: 0.91 },
-    "Class 70R Tracked": { axle_loads_t: [70], tracked: true, track_m: [4.57, 0.84], gauge_m: 2.06 },
+    "Class A": { axle_loads_kn: [27, 27, 114, 114, 68, 68, 68, 68], axles_m: positions([1.1, 3.2, 1.2, 4.3, 3.0, 3.0, 3.0]), gauge_m: 1.8, lead_m: 0.6, trail_m: 0.9 },
+    "Class 70R Wheeled": { axle_loads_kn: [80, 120, 120, 170, 170, 170, 170], axles_m: positions([3.96, 1.52, 2.13, 1.37, 3.05, 1.37]), gauge_m: 1.93, lead_m: 0.61, trail_m: 0.91 },
+    "Class 70R Tracked": { axle_loads_kn: [700], tracked: true, track_m: [4.57, 0.84], gauge_m: 2.06 },
   };
 
   // a vehicle ready to draw: name from the catalogue, facing forwards (heading -1, driving towards -x) or turned round (+1)
   function vehicle(name, { heading = -1, x_m = 0, z_m = 0, impact_factor = 1 } = {}) {
     const c = CATALOGUE[name];
-    if (c.tracked) return { name, tracked: true, track_m: c.track_m, gauge_m: c.gauge_m, axle_loads_t: c.axle_loads_t, body_m: [0, c.track_m[0]], heading: -1, axles_m: [], x_m, z_m, impact_factor };
+    if (c.tracked) return { name, tracked: true, track_m: c.track_m, gauge_m: c.gauge_m, axle_loads_kn: c.axle_loads_kn, body_m: [0, c.track_m[0]], heading: -1, axles_m: [], x_m, z_m, impact_factor };
     const length = c.axles_m[c.axles_m.length - 1];
     const turned = heading > 0;
     return {
       name, tracked: false, gauge_m: c.gauge_m, heading, x_m, z_m, impact_factor,
-      axle_loads_t: turned ? [...c.axle_loads_t].reverse() : c.axle_loads_t,
+      axle_loads_kn: turned ? [...c.axle_loads_kn].reverse() : c.axle_loads_kn,
       axles_m: turned ? [...c.axles_m].reverse().map(p => length - p) : c.axles_m,
       body_m: turned ? [-c.trail_m, length + c.lead_m] : [-c.lead_m, length + c.trail_m],
     };
@@ -42,8 +42,8 @@
 
   // the wheels of a vehicle in its own frame: [dx, dy, kN], two per axle (a track as its two lines of load)
   function wheels(v) {
-    if (v.tracked) return [-1, 1].map(side => [v.track_m[0] / 2, side * v.gauge_m / 2, v.axle_loads_t[0] * 9.81 / 2]);
-    return v.axles_m.flatMap((x, k) => [-1, 1].map(side => [x, side * v.gauge_m / 2, v.axle_loads_t[k] * 9.81 / 2]));
+    if (v.tracked) return [-1, 1].map(side => [v.track_m[0] / 2, side * v.gauge_m / 2, v.axle_loads_kn[0] / 2]);
+    return v.axles_m.flatMap((x, k) => [-1, 1].map(side => [x, side * v.gauge_m / 2, v.axle_loads_kn[k] / 2]));
   }
 
   // the shadow blur and windscreen gradient every drawing uses; add once per <svg>
@@ -79,7 +79,7 @@
     v.axles_m.forEach((x, k) => {
       g.append(el("line", { x1: x, y1: -v.gauge_m / 2, x2: x, y2: v.gauge_m / 2, stroke: "#2b3036", "stroke-width": 0.07 }));
       [-1, 1].forEach(side => {
-        const tw = v.axle_loads_t[k] >= 10 ? look.tyre[1] : look.tyre[0];
+        const tw = v.axle_loads_kn[k] >= 100 ? look.tyre[1] : look.tyre[0];
         g.append(el("rect", { x: x - 0.44, y: side * v.gauge_m / 2 - tw / 2, width: 0.88, height: tw, rx: 0.13, fill: "#1b1d21", stroke: "#0e1012", "stroke-width": 0.03 }));
         if (tw > 0.4) g.append(el("line", { x1: x - 0.42, y1: side * v.gauge_m / 2, x2: x + 0.42, y2: side * v.gauge_m / 2, stroke: "#4f545c", "stroke-width": 0.045 }));
       });

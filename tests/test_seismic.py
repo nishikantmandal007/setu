@@ -82,7 +82,7 @@ def test_combining_the_three_directions():
 
 SITE = SeismicSite(zone="IV", soil="II", importance_factor=1.2, period_s=0.8, response_reduction=1.0)
 ONE_CLASS_A = CriticalPosition("t", "maximum", 0.0, 0.0, 1.0, 1, "", [VehiclePlacement("Class_A", 5.0, 5.0, 1.3, (5.0,))], 0.0, [], [], 0.0)
-CLASS_A_KN = 55.4 * 9.81
+CLASS_A_KN = 554.0
 
 
 @pytest.fixture(scope="module")
@@ -129,6 +129,8 @@ def test_the_seismic_weight_is_the_whole_dead_load(seismic):
     steel_stage = steel_self_weight_load(model)
     element_kn = -sum(p[0] for _, _, p in steel_stage.element_loads) * BRIDGE.span_m / (model.mesh.stations_along_span - 1)
     nodal_kn = -sum(fy for _, _, fy, *_ in steel_stage.nodal_loads + wet_slab_load(model).nodal_loads + superimposed_dead_load(model).nodal_loads + surfacing_load(model).nodal_loads)
+    # the seismic weight is the hardened slab: the wet stage carries IRC:6 Amendment 10's extra 1 kN/m3 for wet concrete
+    nodal_kn -= 1.0 * BRIDGE.deck.thickness_m * BRIDGE.width_m() * BRIDGE.span_m
 
     assert cases.dead_weight_kn == pytest.approx(element_kn + nodal_kn, rel=1e-9)
 
@@ -190,3 +192,20 @@ def test_seismic_dead_weight_is_built_once_per_model():
     loads.seismic_load_cases(model, SeismicSite("IV", "II", 1., .5, 1., dead_weight_kn=1000.), ONE_CLASS_A)
     assert loads.dead_weight_at_nodes.cache_info().misses == built_before
     assert list(loads.dead_weight_at_nodes(model).items()) == list(dead.items())
+
+
+@pytest.mark.parametrize("zone, girder_has_vertical", [("II", False), ("III", False), ("IV", True), ("V", True)])
+def test_bearings_take_vertical_shaking_in_every_zone(seismic, zone, girder_has_vertical):
+    """IRC:SP:114-2018 cl. 4.2.1: vertical in zones IV and V for all elements; in II and III it may be omitted except '(b) bearings'."""
+    model, _ = seismic
+    site = SeismicSite(zone=zone, soil="II", importance_factor=1.2, period_s=0.8, response_reduction=1.0)
+
+    assert ("vertical" in seismic_load_cases(model, site, live_critical=ONE_CLASS_A)) == girder_has_vertical
+    assert "vertical" in seismic_load_cases(model, site, live_critical=ONE_CLASS_A, for_bearing=True)
+
+
+def test_an_explicit_vertical_choice_holds_for_bearings_too(seismic):
+    model, _ = seismic
+    site = SeismicSite(zone="III", soil="II", importance_factor=1.2, period_s=0.8, response_reduction=1.0, include_vertical=False)
+
+    assert "vertical" not in seismic_load_cases(model, site, live_critical=ONE_CLASS_A, for_bearing=True)

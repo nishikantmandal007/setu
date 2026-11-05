@@ -160,7 +160,7 @@ def diagram_sources(analysis, values, seismic, braking_height_above_deck_m, term
         yield LiveArrangement(critical, values.surfaces[key])
     for (girder, response, adverse), station in values.stations.items():
         details = values.braking.get((girder, (response, station), adverse))
-        if details is not None:
+        if details is not None and details["selected"] is not None:  # none where a congested or crowd case governs (cl. 204.4)
             yield details["cases"][details["selected"]]
     yield from analysis.wind_forces.values()
     for girder, by_response in values.girders.items():
@@ -182,7 +182,7 @@ def bridge_diagrams(analysis, values, seismic, braking_height_above_deck_m):
     braking = {}
     for (girder, response, adverse), station in values.stations.items():
         details = values.braking.get((girder, (response, station), adverse))
-        if details is not None:
+        if details is not None and details["selected"] is not None:
             braking[girder, response, adverse] = solver.forces(details["cases"][details["selected"]])
     wind = {name: solver.forces(case) for name, case in analysis.wind_forces.items()}
     governing = {}

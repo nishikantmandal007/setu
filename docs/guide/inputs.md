@@ -73,9 +73,10 @@ The footpath load is per square metre of footpath. The others are per metre run 
 
 | Class | Fields |
 |---|---|
-| `WindSite` | `basic_wind_speed_mps`, `terrain` (`"plain"` or `"obstructed"`), `height_m`, `funnelling`, `solid_barrier_height_m`; optional overrides for gust, drag, lift and areas |
+| `WindSite` | `basic_wind_speed_mps`, `terrain_category` (1-4, Table 2), `superstructure_top_m`, `road_level_m`, `pier_height_m`, `return_period_years` (Table 1), `valley_or_leeward_hill` (k3), `cyclonic_region` (`"inland"`, `"cyclone coast"`, `"offshore"`; k4), `deck_cross_slope_deg` (Table 8 note 7), `solid_barrier_height_m`; optional overrides for gust, drag, lift and areas |
 | `SeismicSite` | `zone` (`"II"`–`"V"`), `soil` (`"I"`–`"III"`), `importance_factor`, `period_s`, `response_reduction` |
-| `TemperatureSite` | `shade_max_c`, `shade_min_c` |
+| `TemperatureSite` | `shade_max_c`, `shade_min_c`, `snowbound` (cl. 215.2) |
+| `ConstructionLoads` | `shuttering_kpa`, `construction_live_load_kpa` over the deck width, from the construction programme (IRC:6 cl. 218 gives no values) |
 | `CustomLoad` | `group`, `shape` (`"point"`, `"line"`, `"area"`), `magnitude` (kN, kN/m or kN/m²), `x_from_bearing_m`, `z_from_left_edge_m`, and `x_end_m`, `z_end_m` for a line or area |
 
 ### Seismic overrides

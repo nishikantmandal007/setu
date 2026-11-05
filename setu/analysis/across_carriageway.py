@@ -109,15 +109,20 @@ class TransversePlacement:
 
 class TransverseSearch:
     # settings for the search across the deck
-    def __init__(self, adverse, sampling, curve_breakpoints_m):
+    def __init__(self, adverse, sampling, curve_breakpoints_m, lane_reduction=True):
         self.adverse = adverse
         self.sampling = sampling
         self.curve_breakpoints_m = curve_breakpoints_m
+        self.lane_reduction = lane_reduction
+
+    # Table 8 factor for this many design lanes, or 1 where the reduction does not apply
+    def reduction_for(self, design_lanes):
+        return lane_reduction_factor(design_lanes) if self.lane_reduction else 1.0
 
 # every legal lane layout across all carriageways, worst first
-def find_worst_placement(carriageways, response_curves, adverse, curve_breakpoints_m, sampling):
+def find_worst_placement(carriageways, response_curves, adverse, curve_breakpoints_m, sampling, lane_reduction=True):
     check_one_set_of_curves_per_carriageway(carriageways, response_curves)
-    search = TransverseSearch(adverse=adverse, sampling=sampling, curve_breakpoints_m=curve_breakpoints_m)
+    search = TransverseSearch(adverse=adverse, sampling=sampling, curve_breakpoints_m=curve_breakpoints_m, lane_reduction=lane_reduction)
     cases_per_carriageway = [cases_for_one_carriageway(carriageway, curves, search) for carriageway, curves in zip(carriageways, response_curves, strict=True)]
     if any((not cases for cases in cases_per_carriageway)):
         widths_m = [round(carriageway.width_m(), 3) for carriageway in carriageways]
@@ -139,7 +144,7 @@ def cases_for_one_carriageway(carriageway, curves, search):
             contributions.append(values)
             centres_m.append(positions)
         response, chosen = place_vehicles(contributions, search.adverse)
-        reduction = lane_reduction_factor(arrangement.design_lanes)
+        reduction = search.reduction_for(arrangement.design_lanes)
         cases.append(CarriagewayCase(lane_pattern=list(arrangement.lane_pattern), design_lanes=arrangement.design_lanes, sliding_room_m=layout.sliding_room_m, vehicle_centres_m=[float(centre_m[offset]) for centre_m, offset in zip(centres_m, chosen, strict=True)], response_before_reduction=response, lane_reduction=reduction, response=response * reduction))
     return cases
 
@@ -191,7 +196,7 @@ def combine_across_carriageways(cases_per_carriageway, search):
     for chosen in itertools.product(*cases_per_carriageway):
         design_lanes = sum((case.design_lanes for case in chosen))
         before_reduction = sum((case.response_before_reduction for case in chosen))
-        reduction = lane_reduction_factor(design_lanes)
+        reduction = search.reduction_for(design_lanes)
         combinations.append(TransversePlacement(response=before_reduction * reduction, response_before_reduction=before_reduction, lane_reduction=reduction, design_lanes=design_lanes, per_carriageway=list(chosen)))
     combinations.sort(key=lambda placement: placement.response, reverse=is_worst_first(search.adverse))
     return combinations

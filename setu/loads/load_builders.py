@@ -29,7 +29,8 @@ def wheel_rows(bridge, critical_position, sampling):
                 x_m, z_m = x_front_m + dx_m, placed.z_centre_m + dz_m
                 rows.append({"vehicle": placed.vehicle_name, "train": train, "x_m": float(x_m), "z_m": float(z_m),
                              "wheel_load_kn": float(load_kn), "impact_factor": placed.impact_factor, "lane_reduction": critical_position.lane_reduction,
-                             "applied_kn": float(load_kn * placed.impact_factor * critical_position.lane_reduction),
+                             "congestion_factor": critical_position.congestion_factor,
+                             "applied_kn": float(load_kn * placed.impact_factor * critical_position.lane_reduction * critical_position.congestion_factor),
                              "on_span": bool(-TOLERANCE_M <= x_m - bridge.skew * z_m <= bridge.span_m + TOLERANCE_M)})
     return rows
 
@@ -37,7 +38,7 @@ def wheel_rows(bridge, critical_position, sampling):
 # residual UDL and footway patches: cells where the load hurts, joined into runs along the span
 def patch_rows(bridge, critical_position, surface, sampling):
     on_the_mesh = surface.along_the_mesh()
-    strips = [(RESIDUAL_UDL, RESIDUAL_UDL_KPA, from_m, to_m) for from_m, to_m in critical_position.residual_udl_strips]
+    strips = [(RESIDUAL_UDL, RESIDUAL_UDL_KPA * critical_position.congestion_factor, from_m, to_m) for from_m, to_m in critical_position.residual_udl_strips]
     strips += [(FOOTWAY, pressure_kpa, from_m, to_m) for from_m, to_m, pressure_kpa in critical_position.footway_strips]
     rows = []
     for kind, pressure_kpa, from_m, to_m in strips:

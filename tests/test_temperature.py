@@ -1,9 +1,10 @@
 """Temperature per IRC:6-2017 clause 215.
 
 215.2: metallic structures range from shade max + 15 C down to shade min - 10 C.
-215.3 / Fig. 17b / Table 15B (the same as EN 1991-1-5 Fig. 6.2b) across a composite deck, h1 = 0.6h and h2 = 0.4 m:
-heating dT1 at the top, +4 C at h1, 0 at h1 + h2; cooling dT1 at the top, 0 at h1, -8 C at h1 + h2.
-dT1 comes from Table 15B by slab depth (0.2-0.3 m) and surfacing (50-100 mm).
+215.3 / Fig. 16b (IRC:6-2017 p. 58) across a composite deck, h1 = 0.6h and h2 = 0.4 m:
+heating T1 at the top, +4 C at h1, 0 at h1 + h2; cooling T1 at the top, 0 at h1, -8 C at h1 + h2.
+T1 by slab depth (0.2-0.3 m, interpolated); the figure is drawn for 50 mm surfacing and is used for any surfacing,
+as IRC:SP:120-2018 does with 65-90 mm (decision D13). Snowbound areas: -35 C to +50 C.
 215.4: alpha = 12e-6 / C. IRC:22 clause 603.2.1 sets the slab width each girder works with.
 
 A simply supported span with a free bearing takes no girder force from either effect; what
@@ -25,29 +26,30 @@ def test_metallic_range():
     assert effective_temperature_range(45.0, 2.0) == pytest.approx((-8.0, 60.0))
 
 
-def test_fig_17b_heating_and_cooling_with_50_mm_surfacing():
-    """h = 0.25 m: dT1 halfway between 18 and 20.5 heating, -4.4 and -6.8 cooling; h1 = 0.15 m, h1 + h2 = 0.55 m."""
-    profiles = temperature_difference_profiles(0.25, 0.05)
-
-    assert profiles[HEATING] == pytest.approx([(0.0, 19.25), (0.15, 4.0), (0.55, 0.0)])
-    assert profiles[COOLING] == pytest.approx([(0.0, -5.6), (0.15, 0.0), (0.55, -8.0)])
+def test_snowbound_range():
+    assert effective_temperature_range(45.0, 2.0, snowbound=True) == pytest.approx((-35.0, 50.0))
 
 
-@pytest.mark.parametrize("slab_m, surfacing_m, heating_c, cooling_c", [
-    (0.2, 0.05, 18.0, -4.4), (0.2, 0.10, 13.0, -3.5), (0.3, 0.05, 20.5, -6.8), (0.3, 0.10, 16.0, -5.0),
-    (0.2, 0.075, 15.5, -3.95),
-])
-def test_table_15b_is_read_by_slab_depth_and_surfacing(slab_m, surfacing_m, heating_c, cooling_c):
-    profiles = temperature_difference_profiles(slab_m, surfacing_m)
+def test_fig_16b_heating_and_cooling():
+    """h = 0.25 m: T1 halfway between 18 and 20.5 heating, 4.4 and 6.8 cooling; h1 = 0.15 m, h1 + h2 = 0.55 m."""
+    profiles = temperature_difference_profiles(0.25)
+
+    assert [point for pair in profiles[HEATING] for point in pair] == pytest.approx([0.0, 19.25, 0.15, 4.0, 0.55, 0.0])
+    assert [point for pair in profiles[COOLING] for point in pair] == pytest.approx([0.0, -5.6, 0.15, 0.0, 0.55, -8.0])
+
+
+@pytest.mark.parametrize("slab_m, heating_c, cooling_c", [(0.2, 18.0, -4.4), (0.3, 20.5, -6.8)])
+def test_fig_16b_t1_by_slab_depth(slab_m, heating_c, cooling_c):
+    profiles = temperature_difference_profiles(slab_m)
 
     assert profiles[HEATING][0][1] == pytest.approx(heating_c)
     assert profiles[COOLING][0][1] == pytest.approx(cooling_c)
 
 
-@pytest.mark.parametrize("slab_m, surfacing_m, what", [(0.35, 0.05, "slab depth"), (0.25, 0.12, "surfacing thickness")])
-def test_table_15b_is_not_extrapolated(slab_m, surfacing_m, what):
-    with pytest.raises(ValueError, match=what):
-        temperature_difference_profiles(slab_m, surfacing_m)
+@pytest.mark.parametrize("slab_m", [0.15, 0.35])
+def test_fig_16b_is_not_extrapolated(slab_m):
+    with pytest.raises(ValueError, match="slab depth"):
+        temperature_difference_profiles(slab_m)
 
 
 def test_irc_22_effective_width_inner_and_outer():
@@ -82,7 +84,7 @@ def test_a_linear_gradient_leaves_no_primary_stress():
 @pytest.mark.parametrize("girder", [0, 2])
 def test_primary_stresses_balance_on_the_section(kind, girder):
     """No net axial force and no net moment: the stresses only fight each other."""
-    result = primary_thermal_stresses(BRIDGE, girder, temperature_difference_profiles(BRIDGE.deck.thickness_m, 0.05)[kind])
+    result = primary_thermal_stresses(BRIDGE, girder, temperature_difference_profiles(BRIDGE.deck.thickness_m)[kind])
     layers, stresses = result.layers, result.stresses
 
     net_force = sum(stress * area for (_, area, _), stress in zip(layers, stresses, strict=True))
@@ -95,7 +97,7 @@ def test_primary_stresses_balance_on_the_section(kind, girder):
 
 def test_a_warm_slab_top_is_squeezed_and_a_cold_one_pulled():
     """Heated from above and held by the section the slab top goes into compression; cooled, into tension."""
-    profiles = temperature_difference_profiles(BRIDGE.deck.thickness_m, 0.05)
+    profiles = temperature_difference_profiles(BRIDGE.deck.thickness_m)
 
     assert primary_thermal_stresses(BRIDGE, 2, profiles[HEATING]).slab_top_kpa < 0
     assert primary_thermal_stresses(BRIDGE, 2, profiles[COOLING]).slab_top_kpa > 0

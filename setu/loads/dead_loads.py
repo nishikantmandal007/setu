@@ -4,6 +4,7 @@ from setu.builder.mesh import tributary_length_m
 from setu.loads.load_builders import as_a_load_case, share_between_nodes
 from setu.loads.load_cases import LoadCase
 from setu.utils.constants import CRASH_BARRIER_PREFIX, KERB_PREFIX, MEDIAN_PREFIX, RAILING_PREFIX
+from setu.irc6.irc_constants import WET_CONCRETE_EXTRA_KN_M3
 
 
 NOTHING_ON_TOP_KPA = 0.0
@@ -34,17 +35,21 @@ def steel_self_weight_load(model):
     nodal_loads = [(node, *downward_force(load_kn)) for node, load_kn in bracing_weight_at_its_ends(model)]
     return LoadCase(name='steel self weight', nodal_loads=nodal_loads, element_loads=girder_weight_on_the_elements(model))
 
-# construction stage 2 on the bare steel: the wet slab, each girder carrying its share of the deck width
+# construction stage 2 on the bare steel: the wet slab (+1 kN/m3 for wet concrete, Amendment 10), each girder carrying its share of the deck width
 def wet_slab_load(model):
     bridge = model.bridge
-    wet_slab_kpa = bridge.concrete.unit_weight_kn_m3 * bridge.deck.thickness_m
+    return bare_steel_area_load(model, (bridge.concrete.unit_weight_kn_m3 + WET_CONCRETE_EXTRA_KN_M3) * bridge.deck.thickness_m, 'wet slab')
+
+
+# a pressure over the whole deck width carried by the bare steel, each girder taking its share of the width
+def bare_steel_area_load(model, pressure_kpa, name):
     nodal_loads = []
-    for k in range(bridge.girders.count):
+    for k in range(model.bridge.girders.count):
         tributary_width_m = girder_tributary_width_m(model, k)
         for i in range(model.mesh.stations_along_span):
-            load_kn = wet_slab_kpa * tributary_width_m * tributary_length_m(model.mesh.length_mesh_m, i)
+            load_kn = pressure_kpa * tributary_width_m * tributary_length_m(model.mesh.length_mesh_m, i)
             nodal_loads.append((model.girder_nodes[k, i], *downward_force(load_kn)))
-    return LoadCase(name='wet slab', nodal_loads=nodal_loads)
+    return LoadCase(name=name, nodal_loads=nodal_loads)
 
 # the deck width a girder carries in the steel stage
 def girder_tributary_width_m(model, girder):
