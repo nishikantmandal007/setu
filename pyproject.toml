@@ -14,15 +14,15 @@ dependencies = [
     "scipy>=1.18.1",
 ]
 
-[project.optional-dependencies]
-web = ["flask==3.1.3"]
-
+# The web app, tests and docs live only in a clone of the repository: `uv sync` there installs these groups; `pip install setu`
+# installs the analysis package and its four dependencies alone.
 [dependency-groups]
 dev = ["pytest==9.1.1"]
 docs = ["mkdocs==1.6.1", "mkdocs-material==9.7.7"]
+web = ["flask==3.1.3"]
 
 [tool.uv]
-default-groups = ["dev", "docs"]
+default-groups = ["dev", "docs", "web"]
 
 [tool.setuptools.packages.find]
 where = ["."]

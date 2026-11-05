@@ -46,6 +46,8 @@ class CriticalPosition:
         self.searched = None
         # braking goes with it (cl. 211); not with a congested or crowd case (cl. 204.4)
         self.takes_braking = True
+        # Table 7 factor on the vehicles and residual UDL of a congested placement (cl. 204.4), 1 otherwise
+        self.congestion_factor = 1.0
 
     # printed summary of the critical position
     def describe(self):

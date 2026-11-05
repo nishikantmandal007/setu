@@ -92,3 +92,23 @@ def test_crowd_on_the_whole_deck_is_a_case_of_its_own():
     from setu.irc6.lanes import footway_live_load_strips, response_to_area_load
     strips = [(c.left_m, c.right_m) for c in crowd.carriageways()] + [(s.z_from_m, s.z_to_m) for s in footway_live_load_strips(crowd)]
     assert whole.response == pytest.approx(response_to_area_load(sagging_surface().along_the_mesh(), strips, BIGGER_IS_WORSE, 5.0, DEFAULT_SAMPLING))
+
+
+def test_a_congested_placement_replays_with_its_factor():
+    """The loads solved for the plots and the CSV export carry the Table 7 factor on wheels and residual UDL, not on the footway, so the
+    replay gives back the congested design value."""
+    from setu.builder.assembly import build_bridge_model
+    from setu.loads.load_builders import applied_live_loads, live_load
+    from test_design_forces import BRIDGE
+    surface = sagging_surface()
+    plain = find_critical_position(surface, CROSS_SECTION, SPAN_M, BIGGER_IS_WORSE, 0.065)
+    twin = congested(plain, 1.225)
+    model = build_bridge_model(BRIDGE)
+    (plain_wheels, plain_patches), (twin_wheels, twin_patches) = (applied_live_loads(model.bridge, p, surface) for p in (plain, twin))
+
+    assert [w["applied_kn"] for w in twin_wheels] == pytest.approx([1.225 * w["applied_kn"] for w in plain_wheels])
+    for a, b in zip(plain_patches, twin_patches, strict=True):
+        assert b["pressure_kpa"] == pytest.approx(a["pressure_kpa"] * (1.225 if a["kind"] != "footway" else 1.0))
+    total = lambda p: -sum(fy for _, _, fy, *_ in live_load(model, p, surface).nodal_loads)
+    footway_kn = sum(r["pressure_kpa"] * (r["along_to_m"] - r["along_from_m"]) * (r["z_to_m"] - r["z_from_m"]) for r in plain_patches if r["kind"] == "footway")
+    assert total(twin) == pytest.approx(1.225 * (total(plain) - footway_kn) + footway_kn, rel=1e-6)

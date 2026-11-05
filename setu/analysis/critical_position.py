@@ -49,6 +49,7 @@ def congested(placement, factor):
     twin.response_before_reduction = factor * (placement.response_before_reduction - placement.footway_response) + placement.footway_response
     twin.lane_pattern = f"{placement.lane_pattern} (congested, x {factor:.4f}, IRC:6 cl. 204.4)"
     twin.takes_braking = False
+    twin.congestion_factor = factor
     twin.alternatives = []
     return twin
 
