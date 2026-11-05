@@ -36,3 +36,43 @@ def test_the_kept_placement_has_the_worst_live_load_plus_braking():
                     moved += 1
                     assert settled[adverse].searched is found[adverse]
     assert moved > 0, "no member changed placement: the test proves nothing on this deck"
+
+
+def test_the_braking_field_estimate_keeps_the_same_choice():
+    """With the solved surface, settle_braking estimates every candidate from its braking field and works out exactly only those
+    that could be the worst. It must keep the very candidate, and the very total, that working every candidate out exactly keeps:
+    straight and skewed decks, girder places and brace members, both directions."""
+    import copy
+    from setu.analysis.critical_position import find_critical_position
+    from setu.loads.braking_loads import BrakingField
+    from setu.postprocess.design_values import places_to_design, reader, surface_for
+    from setu.utils.constants import BIGGER_IS_WORSE
+    compared = 0
+    for skew in (0.0, 0.25):
+        bridge = BridgeInput(**{**vars(BRIDGE), "cross_section": THREE_LANE_DECK, "added_dead_loads": NO_MEDIAN, "skew": skew,
+                                "bracing": Bracing(station_count=3, area_m2=0.01, arrangement="XT"), "mesh": MeshSettings(2, 0.5)})
+        with analysis_for(bridge, None, (), (), 1, girders=True, braces=True) as analysis:
+            model = analysis.model
+            jobs = []
+            for girder in range(bridge.girders.count):
+                for place in places_to_design(model):
+                    surface = surface_for(analysis.solver, model, girder, place)
+                    found = {adverse: find_critical_position(surface, bridge.cross_section, bridge.span_m, adverse, bridge.wearing_course_thickness_m)
+                             for adverse in BOTH_DIRECTIONS}
+                    jobs.append((surface, reader({(girder, place): surface}), (girder, place), found))
+            for member, surface, found in solved_members(analysis, bridge, None):
+                jobs.append((surface, brace_reader({member: surface}), (member, None), found))
+            for surface, read, target, found in jobs:
+                exact = settle_braking(model, copy.deepcopy(found), read, target, None)
+                fast = settle_braking(model, copy.deepcopy(found), read, target, None, surface)
+                field = BrakingField(model, surface)
+                for adverse in BOTH_DIRECTIONS:
+                    a, b = exact[adverse], fast[adverse]
+                    assert live_with_braking(model, a, read, *target) == live_with_braking(model, b, read, *target)
+                    assert (a.lane_pattern, [(v.vehicle_name, v.z_centre_m, v.train_x_front_m) for v in a.vehicles]) == \
+                           (b.lane_pattern, [(v.vehicle_name, v.z_centre_m, v.train_x_front_m) for v in b.vehicles])
+                    for candidate in [found[adverse], *found[adverse].alternatives]:
+                        estimate = field.estimate(candidate, adverse == BIGGER_IS_WORSE)
+                        assert abs(estimate - live_with_braking(model, candidate, read, *target)) < 1e-10 * (1 + abs(estimate))
+                    compared += 1
+    assert compared > 40

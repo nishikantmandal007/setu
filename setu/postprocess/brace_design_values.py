@@ -74,7 +74,7 @@ def brace_values(analysis, bridge, seismic, braking_height_above_deck_m, *, keep
 # one member's governing values from its surface and worst traffic
 def member_values(analysis, seismic, braking_height_above_deck_m, member, surface, found):
     read = brace_reader({member: surface})
-    found.update(settle_braking(analysis.model, found, read, (member, None), braking_height_above_deck_m))
+    found.update(settle_braking(analysis.model, found, read, (member, None), braking_height_above_deck_m, surface))
     effects = load_effects(analysis, analysis.dead.brace_stages, found, read, (member, None), member, seismic, braking_height_above_deck_m, {})
     at_m = analysis.model.mesh.brace_lines_m[member[1]]
     return governing_by_limit_state(effects, analysis.combinations, analysis.wind_forces, read, member, None, at_m)

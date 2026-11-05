@@ -10,7 +10,7 @@ from setu.builder.assembly import BEARING_VERTICAL_STIFFNESS_KN_PER_M, build_bri
 from setu.irc6.combinations import design_value, irc6_combinations
 from setu.irc6.seismic import combine_directions
 from setu.irc6.temperature import effective_temperature_range, temperature_difference_profiles
-from setu.loads.braking_loads import braking_load_cases
+from setu.loads.braking_loads import BrakingField, braking_load_cases
 from setu.loads.custom_loads import custom_load_cases
 from setu.loads.load_cases import LoadCase
 from setu.loads.seismic_loads import seismic_load_cases
@@ -36,6 +36,8 @@ from setu.utils.constants import (
 )
 
 NO_EFFECT = 0.0
+# a numerical safety margin (relative, with a floor of 1 kN or kN m), not an IRC value: about 1000 times the measured gap
+ESTIMATE_MARGIN = 1e-9
 # the maximum live moment on a simply supported span stands a little off midspan, so the moment is checked at midspan and at
 # these fractions of the span towards the first bearing. Unequal sections also check the mirrored stations and far bearing.
 MOMENT_SECTIONS_OFF_MIDSPAN = (0.0, 0.01, 0.02, 0.03, 0.04, 0.05, 0.06)
@@ -210,7 +212,8 @@ def girder_values(analysis, bridge, seismic, temperature, braking_height_above_d
     by_place, combinations_at_place, braking = {}, {}, {}
     for girder in girders:
         for place in places:
-            settled = settle_braking(model, {adverse: live[girder, place, adverse] for adverse in BOTH_DIRECTIONS}, read, (girder, place), braking_height_above_deck_m)
+            settled = settle_braking(model, {adverse: live[girder, place, adverse] for adverse in BOTH_DIRECTIONS}, read, (girder, place), braking_height_above_deck_m,
+                                     surfaces[girder, place])
             live.update({(girder, place, adverse): critical for adverse, critical in settled.items()})
             effects = load_effects(analysis, dead.stages, settled, read,
                                    (girder, place), (girder, place), seismic, braking_height_above_deck_m, braking)
@@ -359,13 +362,25 @@ def stress_surface(solver, model, girder, face, y_m, station):
 
 # of each direction's candidate placements (the search's worst and every other arrangement's worst), the one whose live load plus
 # braking is worst: vehicles 'occupy any position which will produce maximum load effects' (cl. 204.1.2) and braking is part of them
-def settle_braking(model, live, read, target, height_above_deck_m):
+# With the solved surface, each candidate's total is first estimated from its braking field and only those within a margin of the
+# worst estimate are worked out exactly; the measured gap between estimate and exact total is below 1e-12, so the margin keeps
+# every candidate that could be the worst and the choice is the one the exact totals give.
+def settle_braking(model, live, read, target, height_above_deck_m, surface=None):
     settled = {}
+    field = BrakingField(model, surface, height_above_deck_m) if surface is not None else None
     for adverse, critical in live.items():
         candidates = [critical, *critical.alternatives]
-        totals = [live_with_braking(model, candidate, read, *target, height_above_deck_m=height_above_deck_m) for candidate in candidates]
-        worst = max(totals) if adverse == BIGGER_IS_WORSE else min(totals)
-        chosen = candidates[totals.index(worst)]
+        if field is None:
+            worth_working_out = range(len(candidates))
+        else:
+            sign = adverse_sign(adverse)
+            estimates = [sign * field.estimate(candidate, adverse == BIGGER_IS_WORSE) for candidate in candidates]
+            worst_estimate = max(estimates)
+            margin = ESTIMATE_MARGIN * (1.0 + abs(worst_estimate))
+            worth_working_out = [k for k, estimate in enumerate(estimates) if estimate >= worst_estimate - margin]
+        totals = {k: live_with_braking(model, candidates[k], read, *target, height_above_deck_m=height_above_deck_m) for k in worth_working_out}
+        sign = adverse_sign(adverse)
+        chosen = candidates[max(totals, key=lambda k: (sign * totals[k], -k))]  # the worst total, the earliest candidate on a tie
         if chosen is not critical:
             chosen.searched = critical
         settled[adverse] = chosen
