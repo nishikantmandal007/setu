@@ -2,3 +2,4 @@ numpy>=2.5.2
 openseespy==3.8.0.0
 xarray>=2026.7.0
 scipy>=1.18.1
+numba>=0.68.1

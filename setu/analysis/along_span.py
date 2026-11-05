@@ -1,6 +1,7 @@
 from functools import lru_cache
 
 import numpy as np
+from setu.analysis import compiled
 from setu.analysis.influence_surface import cell_containing
 from setu.helpers import adverse_sign
 from setu.irc6.impact import impact_factor
@@ -10,6 +11,7 @@ from setu.utils.constants import OFF_THE_DECK, OFFSET_DX_M, OFFSET_DZ_M, ROUND_T
 
 WHEEL_LINE_WEIGHTS_KEPT = 32  # distinct (mesh, vehicle, positions along) weight sets held at once; each is well under 1 MB
 SURFACES_SEARCHED_TOGETHER = 2  # both directions of one surface are searched one after the other
+USE_COMPILED = True  # the compiled train placement when Numba is installed; False runs the NumPy one (same results)
 
 # running best value and where it was, left to right along the last axis
 def best_so_far(values):
@@ -324,6 +326,8 @@ def worst_trains_as_arrays(response_to_one_vehicle, positions_m, pitch_m, most_v
     signed_one = sign * across_then_along
     vehicle_in_front = last_position_a_vehicle_in_front_could_take(positions_m, pitch_m)
     first_with_room = int(np.searchsorted(vehicle_in_front, 0, side='left'))  # vehicle_in_front never decreases along the span
+    if compiled.worst_trains is not None and USE_COMPILED:
+        return compiled.worst_trains(signed_one, across_then_along, vehicle_in_front.astype(np.int64), first_with_room, most_vehicles, float(sign))
     in_front_of_those = vehicle_in_front[first_with_room:]
     totals = [signed_one]  # signed best total of each train length
     running_best = [None]  # running maximum of the previous length's totals

@@ -12,6 +12,7 @@ dependencies = [
     "openseespy==3.8.0.0",
     "xarray>=2026.7.0",
     "scipy>=1.18.1",
+    "numba>=0.68.1",
 ]
 
 # The web app, tests and docs live only in a clone of the repository: `uv sync` there installs these groups; `pip install setu`
