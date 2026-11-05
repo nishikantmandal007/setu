@@ -116,6 +116,16 @@ def test_explicit_seismic_coefficients_are_refused_during_construction(steel):
         construction_seismic_cases(steel, site, [])
 
 
+def test_coefficients_worked_out_with_importance_factor_1_are_accepted(steel):
+    import copy
+    site = copy.copy(SEISMIC_SITE)
+    site.importance_factor, site.horizontal_coefficient, site.vertical_coefficient = 1.0, 0.05, None
+    cases = construction_seismic_cases(steel, site, [])
+    weight_kn = sum(BRIDGE.steel.unit_weight_kn_m3 * steel.girders[k].area_m2 * SPAN_M for k in range(BRIDGE.girders.count))
+
+    assert sum(load[3] for load in cases["transverse"].nodal_loads) == pytest.approx(0.05 * weight_kn, rel=1e-9)
+
+
 def test_every_brace_member_gets_construction_values(values, steel):
     assert set(values.braces) == set(steel.brace_elements)
     for by_limit in values.braces.values():

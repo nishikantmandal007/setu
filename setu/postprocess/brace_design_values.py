@@ -24,10 +24,13 @@ class BraceDesignValues:
 
 class BridgeDesignValues:
     # girder and brace design values from one shared analysis, and the forces along the girders behind them
-    def __init__(self, girders, braces, diagrams):
+    def __init__(self, girders, braces, diagrams, special_vehicle=None, construction=None):
         self.girders = girders
         self.braces = braces
         self.diagrams = diagrams
+        # Class SV (cl. 204.5) and construction-stage (cl. 218, Table B.2) values when asked for, else None
+        self.special_vehicle = special_vehicle
+        self.construction = construction
 
 
 # every load on every brace member, combined per IRC:6 Annex B, tension positive in kN

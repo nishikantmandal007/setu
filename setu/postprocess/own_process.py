@@ -7,7 +7,9 @@ from concurrent.futures import ProcessPoolExecutor
 from setu.postprocess.brace_design_values import BridgeDesignValues, brace_values, member_values, search_member
 from setu.postprocess.design_values import (MIDSPAN_DEFLECTION, MAX_MOMENT, girder_values, midspan_deck_node_over, search_deflection,
                                             search_place, search_stress, shared_analysis, stress_surface, surface_for, places_to_design)
+from setu.postprocess.construction import construction_design_values
 from setu.postprocess.governing_diagrams import bridge_diagrams
+from setu.postprocess.special_vehicle import special_vehicle_design_values
 from setu.postprocess.girder_response import analyze_load_case
 from setu.loads.wind_loads import wind_load_cases
 from setu.loads.seismic_loads import seismic_load_cases
@@ -98,7 +100,9 @@ def site_forces(model, wind, seismic, girders):
 
 
 # girders, braces and diagrams: forked workers where the platform can fork, light search workers where it cannot
-def run_analysis(bridge, wind, seismic, temperature, braking_height_m, workers, phase):
+# special_vehicle: also design for Class SV; construction: a ConstructionLoads for the bare-steel stage (wind and construction_seismic,
+# a site with importance factor 1, go with it)
+def run_analysis(bridge, wind, seismic, temperature, braking_height_m, workers, phase, special_vehicle=False, construction=None, construction_seismic=None):
     global shared
     phase("building the model and solving the dead load stages")
     analysis = shared_analysis(bridge, wind, (), ())
@@ -135,14 +139,22 @@ def run_analysis(bridge, wind, seismic, temperature, braking_height_m, workers, 
     forces = site_forces(analysis.model, wind, seismic, girder_results)
     # Only values leave this process: influence surfaces stay behind and vanish with it.
     girder_results.surfaces = girder_results.place_surfaces = {}
-    return BridgeDesignValues(girder_results, brace_results, diagrams), forces
+    # ponytail: SV builds its own analysis (about 10 s on a 35 m bridge); share the factor if that shows in the run time
+    if special_vehicle:
+        phase("solving and searching the Class SV")
+        special_vehicle = special_vehicle_design_values(bridge)
+        special_vehicle.placements = {}
+    if construction is not None:
+        phase("the construction stage on the bare steel")
+        construction = construction_design_values(bridge, construction, wind, construction_seismic)
+    return BridgeDesignValues(girder_results, brace_results, diagrams, special_vehicle or None, construction), forces
 
 
-def own_process_main(connection, arguments):
+def own_process_main(connection, arguments, options):
     if hasattr(os, "setsid"):
         os.setsid()  # so a Stop can end this process and its forked workers together
     try:
-        connection.send(("done", run_analysis(*arguments, lambda text: connection.send(("phase", text)))))
+        connection.send(("done", run_analysis(*arguments, lambda text: connection.send(("phase", text)), **options)))
     except Exception:
         connection.send(("error", traceback.format_exc()))
     connection.close()
@@ -150,10 +162,12 @@ def own_process_main(connection, arguments):
 
 # run the whole analysis in a process of its own: no GUI to fork under, and every byte of it returns to the system when it ends.
 # check() may raise to stop the run; phase(text) reports progress.
-def solve_in_own_process(bridge, wind, seismic, temperature, braking_height_m, *, workers, phase=lambda text: None, check=lambda: None):
+def solve_in_own_process(bridge, wind, seismic, temperature, braking_height_m, *, workers, phase=lambda text: None, check=lambda: None,
+                         special_vehicle=False, construction=None, construction_seismic=None):
     context = multiprocessing.get_context("spawn")
     ours, theirs = context.Pipe()
-    process = context.Process(target=own_process_main, args=(theirs, (bridge, wind, seismic, temperature, braking_height_m, workers)))
+    process = context.Process(target=own_process_main, args=(theirs, (bridge, wind, seismic, temperature, braking_height_m, workers),
+                                                             dict(special_vehicle=special_vehicle, construction=construction, construction_seismic=construction_seismic)))
     before = {name: os.environ.get(name) for name in ONE_BLAS_THREAD}
     os.environ.update(ONE_BLAS_THREAD)
     try:

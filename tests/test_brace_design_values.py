@@ -267,3 +267,18 @@ def test_stop_leaves_no_process_behind():
     with pytest.raises(KeyboardInterrupt):
         solve_in_own_process(BRACE_BRIDGE, None, None, None, None, workers=2, check=stop_after_two_seconds)
     assert not multiprocessing.active_children()
+
+
+def test_class_sv_and_construction_come_back_from_the_own_process():
+    from setu.utils.constants import MAX_MOMENT
+    from setu.postprocess.construction import ConstructionLoads, construction_design_values
+    from setu.postprocess.special_vehicle import special_vehicle_design_values
+    loads = ConstructionLoads(shuttering_kpa=0.5, construction_live_load_kpa=1.5)
+    values, _ = solve_in_own_process(BRACE_BRIDGE, None, None, None, None, workers=1, special_vehicle=True, construction=loads)
+    sv, construction = special_vehicle_design_values(BRACE_BRIDGE), construction_design_values(BRACE_BRIDGE, loads)
+
+    assert values.special_vehicle.girders[0][MAX_MOMENT][BASIC][BIGGER_IS_WORSE].value == sv.girders[0][MAX_MOMENT][BASIC][BIGGER_IS_WORSE].value
+    assert values.construction.girders[0][MAX_MOMENT]["ultimate, construction"][BIGGER_IS_WORSE].value == \
+        construction.girders[0][MAX_MOMENT]["ultimate, construction"][BIGGER_IS_WORSE].value
+    plain, _ = solve_in_own_process(BRACE_BRIDGE, None, None, None, None, workers=1)
+    assert plain.special_vehicle is None and plain.construction is None

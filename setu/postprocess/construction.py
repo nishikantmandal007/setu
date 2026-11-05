@@ -97,9 +97,11 @@ def construction_wind_cases(model, site):
 
 # inertia of the construction dead weight (steel, wet slab, shuttering) on the bare steel, importance factor 1 (SP:114 cl. 4.5 note)
 def construction_seismic_cases(model, site, weight_cases):
-    if site.horizontal_coefficient is not None or site.vertical_coefficient is not None:
+    explicit = site.horizontal_coefficient is not None or site.vertical_coefficient is not None
+    if explicit and site.importance_factor != CONSTRUCTION_IMPORTANCE_FACTOR:
         raise ValueError("seismic during construction needs the importance factor of 1 (IRC:SP:114 cl. 4.5); "
-                         "explicit seismic coefficients already include an importance factor, so supply the zone, soil, T and R instead")
+                         "explicit seismic coefficients already include an importance factor, so supply the zone, soil, T and R instead, "
+                         "or coefficients worked out with I = 1 on a site whose importance_factor is 1")
     construction_site = copy.copy(site)
     construction_site.importance_factor = CONSTRUCTION_IMPORTANCE_FACTOR
     weights_kn = {}
