@@ -7,9 +7,13 @@ try:
 except ImportError:
     worst_trains = None
 else:
+    # response_to_one_vehicle is the grid as built, positions along by positions across; each position across's column is read into
+    # one small row (and its signed copy, sign x value as the NumPy placement makes it), so no grid-sized copy is ever made
     @njit(cache=True)
-    def worst_trains(signed_one, across_then_along, vehicle_in_front, first_with_room, most_vehicles, sign):
-        rows, along = signed_one.shape
+    def worst_trains(response_to_one_vehicle, vehicle_in_front, first_with_room, most_vehicles, sign):
+        along, rows = response_to_one_vehicle.shape
+        row_values = np.empty(along)
+        signed_row = np.empty(along)
         lengths = np.zeros(rows, np.int64)
         responses = np.zeros(rows)
         chosen_at = np.zeros((rows, max(most_vehicles, 1)), np.int64)
@@ -19,7 +23,9 @@ else:
         for row in range(rows):
             signed_worst = -np.inf
             for i in range(along):
-                totals[0, i] = signed_one[row, i]
+                row_values[i] = response_to_one_vehicle[i, row]
+                signed_row[i] = sign * row_values[i]
+                totals[0, i] = signed_row[i]
             for vehicles in range(1, most_vehicles + 1):
                 v = vehicles - 1
                 if vehicles > 1:
@@ -34,7 +40,7 @@ else:
                         if i < first_with_room:
                             totals[v, i] = -np.inf
                         else:
-                            totals[v, i] = signed_one[row, i] + running[v, vehicle_in_front[i]]
+                            totals[v, i] = signed_row[i] + running[v, vehicle_in_front[i]]
                 fits = False
                 at = 0
                 top = totals[v, 0]
@@ -56,7 +62,7 @@ else:
                     chosen[length - 1] = j
                 response = 0.0
                 for k in range(vehicles):
-                    response = response + across_then_along[row, chosen[k]]
+                    response = response + row_values[chosen[k]]
                 if sign * response > signed_worst:
                     signed_worst = sign * response
                     lengths[row] = vehicles

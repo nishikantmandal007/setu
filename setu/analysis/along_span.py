@@ -318,16 +318,16 @@ def find_worst_train(response_to_one_vehicle, positions_m, pitch_m, most_vehicle
 # Each length grows the previous one, a longer train wins only if strictly worse, a row stops at its first length that cannot fit,
 # and the vehicle in front sits where the best total behind it first reached its maximum.
 def worst_trains_as_arrays(response_to_one_vehicle, positions_m, pitch_m, most_vehicles, adverse):
-    across_then_along = np.ascontiguousarray(np.asarray(response_to_one_vehicle, float).T)  # one row per position across, so each running best reads memory in order
     positions_m = np.asarray(positions_m, float)
-    rows, along = across_then_along.shape
     most_vehicles = int(most_vehicles)
     sign = adverse_sign(adverse)
-    signed_one = sign * across_then_along
     vehicle_in_front = last_position_a_vehicle_in_front_could_take(positions_m, pitch_m)
     first_with_room = int(np.searchsorted(vehicle_in_front, 0, side='left'))  # vehicle_in_front never decreases along the span
     if compiled.worst_trains is not None and USE_COMPILED:
-        return compiled.worst_trains(signed_one, across_then_along, vehicle_in_front.astype(np.int64), first_with_room, most_vehicles, float(sign))
+        return compiled.worst_trains(np.ascontiguousarray(response_to_one_vehicle, float), vehicle_in_front.astype(np.int64), first_with_room, most_vehicles, float(sign))
+    across_then_along = np.ascontiguousarray(np.asarray(response_to_one_vehicle, float).T)  # one row per position across, so each running best reads memory in order
+    rows, along = across_then_along.shape
+    signed_one = sign * across_then_along
     in_front_of_those = vehicle_in_front[first_with_room:]
     totals = [signed_one]  # signed best total of each train length
     running_best = [None]  # running maximum of the previous length's totals
