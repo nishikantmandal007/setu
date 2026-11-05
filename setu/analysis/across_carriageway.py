@@ -193,6 +193,19 @@ def kink_table(signed, positions):
     return levels
 
 
+# the sparse table of one envelope's kinks, built once per search: within a search the kinks and each envelope are fixed, and every
+# zone placement on that envelope reads the same values
+def kink_table_of(curve, sign, kinks_m, search):
+    tables = getattr(search, "kink_tables", None)
+    if tables is None:
+        tables = search.kink_tables = {}
+    key = (id(curve), sign)
+    if key not in tables:
+        rounded_m = np.round(kinks_m, ROUND_TO_DECIMALS)
+        tables[key] = (curve, kink_table(sign * read_curve(curve, rounded_m), rounded_m))  # the curve is kept so its id stays its own
+    return tables[key][1]
+
+
 # worst spot for a 70R vehicle inside its zone at every offset at once: the zone's ends, an even spread and the kinks inside it,
 # the same candidates as before, the worst signed value and the smallest position on a tie
 def worst_spot_inside_the_zone(block, packed_left_m, nearest_m, furthest_m, offsets_m, curves, search):
@@ -209,8 +222,7 @@ def worst_spot_inside_the_zone(block, packed_left_m, nearest_m, furthest_m, offs
     value = worst[:, 0]
     kinks_m = np.asarray(search.curve_breakpoints_m, float)
     if len(kinks_m):
-        kink_signed = sign * read_curve(curve, np.round(kinks_m, ROUND_TO_DECIMALS))
-        levels = kink_table(kink_signed, np.round(kinks_m, ROUND_TO_DECIMALS))
+        levels = kink_table_of(curve, sign, kinks_m, search)
         first = np.searchsorted(kinks_m, zone_from_m - TOLERANCE_M, side="left")
         last = np.searchsorted(kinks_m, zone_to_m + TOLERANCE_M, side="right")
         has_kinks = last > first
