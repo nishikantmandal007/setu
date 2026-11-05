@@ -74,10 +74,37 @@ class Bracing:
 
 
 class MeshSettings:
-    # how fine the grillage is: panels between two brace stations, and the element size across the deck
-    def __init__(self, panels_between_braces, target_size_across_width_m):
+    # how fine the grillage is along the span and across the deck. Along the span either a fixed number of panels between two brace
+    # stations, or element_length_m: each brace bay split into the fewest equal elements no longer than that, with elements no longer
+    # than support_element_length_m within support_zone_m of each bearing (support shear converges with the first element's length).
+    # Across the deck, elements of about target_size_across_width_m. These are numerical choices, not IRC values.
+    def __init__(self, panels_between_braces, target_size_across_width_m, *, element_length_m=None, support_element_length_m=None, support_zone_m=None):
+        if (panels_between_braces is None) == (element_length_m is None):
+            raise ValueError("give either panels_between_braces or element_length_m")
+        if (support_element_length_m is None) != (support_zone_m is None):
+            raise ValueError("support_element_length_m and support_zone_m go together")
         self.panels_between_braces = panels_between_braces
         self.target_size_across_width_m = target_size_across_width_m
+        self.element_length_m = element_length_m
+        self.support_element_length_m = support_element_length_m
+        self.support_zone_m = support_zone_m
+
+    # a named mesh: element length along the span, element length within the zone at each bearing, element size across the deck.
+    # Chosen from setu's convergence studies (docs/accuracy.md); numerical choices, not IRC values.
+    @staticmethod
+    def preset(name):
+        if name not in MESH_PRESETS:
+            raise ValueError(f"mesh preset must be one of {sorted(MESH_PRESETS)}, got {name!r}")
+        along_m, support_m, zone_m, across_m = MESH_PRESETS[name]
+        return MeshSettings(None, across_m, element_length_m=along_m, support_element_length_m=support_m, support_zone_m=zone_m)
+
+
+# (element length along the span, at the bearings, length of the bearing zone, element size across the deck), metres
+MESH_PRESETS = {
+    "fast": (3.0, 0.2, 1.5, 0.25),
+    "standard": (1.5, 0.1, 1.5, 0.15),
+    "fine": (0.75, 0.05, 1.5, 0.10),
+}
 
 
 class AddedDeadLoads:

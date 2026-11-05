@@ -49,16 +49,29 @@ def station_at(stations_m, position_m):
 def build_mesh(bridge):
     girder_lines_m = rounded(np.linspace(bridge.deck.overhang_m, bridge.width_m() - bridge.deck.overhang_m, bridge.girders.count))
     brace_lines_m = rounded(np.linspace(0, bridge.span_m, bridge.bracing.station_count))
-    return DeckMesh(length_mesh_m=stations_along_span(brace_lines_m, bridge.mesh.panels_between_braces), width_mesh_m=stations_across_width(bridge.cross_section, girder_lines_m, bridge.mesh.target_size_across_width_m), girder_lines_m=girder_lines_m, brace_lines_m=brace_lines_m)
+    return DeckMesh(length_mesh_m=stations_along_span(brace_lines_m, bridge.mesh), width_mesh_m=stations_across_width(bridge.cross_section, girder_lines_m, bridge.mesh.target_size_across_width_m), girder_lines_m=girder_lines_m, brace_lines_m=brace_lines_m)
 
 # split each brace panel into equal pieces
-def stations_along_span(brace_lines_m, panels_between_braces):
+def stations_along_span(brace_lines_m, mesh):
     stations_m = []
     for panel_start_m, panel_end_m in zip(brace_lines_m, brace_lines_m[1:], strict=False):
-        within_panel_m = np.linspace(panel_start_m, panel_end_m, panels_between_braces + 1)
-        stations_m.extend(within_panel_m[:-1])
+        panels = mesh.panels_between_braces if mesh.element_length_m is None else int(np.ceil((panel_end_m - panel_start_m) / mesh.element_length_m - 1e-9))
+        stations_m.extend(np.linspace(panel_start_m, panel_end_m, panels + 1)[:-1])
     stations_m.append(float(brace_lines_m[-1]))
-    return rounded(np.array(stations_m))
+    if mesh.support_zone_m is not None:
+        stations_m.extend(refined_near_the_bearings(float(brace_lines_m[0]), float(brace_lines_m[-1]), stations_m, mesh))
+    return np.unique(rounded(np.array(stations_m)))
+
+
+# extra stations so no element within support_zone_m of a bearing is longer than support_element_length_m
+def refined_near_the_bearings(start_m, end_m, stations_m, mesh):
+    extra_m = []
+    for bearing_m, inward in ((start_m, 1.0), (end_m, -1.0)):
+        zone_edge_m = min(stations_m, key=lambda s: abs(s - (bearing_m + inward * mesh.support_zone_m)))
+        reach_m = abs(zone_edge_m - bearing_m)
+        pieces = int(np.ceil(reach_m / mesh.support_element_length_m - 1e-9))
+        extra_m.extend(bearing_m + inward * np.linspace(0.0, reach_m, pieces + 1))
+    return extra_m
 
 # strip edges and girder lines the mesh must keep
 def lines_that_matter_across_width(cross_section, girder_lines_m):
