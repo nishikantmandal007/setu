@@ -8,7 +8,7 @@ from setu.irc6.vehicles import class_of, most_vehicles_that_fit, pitch_between_v
 from setu.irc6.wheel_loads import split_offsets, wheel_load_offsets
 from setu.utils.constants import OFF_THE_DECK, OFFSET_DX_M, OFFSET_DZ_M, ROUND_TO_DECIMALS, TOLERANCE_M
 
-WHEEL_LINE_WEIGHTS_KEPT = 16  # distinct (mesh, vehicle, grid) sets held at once; each is a few MB
+WHEEL_LINE_WEIGHTS_KEPT = 32  # distinct (mesh, vehicle, positions along) weight sets held at once; each is well under 1 MB
 SURFACES_SEARCHED_TOGETHER = 2  # both directions of one surface are searched one after the other
 
 # running best value and where it was, left to right along the last axis
@@ -53,6 +53,7 @@ class VehicleResponses:
         self.sampling = sampling
         self._already_built = {}
         self._grids = {}
+        self._projected = {}  # each vehicle's (wheel line weights along) @ surface, shared by every set of positions across
 
     # the vehicle's response curve, built once and remembered
     def for_vehicle(self, vehicle, z_positions_m, adverse):
@@ -68,7 +69,8 @@ class VehicleResponses:
         if key not in self._grids:
             wheel_offsets = along_the_mesh(wheel_load_offsets(vehicle, self.wearing_course_thickness_m, self.sampling), self.skew)
             x_positions_m = with_every_train_spacing(positions_along_span(self.surface, wheel_offsets), vehicle)
-            self._grids[key] = (x_positions_m, response_to_one_vehicle_everywhere(self.surface, wheel_offsets, x_positions_m, z_positions_m, self.sampling))
+            projected = self._projected.setdefault(vehicle.name, {})
+            self._grids[key] = (x_positions_m, response_to_one_vehicle_everywhere(self.surface, wheel_offsets, x_positions_m, z_positions_m, self.sampling, projected))
         return self._grids[key]
 
     # slide the vehicle, or a train of them, along the span at every position across, keep the worst
@@ -135,12 +137,21 @@ def with_every_train_spacing(x_positions_m, vehicle):
     everywhere_m = np.unique(np.round(np.concatenate([x_positions_m, *one_pitch_apart]), ROUND_TO_DECIMALS))
     return keep_between(everywhere_m, float(x_positions_m[0]), float(x_positions_m[-1]))
 
-# response to one vehicle at every x and z: per wheel line, x weights · surface · z weights, or chunked when skewed
-def response_to_one_vehicle_everywhere(surface, wheel_offsets, x_positions_m, z_positions_m, sampling):
+# response to one vehicle at every x and z: per wheel line, (x weights · surface) · z weights, or chunked when skewed. projected, when
+# given, keeps each wheel line's x weights · surface for this surface, vehicle and positions along, which no set of positions across
+# changes, so later sets reuse the very same product
+def response_to_one_vehicle_everywhere(surface, wheel_offsets, x_positions_m, z_positions_m, sampling, projected=None):
     if not surface.skew:
         responses = np.zeros((len(x_positions_m), len(z_positions_m)))
-        for along, across in wheel_line_weights(surface.length_mesh_m, surface.width_mesh_m, wheel_offsets, x_positions_m, z_positions_m):
-            responses += along @ surface.values @ across.T
+        z_positions_m = np.ascontiguousarray(z_positions_m, float)
+        for line, (dz_m, along) in enumerate(along_line_weights(surface.length_mesh_m, wheel_offsets, x_positions_m)):
+            if projected is None:
+                along_the_surface = along @ surface.values
+            else:
+                if line not in projected:
+                    projected[line] = along @ surface.values
+                along_the_surface = projected[line]
+            responses += along_the_surface @ interpolation_weights(surface.width_mesh_m, z_positions_m + dz_m).T
         return responses
     responses = np.empty((len(x_positions_m), len(z_positions_m)))
     evaluated_at_once = sampling.span_positions_evaluated_at_once
@@ -149,21 +160,22 @@ def response_to_one_vehicle_everywhere(surface, wheel_offsets, x_positions_m, z_
         responses[start:start + len(chunk_x_m)] = sum_over_wheels(surface, wheel_offsets, chunk_x_m, z_positions_m)
     return responses
 
-# the interpolation weights of each wheel line; they depend on the mesh, vehicle and grids, never on the surface
-def wheel_line_weights(stations_m, strips_m, wheel_offsets, x_positions_m, z_positions_m):
-    arrays = [np.ascontiguousarray(a, float) for a in (stations_m, strips_m, wheel_offsets, x_positions_m, z_positions_m)]
-    return cached_wheel_line_weights(*((a.tobytes(), a.shape) for a in arrays))
+# each wheel line's offset across and its load-weighted interpolation weights along; they depend on the mesh, vehicle and positions
+# along, never on the surface or the positions across
+def along_line_weights(stations_m, wheel_offsets, x_positions_m):
+    arrays = [np.ascontiguousarray(a, float) for a in (stations_m, wheel_offsets, x_positions_m)]
+    return cached_along_line_weights(*((a.tobytes(), a.shape) for a in arrays))
 
-# one entry per distinct mesh, vehicle and grid; every surface on that mesh reuses it
+# one entry per distinct mesh, vehicle and positions along; every surface and every set of positions across reuses it
 @lru_cache(maxsize=WHEEL_LINE_WEIGHTS_KEPT)
-def cached_wheel_line_weights(*packed):
-    stations_m, strips_m, wheel_offsets, x_positions_m, z_positions_m = (np.frombuffer(data).reshape(shape) for data, shape in packed)
+def cached_along_line_weights(*packed):
+    stations_m, wheel_offsets, x_positions_m = (np.frombuffer(data).reshape(shape) for data, shape in packed)
     wheel_dx_m, wheel_dz_m, wheel_loads_kn = split_offsets(wheel_offsets)
     lines = []
     for dz_m in np.unique(wheel_dz_m):
         on_line = wheel_dz_m == dz_m
         along = sum(load_kn * interpolation_weights(stations_m, x_positions_m + dx_m) for dx_m, load_kn in zip(wheel_dx_m[on_line], wheel_loads_kn[on_line]))
-        lines.append((along, interpolation_weights(strips_m, z_positions_m + dz_m)))
+        lines.append((dz_m, along))
     return tuple(lines)
 
 # linear interpolation weights from mesh stations to positions; a position off the mesh gets a zero row (OFF_THE_DECK)
