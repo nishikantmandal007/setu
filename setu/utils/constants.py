@@ -63,8 +63,6 @@ AREA = "area"
 CUSTOM_LOAD_GROUPS = {"DL": DEAD, "SIDL": DEAD, "DW": SURFACING, "LL": LIVE, "EL": SEISMIC, "WL": WIND, "TL": THERMAL}
 
 # ── Terrain around the bridge for wind, IRC:6 Table 12 (site, wind, cli) ─────────
-PLAIN_TERRAIN = "plain"
-OBSTRUCTED_TERRAIN = "obstructed"
 
 # ── Girder responses setu gives design values for (design_values, cli) ───────────
 MAX_MOMENT = "maximum composite moment"

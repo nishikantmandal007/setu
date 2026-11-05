@@ -14,7 +14,7 @@ from setu.loads.braking_loads import braking_load_cases
 from setu.loads.custom_loads import custom_load_cases
 from setu.loads.load_cases import LoadCase
 from setu.loads.seismic_loads import seismic_load_cases
-from setu.loads.wind_loads import wind_load_cases
+from setu.loads.wind_loads import WITH_LIVE_LOAD, WITHOUT_LIVE_LOAD, wind_load_cases
 from setu.postprocess.girder_response import STAGE_IS_FACTORED_AS, dead_load_forces
 from setu.postprocess.parallel import analysis_for
 from setu.postprocess.thermal_stresses import free_bearing_movement_m, primary_thermal_stresses
@@ -91,7 +91,7 @@ class SharedAnalysis:
         self.work = work
         self.model = model
         self.solver = solver
-        self.wind_forces = dict(wind_cases or {})
+        self.wind_forces = wind_cases if wind_cases is not None else {}
         self.custom_forces = custom_forces
         self.combinations = combinations
 
@@ -386,15 +386,17 @@ def live_with_braking(model, critical, read, girder, place, *, height_above_deck
 
 # every mix of wind sides and directions, with wind on the vehicles if asked
 def wind_alternatives(wind_forces, read, girder, place, with_the_live_load):
-    on_the_bridge = ["longitudinal", *(f"{kind} {way}" for kind, ways in (("transverse", WIND_SIDES), ("vertical", ("upward", "downward"))) for way in ways)]
+    suffix = WITH_LIVE_LOAD if with_the_live_load else WITHOUT_LIVE_LOAD
+    verticals = [f"vertical {way}, B/4 {side}" for way in ("upward", "downward") for side in ("left", "right")]
+    on_the_bridge = [f"longitudinal{suffix}", *(f"transverse {side}{suffix}" for side in WIND_SIDES), *verticals]
     on_the_vehicles = ["on live load, longitudinal", *(f"on live load {side}" for side in WIND_SIDES)] if with_the_live_load else []
     response = {name: read(wind_forces[name], girder, place) for name in on_the_bridge + on_the_vehicles}
     alternatives = []
-    for side, along, vertical in itertools.product(WIND_SIDES, BOTH_WAYS, ("upward", "downward")):
-        effect = response[f"transverse {side}"] + along * response["longitudinal"]
-        effect += response[f"vertical {vertical}"]
+    for side, along, vertical, (across_factor, along_factor) in itertools.product(WIND_SIDES, BOTH_WAYS, verticals, wind_forces.directions):
+        effect = across_factor * response[f"transverse {side}{suffix}"] + along * along_factor * response[f"longitudinal{suffix}"]
+        effect += response[vertical]
         if with_the_live_load:
-            effect += response[f"on live load {side}"] + along * response["on live load, longitudinal"]
+            effect += across_factor * response[f"on live load {side}"] + along * along_factor * response["on live load, longitudinal"]
         alternatives.append(effect)
     return alternatives
 

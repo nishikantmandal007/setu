@@ -4,8 +4,6 @@ from setu.utils.constants import (
     DEAD,
     FREQUENT,
     LIVE,
-    OBSTRUCTED_TERRAIN,
-    PLAIN_TERRAIN,
     QUASI_PERMANENT,
     RARE,
     SEISMIC,
@@ -95,41 +93,76 @@ TRACKED_TRANSITION_SPAN_WIDTH_M = 4.0
 WHEELED_70R_IMPACT_CURVE_TAKES_OVER_M = 22.5
 
 
-# Clause 209.1 - where these wind rules apply
-WIND_RULES_APPLY_UP_TO_SPAN_M = 150.0
-WIND_RULES_APPLY_UP_TO_HEIGHT_M = 100.0
-
-# Clause 209.2, Table 12 - hourly mean wind speed (m/s) and pressure (N/m2) at a basic wind speed of 33 m/s
-TABLE_12_HEIGHTS_M = (10.0, 15.0, 20.0, 30.0, 50.0, 60.0, 70.0, 80.0, 90.0, 100.0)
-TABLE_12_WIND_SPEED_MPS = {
-    PLAIN_TERRAIN: (27.80, 29.20, 30.30, 31.40, 33.10, 33.60, 34.00, 34.40, 34.90, 35.30),
-    OBSTRUCTED_TERRAIN: (17.80, 19.60, 21.00, 22.80, 24.90, 25.60, 26.20, 26.90, 27.50, 28.20),
+# Clause 209 as replaced by IRC:6-2017 Amendment 10 (MoRTH Notification 83, S.No. 59).
+# 209.1: quasi-static rules for spans up to 200 m and pier heights (pier cap top to foundation top) up to 100 m
+WIND_RULES_APPLY_UP_TO_SPAN_M = 200.0
+WIND_RULES_APPLY_UP_TO_PIER_HEIGHT_M = 100.0
+# 209.3.1 Table 1: risk coefficient k1 by return period (years) and basic wind speed zone (m/s); note 1: 10 years for construction
+K1_BASIC_WIND_SPEEDS_MPS = (33.0, 39.0, 44.0, 47.0, 50.0, 55.0)
+K1_BY_RETURN_PERIOD = {
+    5: (0.82, 0.76, 0.73, 0.71, 0.70, 0.67),
+    10: (0.87, 0.83, 0.81, 0.80, 0.79, 0.77),
+    25: (0.94, 0.92, 0.91, 0.91, 0.90, 0.89),
+    50: (1.0, 1.0, 1.0, 1.0, 1.0, 1.0),
+    100: (1.05, 1.06, 1.07, 1.07, 1.08, 1.08),
 }
-TABLE_12_WIND_PRESSURE_PA = {
-    PLAIN_TERRAIN: (463.70, 512.50, 550.60, 590.20, 659.20, 676.30, 693.60, 711.20, 729.00, 747.00),
-    OBSTRUCTED_TERRAIN: (190.50, 230.50, 265.30, 312.20, 373.40, 392.90, 412.80, 433.30, 454.20, 475.60),
+CONSTRUCTION_RETURN_PERIOD_YEARS = 10
+# 209.3.2 Table 3: k2 by height z (m) for TC1-TC4; the first row is 'up to 10 m'; linear interpolation
+K2_HEIGHTS_M = (10.0, 15.0, 20.0, 30.0, 50.0, 100.0, 150.0, 200.0, 250.0, 300.0, 350.0, 400.0, 450.0, 500.0)
+K2_BY_TERRAIN_CATEGORY = {
+    1: (1.05, 1.09, 1.12, 1.15, 1.20, 1.26, 1.30, 1.32, 1.34, 1.35, 1.35, 1.35, 1.35, 1.35),
+    2: (1.00, 1.05, 1.07, 1.12, 1.17, 1.24, 1.28, 1.30, 1.32, 1.34, 1.35, 1.35, 1.35, 1.35),
+    3: (0.91, 0.97, 1.01, 1.06, 1.12, 1.20, 1.24, 1.27, 1.29, 1.31, 1.32, 1.34, 1.35, 1.35),
+    4: (0.80, 0.80, 0.80, 0.97, 1.10, 1.20, 1.24, 1.27, 1.28, 1.30, 1.31, 1.32, 1.33, 1.34),
 }
-TABLE_12_BASIC_WIND_SPEED_MPS = 33.0
-FUNNELLING_TOPOGRAPHY_INCREASE = 1.2
-
-# Clause 209.3.3 - transverse wind on the superstructure
-GUST_FACTOR = 2.0
-SINGLE_PLATE_GIRDER_DRAG_COEFFICIENT = 2.2
+# 209.3.2 Table 2: aerodynamic roughness height z0 (m) by terrain category, used in Equation 4
+ROUGHNESS_HEIGHT_M = {1: 0.002, 2: 0.02, 3: 0.2, 4: 2.0}
+# 209.4 Table 4: hourly mean factor k2bar by height (10-500 m) and terrain category; linear interpolation.
+# Table A3.2 is computed from these rounded values. Below 10 m (no row) Equation 4 is used: k2bar = 0.1423 ln(z / z0) z0^0.0706
+K2_HOURLY_BY_TERRAIN_CATEGORY = {
+    1: (0.78, 0.82, 0.85, 0.88, 0.93, 0.99, 1.03, 1.06, 1.08, 1.09, 1.11, 1.12, 1.13, 1.14),
+    2: (0.67, 0.71, 0.75, 0.79, 0.84, 0.92, 0.96, 0.99, 1.02, 1.04, 1.05, 1.07, 1.08, 1.09),
+    3: (0.50, 0.55, 0.58, 0.64, 0.70, 0.79, 0.84, 0.88, 0.91, 0.93, 0.95, 0.97, 0.98, 0.99),
+    4: (0.24, 0.30, 0.34, 0.40, 0.48, 0.58, 0.65, 0.69, 0.72, 0.75, 0.77, 0.79, 0.81, 0.83),
+}
+HOURLY_FACTOR_MULTIPLIER = 0.1423
+HOURLY_FACTOR_ROUGHNESS_EXPONENT = 0.0706
+# 209.3.3: k3 = 1.2 in a funnelling valley or on the leeward side of a hill, else 1.0
+K3_VALLEY_OR_LEEWARD_HILL = 1.2
+# 209.3.4: k4 = 1.30 within 60 km of a cyclone coast where Vb >= 50 m/s, 1.5 offshore up to 200 km, else 1.0
+K4_CYCLONE_COAST = 1.30
+K4_CYCLONE_COAST_FROM_BASIC_SPEED_MPS = 50.0
+K4_OFFSHORE = 1.5
+# 209.3.5 Equation 2 and 209.4.2 Equation 6: pressure in N/m2 = 0.6 V^2 (checked against Table A3.1)
+PRESSURE_PER_SPEED_SQUARED = 0.6
+# 209.5.2.1 Table 5: column 2 (peak gust, no G) for span <= 40 m with pier <= 20 m; otherwise max of column 2 and column 3
+GUST_METHOD_UP_TO_SPAN_M = 40.0
+GUST_METHOD_UP_TO_PIER_HEIGHT_M = 20.0
+LONGITUDINAL_WIND_FRACTION = 0.25
+VERTICAL_WIND_ECCENTRICITY_OF_WIDTH = 0.25
+# Table 6, other spans: skew angle (deg) -> (transverse, longitudinal) coefficient
+SKEW_COEFFICIENTS_OTHER_SPANS = {0: (1.00, 0.00), 15: (0.88, 0.12), 30: (0.82, 0.24), 45: (0.66, 0.32), 60: (0.34, 0.38)}
+# 209.5.2.2: gust factor G by terrain category for the hourly mean method
+GUST_FACTOR_BY_TERRAIN_CATEGORY = {1: 2.0, 2: 2.0, 3: 2.5, 4: 3.5}
+# Table 8 case I(ii), deck on beams or box girders: CD at B/d = 1, 2, 6; interpolate (note 1); note 7 camber +3 % per degree, at most 25 %
+SERVICE_DRAG_B_OVER_D = (1.0, 2.0, 6.0)
+SERVICE_DRAG_COEFFICIENTS = (2.2, 1.5, 1.3)
+DRAG_INCREASE_PER_DEGREE_OF_CAMBER = 0.03
+DRAG_CAMBER_INCREASE_AT_MOST = 0.25
+# Table 8 case II(a), before the deck is cast: single steel plate girder 2.5; two or more plate girders 2(1 + c / 20d), at most 4
+SINGLE_PLATE_GIRDER_CONSTRUCTION_DRAG = 2.5
 PLATE_GIRDERS_DRAG_BASE = 2.0
 PLATE_GIRDERS_DRAG_SPACING_DIVISOR = 20.0
 PLATE_GIRDERS_DRAG_COEFFICIENT_MOST = 4.0
-
-# Clause 209.3.4 - longitudinal wind on a beam, box or plate girder superstructure
-PLATE_GIRDER_LONGITUDINAL_WIND_FRACTION = 0.25
-
-# Clause 209.3.5 - vertical wind
-LIFT_COEFFICIENT = 0.75
-
-# Clause 209.3.6 - wind on the live load
+# 209.5.2.2: CL = +/-0.9 for plate-girder decks
+LIFT_COEFFICIENT = 0.9
+# 209.5.2.3: wind on live load, CD 1.2 over 3.0 m above the roadway (areas below a solid barrier top neglected), acting 1.5 m above it
 LIVE_LOAD_DRAG_COEFFICIENT = 1.2
 LIVE_LOAD_EXPOSED_HEIGHT_M = 3.0
 WIND_ON_LIVE_LOAD_ACTS_ABOVE_ROAD_M = 1.5
 LIVE_LOAD_LONGITUDINAL_WIND_FRACTION = 0.25
+# Table 7 and Fig. 5, 7: dL, the live load height above the roadway
+LIVE_LOAD_DEPTH_M = 3.0
 
 # Annex B, Tables B.2 and B.3 - partial safety factors.
 # Permanent loads: (adding, relieving). Variable loads: (leading, accompanying);
@@ -150,7 +183,7 @@ VARIABLE_LOAD_FACTORS = {
 }
 EACH_VARIABLE_LOAD_LEADS_IN = (BASIC, RARE, FREQUENT)
 
-# Clause 209.3.7 - no live load on the bridge above this wind speed at deck level
+# 209.5.2.4: no live load on the bridge when the design wind speed at deck level exceeds 36 m/s
 LIVE_LOAD_OFF_ABOVE_WIND_SPEED_MPS = 36.0
 
 # Clause 211.2 and 211.3 - braking

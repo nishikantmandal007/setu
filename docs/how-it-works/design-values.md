@@ -12,7 +12,7 @@ Other rules Setu follows:
 
 - A variable load that would **reduce** the effect is left out.
 - Permanent loads take their larger factor where they add to the effect and their smaller factor where they relieve it.
-- No traffic is taken on the bridge in winds above 36 m/s at deck level (cl. 209.3.7).
+- No traffic is taken on the bridge in winds above 36 m/s at deck level (cl. 209.5.2.4, Amendment 10).
 
 The limit states checked are **ULS basic**, **ULS seismic**, **SLS rare**, **SLS frequent** and **SLS quasi-permanent**. Every design value records which combination produced it and how much each load contributed.
 
@@ -20,7 +20,7 @@ The limit states checked are **ULS basic**, **ULS seismic**, **SLS rare**, **SLS
 
 **Deflection (IRC:22 cl. 604.3.2).** Traffic with impact but without the footway load must stay under span/800. Dead load, surfacing and traffic together must stay under span/600 (camber may offset this, as IRC:24 cl. 504.6 allows).
 
-**Wind (IRC:6 cl. 209).** Table 12 pressure with the gust factor and drag coefficient for plate girders, acting sideways, along and upward, plus wind on the traffic.
+**Wind (IRC:6 cl. 209, Amendment 10).** Design speed Vz = Vb k1 k2 k3 k4 and pressure 0.6 Vz², on the deck's area in elevation with the Table 8 drag for its width-to-depth ratio, acting sideways, along (25 %) and up or down at B/4 off centre, plus wind on the traffic. Spans over 40 m or piers over 20 m also take the hourly mean method with the gust factor, resolved for skewed wind.
 
 **Earthquake (IRC:SP:114).** The design coefficient is
 

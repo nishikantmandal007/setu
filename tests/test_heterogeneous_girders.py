@@ -154,9 +154,9 @@ def test_unequal_depth_wind_requires_engineer_supplied_geometry_and_drag():
             wind_load_cases(model, WindSite(**{**vars(WIND_SITE), **incomplete}))
     site = WindSite(**{**vars(WIND_SITE), **overrides})
     cases = wind_load_cases(model, site)
-    from setu.irc6.wind import hourly_mean_wind
-    _, pressure_pa = hourly_mean_wind(site.height_m, site.terrain, site.basic_wind_speed_mps, site.funnelling)
-    expected = pressure_pa / 1000 * 2 * 100 * overrides["drag"]
+    from setu.irc6.wind import design_wind_speed_mps, wind_pressure_pa
+    pressure_pa = wind_pressure_pa(design_wind_speed_mps(site, site.superstructure_top_m, site.return_period_years))
+    expected = pressure_pa / 1000 * 100 * overrides["drag"]  # Table 5 column 2 (span <= 40 m, pier <= 20 m): Pz A1 CD, no gust factor
     assert cases.forces_kn["transverse"] == pytest.approx(expected)
     for name, sign in (("transverse from the left", 1), ("transverse from the right", -1)):
         assert sum(load[3] for load in cases[name].nodal_loads) == pytest.approx(sign * expected)
