@@ -282,3 +282,16 @@ def test_class_sv_and_construction_come_back_from_the_own_process():
         construction.girders[0][MAX_MOMENT]["ultimate, construction"][BIGGER_IS_WORSE].value
     plain, _ = solve_in_own_process(BRACE_BRIDGE, None, None, None, None, workers=1)
     assert plain.special_vehicle is None and plain.construction is None
+
+
+def test_the_own_process_run_completes_when_congestion_or_crowd_governs():
+    """A congested or crowd placement takes no braking (cl. 204.4), so the governing diagrams have no braking case to replay there."""
+    import copy
+    crowded = copy.copy(BRACE_BRIDGE)
+    crowded.cross_section = copy.copy(BRACE_BRIDGE.cross_section)
+    crowded.cross_section.congestion = crowded.cross_section.crowd_load = True
+    values, _ = solve_in_own_process(crowded, None, None, None, None, workers=2)
+    patterns = [critical.lane_pattern for critical in values.girders.criticals.values()]
+
+    assert any("congested" in p or "crowd" in p for p in patterns)
+    assert values.diagrams.governing

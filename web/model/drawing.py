@@ -153,7 +153,7 @@ def replay(bridge, results, girder, place):
     at_m = float(results.dead.total[girder].stations_m[results.stations[key]])
     details = results.braking.get((girder, (response, results.stations[key]), adverse))
     return {"at_m": at_m, "trials": trials,
-            "braking": braking_view(bridge, details, girder, at_m, response, results.criticals[key]) if details else None}
+            "braking": braking_view(bridge, details, girder, at_m, response, results.criticals[key]) if details and details["selected"] is not None else None}
 
 
 def braking_view(bridge, details, girder, station_m, response, critical):
