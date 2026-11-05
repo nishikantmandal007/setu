@@ -43,7 +43,7 @@ def test_reciprocity_at_the_real_position_of_each_node(skewed, probe):
     deck = model.as_deck_model()
     x_m, _, z_m = backend.node_coordinates(deck.deck_nodes[probe])
 
-    directly = _unit_load_response(deck, deck.deck_nodes[probe], element, MOMENT_AT_END_I, model.composite_lever_arm_m())
+    directly = _unit_load_response(deck, deck.deck_nodes[probe], element, MOMENT_AT_END_I, model.composite_lever_arm_m(), model)
 
     assert surface.influence_at(x_m, z_m) == pytest.approx(directly, rel=1e-8, abs=1e-10)
 

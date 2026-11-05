@@ -11,6 +11,7 @@ Three questions, in order of how much they matter:
 import numpy as np
 import pytest
 
+from slab_reading import slab_moment_read_off_the_shells
 from setu.models.deck import DeckCrossSection
 from setu.analysis.influence_surface import InfluenceSolver
 from setu.analysis.critical_position import find_critical_position, rank_all_positions
@@ -90,7 +91,7 @@ def built(bridge):
 
     surface = InfluenceSolver(deck).for_girder_composite_moment("middle girder, midspan moment", element)
 
-    reciprocity = _check_against_real_unit_loads(deck, surface, element, model.composite_lever_arm_m())
+    reciprocity = _check_against_real_unit_loads(model, deck, surface, element, model.composite_lever_arm_m())
 
     steel, slab = steel_self_weight_load(model), wet_slab_load(model)
     dead_load = LoadCase('steel and wet slab', nodal_loads=steel.nodal_loads + slab.nodal_loads, element_loads=steel.element_loads)
@@ -105,14 +106,14 @@ def built(bridge):
     return model, dead_load, reactions, surface, element, reciprocity
 
 
-def _check_against_real_unit_loads(deck, surface, element, lever_arm_m):
-    """Puts a real unit load at each probe node and reads the composite moment M + N e it causes."""
+def _check_against_real_unit_loads(model, deck, surface, element, lever_arm_m):
+    """Puts a real unit load at each probe node and reads the composite moment M + N e, plus the slab's own bending, it causes."""
     measured = {}
     for station_along, station_across in PROBE_NODES:
         node = deck.deck_nodes[station_along, station_across]
         with backend.solved([(node, 0.0, -1.0, 0.0, 0.0, 0.0, 0.0)], pattern=UNIT_LOAD_PATTERN):
             forces = backend.element_local_forces(element)
-            directly = -(forces[MOMENT_ABOUT_STRONG_AXIS] + lever_arm_m * forces[AXIAL])
+            directly = -(forces[MOMENT_ABOUT_STRONG_AXIS] + lever_arm_m * forces[AXIAL]) + slab_moment_read_off_the_shells(model, element)
         from_the_surface = surface.influence_at(
             float(deck.length_mesh_m[station_along]),
             float(deck.width_mesh_m[station_across]),

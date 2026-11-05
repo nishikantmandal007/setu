@@ -125,6 +125,20 @@ def remove_loads(pattern):
     opensees.remove("timeSeries", pattern)
 
 
+# an element's stiffness, column by column: its nodal forces under a unit displacement of each of its degrees of freedom with every
+# other one at rest (OpenSees gives no element stiffness for shells); every node is put back at rest afterwards
+def element_stiffness_by_probing(element, nodes):
+    reset()
+    size = 6 * len(nodes)
+    stiffness = np.zeros((size, size))
+    for k, node in enumerate(nodes):
+        for dof in range(6):
+            opensees.setNodeDisp(int(node), dof + 1, 1.0)
+            stiffness[:, 6 * k + dof] = opensees.eleResponse(element, "forces")
+            opensees.setNodeDisp(int(node), dof + 1, 0.0)
+    return stiffness
+
+
 # reset displacements and the load clock
 def reset():
     opensees.reset()

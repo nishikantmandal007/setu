@@ -29,7 +29,7 @@ from setu.utils.constants import (
 class GirderForces:
 
     # one girder's internal forces and downward deflection along it, and the reactions on its bearings at x = 0 and at the far end
-    def __init__(self, stations_m, moment_kn_m, shear_kn, torsion_kn_m, axial_kn, composite_lever_arm_m, deflection_m, reaction_kn, end_reaction_kn, *, weak_axis_shear_kn=None, weak_axis_moment_kn_m=None, displacements_m=None):
+    def __init__(self, stations_m, moment_kn_m, shear_kn, torsion_kn_m, axial_kn, composite_lever_arm_m, deflection_m, reaction_kn, end_reaction_kn, *, weak_axis_shear_kn=None, weak_axis_moment_kn_m=None, displacements_m=None, slab_moment_kn_m=None):
         self.stations_m = np.asarray(stations_m, float)
         self.moment_kn_m = np.asarray(moment_kn_m, float)
         self.shear_kn = np.asarray(shear_kn, float)
@@ -43,15 +43,18 @@ class GirderForces:
         self.weak_axis_shear_kn = None if weak_axis_shear_kn is None else np.asarray(weak_axis_shear_kn, float)
         self.weak_axis_moment_kn_m = None if weak_axis_moment_kn_m is None else np.asarray(weak_axis_moment_kn_m, float)
         self.displacements_m = None if displacements_m is None else np.asarray(displacements_m, float)
+        # this girder's share of the deck slab's own bending; None where there is no composite slab
+        self.slab_moment_kn_m = None if slab_moment_kn_m is None else np.asarray(slab_moment_kn_m, float)
 
-    # steel moment plus the axial couple about the slab
+    # the composite section's moment: steel moment, the axial couple about the slab, and the girder's share of the slab's own bending
     @property
     def composite_moment_kn_m(self):
-        return self.moment_kn_m + self.composite_lever_arm_m * self.axial_kn
+        couple = self.moment_kn_m + self.composite_lever_arm_m * self.axial_kn
+        return couple if self.slab_moment_kn_m is None else couple + self.slab_moment_kn_m
 
 
 # read one girder's forces, deflection and bearing reaction off the solved model
-def girder_forces(model, girder_index):
+def girder_forces(model, girder_index, slab_moment_kn_m=None):
     n_stations = model.mesh.stations_along_span
     n_elements = n_stations - 1
     stations_m = np.array(model.mesh.length_mesh_m, float)
@@ -81,7 +84,8 @@ def girder_forces(model, girder_index):
     end_reaction_kn = -BEARING_VERTICAL_STIFFNESS_KN_PER_M * backend.node_displacement(model.bearings[girder_index, n_stations - 1], VERTICAL_DOF)
     return GirderForces(stations_m, moment, shear, torsion, axial, model.composite_lever_arm_m(girder_index), deflection_m, reaction_kn,
                         end_reaction_kn=end_reaction_kn, weak_axis_shear_kn=weak_shear, weak_axis_moment_kn_m=weak_moment,
-                        displacements_m=[backend.node_displacements(model.girder_nodes[girder_index, i]) for i in range(n_stations)])
+                        displacements_m=[backend.node_displacements(model.girder_nodes[girder_index, i]) for i in range(n_stations)],
+                        slab_moment_kn_m=slab_moment_kn_m)
 
 # Upward vertical spring reactions, keyed by (girder index, bearing station index).
 def bearing_reactions(model):
@@ -103,7 +107,8 @@ def brace_force_array(model):
 def analyze_load_case(model, load_case, pattern_tag=None, *, on_solved=None):
     tag = pattern_tag if pattern_tag is not None else LOAD_CASE_PATTERN_BASE
     with backend.solved(load_case.nodal_loads, load_case.element_loads, pattern=tag):
-        forces = {k: girder_forces(model, k) for k in range(model.bridge.girders.count)}
+        slab = None if model.slab_moments is None else model.slab_moments.from_displacements(backend.every_node_displacement()[1])
+        forces = {k: girder_forces(model, k, None if slab is None else slab[k]) for k in range(model.bridge.girders.count)}
         if on_solved is not None:
             on_solved(forces)
         return forces
@@ -138,11 +143,12 @@ class DeadLoadForces:
 
 
 OPTIONAL_RESULTS = ("weak_axis_shear_kn", "weak_axis_moment_kn_m", "displacements_m")
+SLAB = "slab_moment_kn_m"
 
 
 # girder forces times a factor
 def scaled(forces, factor):
-    optional = {name: None if getattr(forces, name) is None else factor * getattr(forces, name) for name in OPTIONAL_RESULTS}
+    optional = {name: None if getattr(forces, name) is None else factor * getattr(forces, name) for name in (*OPTIONAL_RESULTS, SLAB)}
     return GirderForces(forces.stations_m, factor * forces.moment_kn_m, factor * forces.shear_kn, factor * forces.torsion_kn_m, factor * forces.axial_kn,
                         forces.composite_lever_arm_m, factor * forces.deflection_m, factor * forces.reaction_kn, factor * forces.end_reaction_kn, **optional)
 
@@ -162,6 +168,9 @@ def sum_of(girder_forces):
         sum(forces.reaction_kn for forces in girder_forces),
         sum(forces.end_reaction_kn for forces in girder_forces),
         **{name: None if getattr(first, name) is None else sum(getattr(forces, name) for forces in girder_forces) for name in OPTIONAL_RESULTS},
+        # a bare-steel stage has no slab: it adds nothing to the slab's bending of the composite stages it is summed with
+        slab_moment_kn_m=None if all(forces.slab_moment_kn_m is None for forces in girder_forces)
+        else sum(forces.slab_moment_kn_m for forces in girder_forces if forces.slab_moment_kn_m is not None),
     )
 
 
