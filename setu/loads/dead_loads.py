@@ -38,14 +38,18 @@ def steel_self_weight_load(model):
 # construction stage 2 on the bare steel: the wet slab (+1 kN/m3 for wet concrete, Amendment 10), each girder carrying its share of the deck width
 def wet_slab_load(model):
     bridge = model.bridge
-    wet_slab_kpa = (bridge.concrete.unit_weight_kn_m3 + WET_CONCRETE_EXTRA_KN_M3) * bridge.deck.thickness_m
+    return bare_steel_area_load(model, (bridge.concrete.unit_weight_kn_m3 + WET_CONCRETE_EXTRA_KN_M3) * bridge.deck.thickness_m, 'wet slab')
+
+
+# a pressure over the whole deck width carried by the bare steel, each girder taking its share of the width
+def bare_steel_area_load(model, pressure_kpa, name):
     nodal_loads = []
-    for k in range(bridge.girders.count):
+    for k in range(model.bridge.girders.count):
         tributary_width_m = girder_tributary_width_m(model, k)
         for i in range(model.mesh.stations_along_span):
-            load_kn = wet_slab_kpa * tributary_width_m * tributary_length_m(model.mesh.length_mesh_m, i)
+            load_kn = pressure_kpa * tributary_width_m * tributary_length_m(model.mesh.length_mesh_m, i)
             nodal_loads.append((model.girder_nodes[k, i], *downward_force(load_kn)))
-    return LoadCase(name='wet slab', nodal_loads=nodal_loads)
+    return LoadCase(name=name, nodal_loads=nodal_loads)
 
 # the deck width a girder carries in the steel stage
 def girder_tributary_width_m(model, girder):

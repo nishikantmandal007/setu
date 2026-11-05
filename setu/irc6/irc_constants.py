@@ -183,6 +183,22 @@ VARIABLE_LOAD_FACTORS = {
 }
 EACH_VARIABLE_LOAD_LEADS_IN = (BASIC, RARE, FREQUENT)
 
+# Construction stage (un-propped: the bare steel carries its own weight, the wet slab, shuttering and construction live load,
+# IRC:22-2015 cl. 604.1.1; loads from the construction programme, IRC:6-2017 cl. 218 'Erection Effects and Construction Loads',
+# numbered 217 before Amendment 10). Factors, IRC:6-2017 Annex B Table B.2 (structural strength):
+# dead load 1.35 adding / 1.0 relieving (row 1.1); construction live load 1.35 basic, 1.0 seismic (row 2.1 c);
+# construction dead loads such as shuttering 1.35 basic, 1.35 seismic (row 2.4); wind during service and construction 1.5 leading,
+# 0.9 accompanying (row 2.2); seismic during construction 0.75 (row 4 b). A relieving variable load is ignored (Annex B para 3 ii).
+CONSTRUCTION_DEAD_FACTORS = (1.35, 1.0)
+CONSTRUCTION_TEMPORARY_DEAD_FACTOR_BASIC = 1.35
+CONSTRUCTION_TEMPORARY_DEAD_FACTOR_SEISMIC = 1.35
+CONSTRUCTION_LIVE_LOAD_FACTOR_BASIC = 1.35
+CONSTRUCTION_LIVE_LOAD_FACTOR_SEISMIC = 1.0
+CONSTRUCTION_WIND_FACTORS = (1.5, 0.9)
+SEISMIC_DURING_CONSTRUCTION_FACTOR = 0.75
+# IRC:SP:114-2018 note under Table 4.3: 'While checking for seismic effects during construction, the importance factor of 1 should be considered'
+CONSTRUCTION_IMPORTANCE_FACTOR = 1.0
+
 # 209.5.2.4: no live load on the bridge when the design wind speed at deck level exceeds 36 m/s
 LIVE_LOAD_OFF_ABOVE_WIND_SPEED_MPS = 36.0
 
