@@ -100,8 +100,10 @@ class SharedAnalysis:
 
 
 # solve the dead load stages, build the composite model and its solver, and make the wind and custom load cases once
-def shared_analysis(bridge, wind, custom_loads, custom_combinations, *, work=None):
-    dead = dead_load_forces(bridge) if work is None else None
+# dead: the dead load stages already solved for this bridge, by a parent whose worker builds its own model
+def shared_analysis(bridge, wind, custom_loads, custom_combinations, *, work=None, dead=None):
+    if dead is None and work is None:
+        dead = dead_load_forces(bridge)
     model = build_bridge_model(bridge)
     solver = InfluenceSolver(model.as_deck_model())
     if work is not None:
@@ -167,38 +169,6 @@ def search_stress(surface, at_m, cross_section, span_m):
     return stress
 
 
-# a surface solved here with the rest of its results from a search worker, in ParallelWork's order
-class SolvedHere:
-    def __init__(self, surface, searched, unpack):
-        self.surface, self.searched, self.unpack = surface, searched, unpack
-
-    def result(self):
-        return (self.surface, *self.unpack(self.searched.result()))
-
-
-# ParallelWork's results with one model and factor: this process solves, workers get deck ordinates and search
-class SearchWork:
-    def __init__(self, pool, solver, model, bridge, girders, places):
-        search = (bridge.cross_section, bridge.span_m, bridge.wearing_course_thickness_m)
-        self.places = {(girder, place): self.place(pool, surface_for(solver, model, girder, place), place, search) for girder in girders for place in places}
-        self.deflections = {girder: self.deflection(pool, solver.for_deflection(f"girder {girder}, {MIDSPAN_DEFLECTION}", midspan_deck_node_over(model, girder)), search) for girder in girders}
-        self.stresses = {}
-        for girder in girders:
-            for face, y_m in (("steel top", model.girders[girder].depth_m), ("steel bottom", 0.0)):
-                for response, station in places:
-                    if response == MAX_MOMENT:
-                        surface = stress_surface(solver, model, girder, face, y_m, station)
-                        self.stresses[girder, face, station] = pool.submit(search_stress, surface.deck_only(), float(model.mesh.length_mesh_m[station]), bridge.cross_section, bridge.span_m)
-
-    @staticmethod
-    def place(pool, surface, place, search):
-        return SolvedHere(surface, pool.submit(search_place, surface.deck_only(), place, *search), lambda found: found)
-
-    @staticmethod
-    def deflection(pool, surface, search):
-        return SolvedHere(surface, pool.submit(search_deflection, surface.deck_only(), *search), lambda ranked: (ranked,))
-
-
 # one direction's worst traffic for a place searched in this process; the place is counted done with its last direction
 def searched_here(surface, bridge, adverse):
     found = find_critical_position(surface, bridge.cross_section, bridge.span_m, adverse, bridge.wearing_course_thickness_m)
@@ -207,11 +177,11 @@ def searched_here(surface, bridge, adverse):
     return found
 
 
-def girder_values(analysis, bridge, seismic, temperature, braking_height_above_deck_m, *, search_pool=None):
+def girder_values(analysis, bridge, seismic, temperature, braking_height_above_deck_m):
     dead, model, solver = analysis.dead, analysis.model, analysis.solver
     girders = range(bridge.girders.count)
     places = places_to_design(model)
-    work = analysis.work if search_pool is None else SearchWork(search_pool, solver, model, bridge, girders, places)
+    work = analysis.work
     progress.start(len(girders) * len(places))  # each place counted once it is solved and searched
     surfaces = {(girder, place): progress.passing(work.places[girder, place].result()[0]) if work is not None else surface_for(solver, model, girder, place) for girder in girders for place in places}
     deflection_surfaces = {girder: work.deflections[girder].result()[0] if work is not None else solver.for_deflection(f"girder {girder}, {MIDSPAN_DEFLECTION}", midspan_deck_node_over(model, girder)) for girder in girders}

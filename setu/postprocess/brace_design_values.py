@@ -1,5 +1,3 @@
-from collections import deque
-
 from setu.analysis.along_span import vehicle_responses
 from setu.analysis.critical_position import find_critical_position
 from setu.analysis.influence_surface import response_to_load_case
@@ -11,9 +9,6 @@ from setu.postprocess.governing_diagrams import bridge_diagrams
 
 
 # axial design forces for every brace member and limit state, with the surfaces and critical positions behind them
-MEMBERS_QUEUED = 4
-
-
 class BraceDesignValues:
     # store the governing member forces, the surfaces, the critical positions and every combination's value
     def __init__(self, members, surfaces, criticals, combinations, special_vehicle=None):
@@ -54,7 +49,7 @@ def bridge_design_values(bridge, wind=None, seismic=None, temperature=None, cust
 
 # brace design values from an analysis already set up; the dead forces are the brace forces its dead stages recorded
 # special_vehicle: also each member's Class SV values, from the surface already solved for it (cl. 204.5)
-def brace_values(analysis, bridge, seismic, braking_height_above_deck_m, *, keep_surfaces=True, search_pool=None, special_vehicle=False):
+def brace_values(analysis, bridge, seismic, braking_height_above_deck_m, *, keep_surfaces=True, special_vehicle=False):
     from setu.postprocess.special_vehicle import special_vehicle_member
     surfaces, criticals = {}, {}
     members, combinations_by_member = {}, {}
@@ -70,7 +65,7 @@ def brace_values(analysis, bridge, seismic, braking_height_above_deck_m, *, keep
                 special_vehicle_by_member[member] = special
             progress.step()
         return BraceDesignValues(members, surfaces, criticals, combinations_by_member, special_vehicle_by_member)
-    for member, surface, found in solved_members(analysis, bridge, search_pool):
+    for member, surface, found in solved_members(analysis, bridge):
         members[member], combinations_by_member[member] = member_values(analysis, seismic, braking_height_above_deck_m, member, surface, found)
         criticals.update({(*member, adverse): found[adverse] for adverse in BOTH_DIRECTIONS})
         if special_vehicle:
@@ -101,29 +96,16 @@ def search_member(surface, cross_section, span_m, wearing_course_thickness_m):
     return found
 
 
-# each brace member in model order with its surface and worst traffic: this process solves, light workers search
-def solved_members(analysis, bridge, search_pool):
+# each brace member in model order with its surface and worst traffic, from ParallelWork's processes or solved and searched here
+def solved_members(analysis, bridge):
     model, solver, work = analysis.model, analysis.solver, analysis.work
     search = (bridge.cross_section, bridge.span_m, bridge.wearing_course_thickness_m)
-    if work is not None:
-        for member in model.brace_elements:
+    for member in model.brace_elements:
+        if work is not None:
             yield (member, *work.braces[member].result())
-    elif search_pool is None:
-        for member in model.brace_elements:
+        else:
             surface = brace_surface(solver, model, member)
             yield member, surface, search_member(surface, *search)
-    else:
-        waiting = deque()
-        for member in model.brace_elements:
-            surface = brace_surface(solver, model, member)
-            waiting.append((member, surface, search_pool.submit(search_member, surface.deck_only(), *search)))
-            # A short queue keeps only a few members' full surfaces in memory at once.
-            if len(waiting) >= MEMBERS_QUEUED:
-                done, held, found = waiting.popleft()
-                yield done, held, found.result()
-        while waiting:
-            done, held, found = waiting.popleft()
-            yield done, held, found.result()
 
 
 # axial force influence surface for every brace member in the model

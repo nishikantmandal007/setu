@@ -2,7 +2,7 @@ import multiprocessing
 import os
 import signal
 import traceback
-from concurrent.futures import ProcessPoolExecutor
+from contextlib import nullcontext
 
 from setu.postprocess.brace_design_values import BridgeDesignValues, brace_values, member_values, search_member
 from setu.postprocess.design_values import (MIDSPAN_DEFLECTION, MAX_MOMENT, girder_values, midspan_deck_node_over, search_deflection,
@@ -149,7 +149,24 @@ def progress_stays_here():
     progress.report = None
 
 
-# girders, braces and diagrams: forked workers where the platform can fork, light search workers where it cannot
+# a spawned worker (no fork, as on Windows) cannot inherit the factor: it builds its own model and solver beside the parent's dead load
+# stages and factors them on its first solve, then works as a forked worker does; the same model and solves give the same values
+def spawned_worker(bridge, wind, dead, seismic, braking_height_m, special_vehicle):
+    global shared, with_special_vehicle
+    progress_stays_here()
+    with_special_vehicle = special_vehicle
+    shared = (shared_analysis(bridge, wind, (), (), dead=dead), bridge, seismic, braking_height_m)
+
+
+# workers forked after the factor exists share one copy of it; where the platform cannot fork, each spawned worker builds its own
+def worker_pool(workers, analysis, bridge, wind, seismic, braking_height_m):
+    if "fork" in multiprocessing.get_all_start_methods():
+        return multiprocessing.get_context("fork").Pool(workers, initializer=progress_stays_here)
+    return multiprocessing.get_context("spawn").Pool(workers, initializer=spawned_worker,
+                                                     initargs=(bridge, wind, analysis.dead, seismic, braking_height_m, with_special_vehicle))
+
+
+# girders, braces and diagrams: in workers that each solve, search and combine (forked, or spawned where the platform cannot fork)
 # special_vehicle: also design for Class SV; construction: a ConstructionLoads for the bare-steel stage (wind and construction_seismic,
 # a site with importance factor 1, go with it)
 def run_analysis(bridge, wind, seismic, temperature, braking_height_m, workers, phase, special_vehicle=False, construction=None, construction_seismic=None):
@@ -163,32 +180,9 @@ def run_analysis(bridge, wind, seismic, temperature, braking_height_m, workers, 
     phase("factorising the stiffness matrix")
     surface_for(analysis.solver, analysis.model, 0, places[0])
     analysis.solver.surfaces.clear()
-    if workers > 1 and "fork" in multiprocessing.get_all_start_methods():
-        with multiprocessing.get_context("fork").Pool(workers, initializer=progress_stays_here) as pool:
+    with worker_pool(workers, analysis, bridge, wind, seismic, braking_height_m) if workers > 1 else nullcontext() as pool:
+        if pool is not None:
             analysis.work = ForkedWork(pool, analysis.model, girders_range, places)
-            phase("solving and searching the girders")
-            girder_results = girder_values(analysis, bridge, seismic, temperature, braking_height_m)
-            phase("solving and searching the braces")
-            brace_results = brace_values(analysis, bridge, seismic, braking_height_m, keep_surfaces=False, special_vehicle=bool(special_vehicle))
-            if special_vehicle:
-                phase("solving and searching the Class SV")
-                special_vehicle = special_vehicle_values(analysis, bridge, girder_results.place_surfaces, brace_results.special_vehicle)
-                special_vehicle.placements = {}
-            phase("replaying the governing load states")
-            diagrams = bridge_diagrams(analysis, girder_results, seismic, braking_height_m)
-    elif workers > 1:
-        with ProcessPoolExecutor(workers, mp_context=multiprocessing.get_context("spawn")) as pool:
-            phase("searching the girders")
-            girder_results = girder_values(analysis, bridge, seismic, temperature, braking_height_m, search_pool=pool)
-            phase("searching the braces")
-            brace_results = brace_values(analysis, bridge, seismic, braking_height_m, keep_surfaces=False, search_pool=pool, special_vehicle=bool(special_vehicle))
-        if special_vehicle:
-            phase("solving and searching the Class SV")
-            special_vehicle = special_vehicle_values(analysis, bridge, girder_results.place_surfaces, brace_results.special_vehicle)
-            special_vehicle.placements = {}
-        phase("replaying the governing load states")
-        diagrams = bridge_diagrams(analysis, girder_results, seismic, braking_height_m)
-    else:
         phase("solving and searching the girders")
         girder_results = girder_values(analysis, bridge, seismic, temperature, braking_height_m)
         phase("solving and searching the braces")

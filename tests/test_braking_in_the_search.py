@@ -23,7 +23,7 @@ def test_the_kept_placement_has_the_worst_live_load_plus_braking():
                             "bracing": Bracing(station_count=3, area_m2=0.01, arrangement="XT"), "mesh": MeshSettings(2, 1.0)})
     moved = 0
     with analysis_for(bridge, None, (), (), 1, girders=False, braces=True) as analysis:
-        for member, surface, found in solved_members(analysis, bridge, None):
+        for member, surface, found in solved_members(analysis, bridge):
             read = brace_reader({member: surface})
             settled = settle_braking(analysis.model, found, read, (member, None), None)
             for adverse in BOTH_DIRECTIONS:
@@ -60,7 +60,7 @@ def test_the_braking_field_estimate_keeps_the_same_choice():
                     found = {adverse: find_critical_position(surface, bridge.cross_section, bridge.span_m, adverse, bridge.wearing_course_thickness_m)
                              for adverse in BOTH_DIRECTIONS}
                     jobs.append((surface, reader({(girder, place): surface}), (girder, place), found))
-            for member, surface, found in solved_members(analysis, bridge, None):
+            for member, surface, found in solved_members(analysis, bridge):
                 jobs.append((surface, brace_reader({member: surface}), (member, None), found))
             for surface, read, target, found in jobs:
                 exact = settle_braking(model, copy.deepcopy(found), read, target, None)
