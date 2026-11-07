@@ -9,7 +9,7 @@ from setu.loads.load_builders import live_load
 from setu.loads.load_cases import LoadCase
 from setu.postprocess import progress
 from setu.postprocess.design_values import BOTH_DIRECTIONS, effects_in, load_effects, reader, wind_alternatives, wind_on_the_vehicles
-from setu.postprocess.girder_response import analyze_load_case, brace_force_array, scaled, sum_of
+from setu.postprocess.girder_response import analyze_load_case, analyze_with_braces, brace_force_array, scaled, sum_of
 from setu.solver import backend
 
 REPLAY_REL_TOLERANCE = 1e-12  # Python sums plain floats with compensation and recipes without, so the last bits can differ
@@ -148,14 +148,29 @@ class LoadSolver:
 
     # queue each distinct physical load once, then keep the solved forces in source order
     def prepare(self, sources, work):
-        pending = {}
-        for source in sources:
+        self.queue(sources, work)
+        self.collect()
+
+    # the sources to queue, taken one distinct load at a time (queue_next) or all at once (collect)
+    def queue(self, sources, work):
+        self.sources, self.work, self.pending = iter(sources), work, {}
+
+    # queue the next source whose load is not queued yet; False when there is none left
+    def queue_next(self):
+        for source in self.sources:
             key = source_key(source)
-            if key is not None and key not in pending:
+            if key is not None and key not in self.pending:
                 case = live_load(self.model, source.critical, source.surface) if isinstance(source, LiveArrangement) else source
-                pending[key] = (source, work.load(case))
-        progress.start(len(pending))
-        results = {key: (source, progress.passing(future.result())) for key, (source, future) in pending.items()}
+                self.pending[key] = (source, self.work.load(case))
+                return True
+        return False
+
+    # queue the rest, then keep every solved load's forces in source order
+    def collect(self):
+        while self.queue_next():
+            pass
+        progress.start(len(self.pending))
+        results = {key: (source, progress.passing(future.result())) for key, (source, future) in self.pending.items()}
         self.solved = {key: (source, girders) for key, (source, (girders, _)) in results.items()}
         self.braces = {key: braces for key, (_, (_, braces)) in results.items()}
 
@@ -197,12 +212,55 @@ def diagram_sources(analysis, values, seismic, braking_height_above_deck_m, term
                     yield from (source for _, source in terms)
 
 
+# one load solved when asked for, here, with its brace forces from the same solve
+class SolvedHere:
+    def __init__(self, model, case):
+        self.model, self.case, self.done = model, case, None
+
+    def solve(self):
+        if self.done is None:
+            self.done = analyze_with_braces(self.model, self.case)
+            self.case = None
+
+    def result(self):
+        self.solve()
+        return self.done
+
+
+# The replay's loads, solved in this process while it would otherwise wait for its workers (the girder results already fix them):
+# solve_one() takes the next distinct load in source order. Every load is solved the same way wherever and whenever it is solved, so
+# the diagrams are the same as a replay solved all at once.
+class ReplayInTheGaps:
+    def __init__(self, analysis, values, seismic, braking_height_above_deck_m):
+        self.model = analysis.model
+        self.solver = LoadSolver(analysis.model, analysis.dead)
+        self.terms_by_key = {}
+        self.latest = None
+        self.solver.queue(diagram_sources(analysis, values, seismic, braking_height_above_deck_m, self.terms_by_key), self)
+
+    def load(self, case):
+        self.latest = SolvedHere(self.model, case)
+        return self.latest
+
+    def solve_one(self):
+        if not self.solver.queue_next():
+            return False
+        self.latest.solve()
+        return True
+
+
 # every governing girder design value replayed as forces along all girders, with the dead stages, live arrangements, braking and wind
-def bridge_diagrams(analysis, values, seismic, braking_height_above_deck_m):
-    solver = LoadSolver(analysis.model, analysis.dead)
-    terms_by_key = {}
-    if analysis.work is not None:
-        solver.prepare(diagram_sources(analysis, values, seismic, braking_height_above_deck_m, terms_by_key), analysis.work)
+# replay: a ReplayInTheGaps that has solved some of the loads already
+def bridge_diagrams(analysis, values, seismic, braking_height_above_deck_m, replay=None):
+    if replay is not None:
+        solver, terms_by_key = replay.solver, replay.terms_by_key
+        solver.collect()
+    else:
+        solver = LoadSolver(analysis.model, analysis.dead)
+        terms_by_key = {}
+        if analysis.work is not None:
+            solver.prepare(diagram_sources(analysis, values, seismic, braking_height_above_deck_m, terms_by_key), analysis.work)
+    prepared = replay is not None or analysis.work is not None
     live = {key: solver.forces(LiveArrangement(critical, values.surfaces[key])) for key, critical in values.criticals.items()}
     braking = {}
     for (girder, response, adverse), station in values.stations.items():
@@ -211,16 +269,16 @@ def bridge_diagrams(analysis, values, seismic, braking_height_above_deck_m):
             braking[girder, response, adverse] = solver.forces(details["cases"][details["selected"]])
     wind = {name: solver.forces(case) for name, case in analysis.wind_forces.items()}
     governing = {}
-    if analysis.work is None:  # solved one by one below, so count the governing values as they are replayed
+    if not prepared:  # solved one by one below, so count the governing values as they are replayed
         progress.start(sum(len(by_adverse) for by_response in values.girders.values() for by_limit_state in by_response.values() for by_adverse in by_limit_state.values()))
     for girder, by_response in values.girders.items():
         for response, by_limit_state in by_response.items():
             for limit_state, by_adverse in by_limit_state.items():
                 for adverse, value in by_adverse.items():
-                    terms = terms_by_key[girder, response, limit_state, adverse] if analysis.work is not None else replayed_terms(analysis, values, seismic, braking_height_above_deck_m, girder, response, adverse, value)
+                    terms = terms_by_key[girder, response, limit_state, adverse] if prepared else replayed_terms(analysis, values, seismic, braking_height_above_deck_m, girder, response, adverse, value)
                     governing[girder, response, limit_state, adverse] = GoverningDiagram(girder, response, limit_state, adverse, value, solver.combined(terms),
                                                                                          solver.combined_braces(terms))
-                    if analysis.work is None:
+                    if not prepared:
                         progress.step()
     return BridgeDiagrams(live, braking, wind, governing, *plan_positions(analysis.model), brace_members=analysis.model.brace_elements)
 

@@ -10,7 +10,7 @@ from setu.postprocess.design_values import (MIDSPAN_DEFLECTION, MAX_MOMENT, gird
                                             search_place, search_stress, shared_analysis, stress_surface, surface_for, places_to_design)
 from setu.postprocess import progress
 from setu.postprocess.construction import construction_design_values
-from setu.postprocess.governing_diagrams import bridge_diagrams
+from setu.postprocess.governing_diagrams import ReplayInTheGaps, bridge_diagrams
 from setu.postprocess.special_vehicle import keep_worst, special_vehicle_combinations, special_vehicle_effects, special_vehicle_member, special_vehicle_values
 from setu.loads.wind_loads import wind_load_cases
 from setu.loads.seismic_loads import seismic_load_cases
@@ -99,6 +99,7 @@ class ForkedWork:
         self.pool, self.analysis = pool, analysis
         solver, model = analysis.solver, analysis.model
         self.ahead = 2 * pool._processes  # members solved ahead of the workers: enough to keep them busy, few surfaces held at once
+        self.gaps = None  # the replay, once the girders fix it: its loads are solved here while the workers are busy
         self.places, self.deflections, self.stresses = {}, {}, {}
         for girder in girders:
             for place in places:
@@ -124,9 +125,16 @@ class ForkedWork:
             surface = self.solved(brace_surface(self.analysis.solver, model, member))
             waiting.append(self.pool.apply_async(member_task, (member, surface)))
             if len(waiting) > self.ahead:
-                yield waiting.popleft().get()
+                yield self.next_result(waiting)
         while waiting:
-            yield waiting.popleft().get()
+            yield self.next_result(waiting)
+
+    # the oldest member's results, solving the replay's loads while they are not back yet
+    def next_result(self, waiting):
+        oldest = waiting.popleft()
+        while not oldest.ready() and self.gaps is not None and self.gaps.solve_one():
+            pass
+        return oldest.get()
 
     def special_vehicle_places(self, girders, places):
         return ((girder, place, *self.places[girder, place].result()[3]) for girder in girders for place in places)
@@ -186,17 +194,20 @@ def run_analysis(bridge, wind, seismic, temperature, braking_height_m, workers, 
             analysis.work = ForkedWork(pool, analysis, girders_range, places)
         phase("solving and searching the girders")
         girder_results = girder_values(analysis, bridge, seismic, temperature, braking_height_m)
+        replay = None
+        if pool is not None:
+            replay = analysis.work.gaps = ReplayInTheGaps(analysis, girder_results, seismic, braking_height_m)
         phase("solving and searching the braces")
         brace_results = brace_values(analysis, bridge, seismic, braking_height_m, keep_surfaces=False, special_vehicle=bool(special_vehicle))
         if special_vehicle:
             phase("solving and searching the Class SV")
             special_vehicle = special_vehicle_values(analysis, bridge, girder_results.place_surfaces, brace_results.special_vehicle)
             special_vehicle.placements = {}
-    # The workers are gone before the replay, which holds the most here (about 1.6 GB on a 52 m deck); it solves in this process, as
-    # a run without workers does, with the same diagrams.
+    # The replay's loads were solved in this process while the workers searched the braces; the rest are solved now that they are
+    # gone, so a worker never holds a model, and the diagrams are those of a replay solved all at once.
     analysis.work = None
     phase("replaying the governing load states")
-    diagrams = bridge_diagrams(analysis, girder_results, seismic, braking_height_m)
+    diagrams = bridge_diagrams(analysis, girder_results, seismic, braking_height_m, replay)
     forces = site_forces(analysis.model, wind, seismic, girder_results)
     # Only values leave this process: influence surfaces stay behind and vanish with it.
     girder_results.surfaces = girder_results.place_surfaces = {}
