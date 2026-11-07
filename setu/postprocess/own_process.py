@@ -79,40 +79,103 @@ class Pending:
     def __init__(self, waiting):
         self.waiting = waiting
 
+    def ready(self):
+        return self.waiting.ready()
+
+    def wait(self):
+        self.waiting.wait()
+
     def result(self):
         return self.waiting.get()
 
 
+# one of ForkedWork's tasks, started (solved here and sent) when it comes within reach of the workers
+class Later:
+    def __init__(self, work, index, start):
+        self.work, self.index, self.start_it, self.running = work, index, start, None
+
+    def start(self):
+        self.running = self.start_it()
+        self.start_it = None
+
+    def result(self):
+        return self.work.result_of(self)
+
+
 # a surface solved here with the rest of its results from a worker, in the order ParallelWork gives them
-class Solved:
+class Solved(Pending):
     def __init__(self, surface, waiting):
-        self.surface, self.waiting = surface, waiting
+        super().__init__(waiting)
+        self.surface = surface
 
     def result(self):
         return (self.surface, *self.waiting.get())
 
 
 # ParallelWork's results: this process solves each surface on its factor and a worker searches it; a search needs only the deck
-# ordinates, while a place or member also reads load cases by reciprocity and gets the whole surface
+# ordinates, while a place or member also reads load cases by reciprocity and gets the whole surface. Surfaces are solved as the
+# workers come to need them, a few ahead, so no more than a few wait in this process at once.
 class ForkedWork:
     def __init__(self, pool, analysis, girders, places):
         self.pool, self.analysis = pool, analysis
         solver, model = analysis.solver, analysis.model
-        self.ahead = 2 * pool._processes  # members solved ahead of the workers: enough to keep them busy, few surfaces held at once
+        self.ahead = 2 * pool._processes  # surfaces solved ahead of the workers: enough to keep them busy, few held at once
         self.gaps = None  # the replay, once the girders fix it: its loads are solved here while the workers are busy
+        self.tasks, self.started, self.flying = [], 0, []  # every task in order; how many are started; those not back yet
         self.places, self.deflections, self.stresses = {}, {}, {}
-        for girder in girders:
+        for girder in girders:  # each girder's light flange-stress searches go beside its heavy places, to fill the workers
             for place in places:
-                surface = self.solved(surface_for(solver, model, girder, place))
-                self.places[girder, place] = Solved(surface, pool.apply_async(place_task, (girder, place, surface)))
-            surface = self.solved(solver.for_deflection(f"girder {girder}, {MIDSPAN_DEFLECTION}", midspan_deck_node_over(model, girder)))
-            self.deflections[girder] = Solved(surface, pool.apply_async(deflection_task, (surface.deck_only(),)))
-        for girder in girders:
+                self.places[girder, place] = self.later(lambda girder=girder, place=place: self.place(girder, place))
+            self.deflections[girder] = self.later(lambda girder=girder: self.deflection(girder))
             for face, y_m in (("steel top", model.girders[girder].depth_m), ("steel bottom", 0.0)):
                 for response, station in places:
                     if response == MAX_MOMENT:
-                        surface = self.solved(stress_surface(solver, model, girder, face, y_m, station))
-                        self.stresses[girder, face, station] = Pending(pool.apply_async(stress_task, (surface.deck_only(), station)))
+                        self.stresses[girder, face, station] = self.later(lambda girder=girder, face=face, y_m=y_m, station=station:
+                                                                          self.stress(girder, face, y_m, station))
+        self.top_up()
+
+    def later(self, start):
+        task = Later(self, len(self.tasks), start)
+        self.tasks.append(task)
+        return task
+
+    def start_next(self):
+        task = self.tasks[self.started]
+        task.start()
+        self.started += 1
+        self.flying.append(task)
+
+    # start the next tasks while fewer than `ahead` are with the workers; True if one was started
+    def top_up(self):
+        self.flying = [task for task in self.flying if not task.running.ready()]
+        started = False
+        while len(self.flying) < self.ahead and self.started < len(self.tasks):
+            self.start_next()
+            started = True
+        return started
+
+    # a task's results: start it if it is not yet, and keep the workers busy while it is not back
+    def result_of(self, task):
+        while self.started <= task.index:
+            self.start_next()
+        while not task.running.ready():
+            if not self.top_up():
+                task.running.wait()
+        self.top_up()
+        return task.running.result()
+
+    def place(self, girder, place):
+        surface = self.solved(surface_for(self.analysis.solver, self.analysis.model, girder, place))
+        return Solved(surface, self.pool.apply_async(place_task, (girder, place, surface)))
+
+    def deflection(self, girder):
+        model = self.analysis.model
+        surface = self.solved(self.analysis.solver.for_deflection(f"girder {girder}, {MIDSPAN_DEFLECTION}", midspan_deck_node_over(model, girder)))
+        return Solved(surface, self.pool.apply_async(deflection_task, (surface.deck_only(),)))
+
+    def stress(self, girder, face, y_m, station):
+        surface = self.solved(stress_surface(self.analysis.solver, self.analysis.model, girder, face, y_m, station))
+        return Pending(self.pool.apply_async(stress_task, (surface.deck_only(), station)))
 
     def solved(self, surface):
         self.analysis.solver.surfaces.clear()
@@ -175,7 +238,7 @@ def worker_pool(workers, analysis, bridge, wind, seismic, braking_height_m):
                                                      initargs=(bridge, wind, analysis.dead, seismic, braking_height_m, with_special_vehicle))
 
 
-# girders, braces and diagrams: in workers that each solve, search and combine (forked, or spawned where the platform cannot fork)
+# girders, braces and diagrams: this process solves, and workers (forked, or spawned where the platform cannot fork) search and combine
 # special_vehicle: also design for Class SV; construction: a ConstructionLoads for the bare-steel stage (wind and construction_seismic,
 # a site with importance factor 1, go with it)
 def run_analysis(bridge, wind, seismic, temperature, braking_height_m, workers, phase, special_vehicle=False, construction=None, construction_seismic=None):
