@@ -84,22 +84,34 @@ class InfluenceSolver:
         self.surfaces = {}
         self._model_was_checked = False
 
-    # influence surface of a girder's composite moment: steel moment plus axial couple
+    # influence surface of a girder's composite moment: steel moment plus axial couple, plus its share of the slab's own bending
     def for_girder_composite_moment(self, name, element, *, end="i"):
         self.check_nothing_else_is_loading_the_model()
         moment_dof = moment_dof_for(self.deck.girder_local_axis)
         steel_moment_and_axial_couple = [(moment_dof, 1.0), (N_I, self.deck.lever_arm_for_element(element))]
-        adjoint_loads = self.adjoint_loads_for_girder_force(element, steel_moment_and_axial_couple, end=end)
+        adjoint_loads = self.with_the_slab_share(self.adjoint_loads_for_girder_force(element, steel_moment_and_axial_couple, end=end),
+                                                 self.deck.slab_moments, element, end)
         with self.backend.solved(adjoint_loads):
             return self.surface_from_solved_deck(name)
 
-    # influence surface of a girder's shear
+    # influence surface of a girder's shear: the steel's, plus its share of the slab's vertical shear (the web resists the section's)
     def for_girder_shear(self, name, element, *, end="i"):
         self.check_nothing_else_is_loading_the_model()
         response_dof = shear_dof_for(self.deck.girder_local_axis)
-        adjoint_loads = self.adjoint_loads_for_girder_force(element, [(response_dof, 1.0)], end=end)
+        adjoint_loads = self.with_the_slab_share(self.adjoint_loads_for_girder_force(element, [(response_dof, 1.0)], end=end),
+                                                 self.deck.slab_shears, element, end)
         with self.backend.solved(adjoint_loads):
             return self.surface_from_solved_deck(name)
+
+    # a girder force's adjoint loads with the adjoint loads of the girder's share of the slab added, where the deck is composite
+    def with_the_slab_share(self, adjoint_loads, share, element, end):
+        if share is None:
+            return adjoint_loads
+        girder, station = self.deck.girder_station_of_element[element]
+        loads = {node: np.array(forces, float) for node, forces in adjoint_loads}
+        for node, forces in share.adjoint_loads(girder, station, end).items():
+            loads[node] = loads[node] + forces if node in loads else forces
+        return [(node, forces.tolist()) for node, forces in loads.items()]
 
     # nominal longitudinal steel stress, tension positive: N/A + M(y_NA - y)/I, in MPa
     def for_girder_stress_mpa(self, name, element, section, y_from_bottom_m):

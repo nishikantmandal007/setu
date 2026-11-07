@@ -9,7 +9,7 @@ from setu.analysis.fatigue import fatigue_range
 from setu.analysis.influence_surface import InfluenceSolver
 from setu.builder.assembly import BridgeModel, build_bridge_model
 from setu.helpers import DEFAULT_SAMPLING
-from setu.postprocess.girder_response import analyze_load_case, dead_load_forces
+from setu.postprocess.girder_response import analyze_with_braces, dead_load_forces
 from setu.utils.constants import BIGGER_IS_WORSE, MAX_MOMENT, MIDSPAN_DEFLECTION, SUPPORT_SHEAR
 
 model: BridgeModel
@@ -45,7 +45,7 @@ def solve(kind, args):
     if kind == "brace":
         return brace_surface(solver, model, *args)
     if kind == "load":
-        return analyze_load_case(model, *args)
+        return analyze_with_braces(model, *args)
     raise ValueError(f"unknown solve {kind!r}")
 
 

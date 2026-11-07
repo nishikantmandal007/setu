@@ -19,7 +19,7 @@ Requires Python 3.12 and [uv](https://docs.astral.sh/uv/). The project pins 3.12
 uv sync
 ```
 
-In a clone, `uv sync` also installs what the web app, tests and docs need. Installed as a package (`pip install git+https://github.com/nishikantmandal007/setu.git@main`, as OsdagBridge does), Setu is the analysis library alone: numpy, scipy, xarray and OpenSeesPy, no web framework.
+In a clone, `uv sync` also installs what the web app, tests and docs need. Installed as a package (`pip install git+https://github.com/nishikantmandal007/setu.git@main`, as OsdagBridge does), Setu is the analysis library alone: numpy, scipy, xarray, OpenSeesPy and Numba (which compiles the train placement; without it the same NumPy code runs), no web framework.
 
 ## Usage
 

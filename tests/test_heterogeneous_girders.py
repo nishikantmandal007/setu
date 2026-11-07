@@ -5,6 +5,7 @@ import copy
 import numpy as np
 import pytest
 
+from slab_reading import slab_moment_read_off_the_shells
 from setu import Girders, analyze_load_case, bearing_reactions, brace_forces, build_bridge_model
 from setu.analysis.influence_surface import InfluenceSolver
 from setu.loads.dead_loads import steel_self_weight_load
@@ -119,7 +120,7 @@ def test_heterogeneous_influence_responses_match_direct_solves(skew):
         end_moment = solver.for_girder_composite_moment("end j moment", element, end="j")
         analyze_load_case(model, LoadCase("unit", [(node, 0., -1., 0., 0., 0., 0.)]))
         end_forces = backend.element_local_forces(element)
-        direct_moment = end_forces[11] + model.composite_lever_arm_m(k) * end_forces[6]
+        direct_moment = end_forces[11] + model.composite_lever_arm_m(k) * end_forces[6] + slab_moment_read_off_the_shells(model, element, "j")
         assert end_moment.values[probe] == pytest.approx(direct_moment, rel=1e-7, abs=1e-10)
 
 

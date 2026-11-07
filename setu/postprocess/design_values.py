@@ -10,7 +10,8 @@ from setu.builder.assembly import BEARING_VERTICAL_STIFFNESS_KN_PER_M, build_bri
 from setu.irc6.combinations import design_value, irc6_combinations
 from setu.irc6.seismic import combine_directions
 from setu.irc6.temperature import effective_temperature_range, temperature_difference_profiles
-from setu.loads.braking_loads import braking_load_cases
+from setu.postprocess import progress
+from setu.loads.braking_loads import BrakingField, braking_load_cases
 from setu.loads.custom_loads import custom_load_cases
 from setu.loads.load_cases import LoadCase
 from setu.loads.seismic_loads import seismic_load_cases
@@ -36,6 +37,8 @@ from setu.utils.constants import (
 )
 
 NO_EFFECT = 0.0
+# a numerical safety margin (relative, with a floor of 1 kN or kN m), not an IRC value: about 1000 times the measured gap
+ESTIMATE_MARGIN = 1e-9
 # the maximum live moment on a simply supported span stands a little off midspan, so the moment is checked at midspan and at
 # these fractions of the span towards the first bearing. Unequal sections also check the mirrored stations and far bearing.
 MOMENT_SECTIONS_OFF_MIDSPAN = (0.0, 0.01, 0.02, 0.03, 0.04, 0.05, 0.06)
@@ -97,8 +100,10 @@ class SharedAnalysis:
 
 
 # solve the dead load stages, build the composite model and its solver, and make the wind and custom load cases once
-def shared_analysis(bridge, wind, custom_loads, custom_combinations, *, work=None):
-    dead = dead_load_forces(bridge) if work is None else None
+# dead: the dead load stages already solved for this bridge, by a parent whose worker builds its own model
+def shared_analysis(bridge, wind, custom_loads, custom_combinations, *, work=None, dead=None):
+    if dead is None and work is None:
+        dead = dead_load_forces(bridge)
     model = build_bridge_model(bridge)
     solver = InfluenceSolver(model.as_deck_model())
     if work is not None:
@@ -164,53 +169,31 @@ def search_stress(surface, at_m, cross_section, span_m):
     return stress
 
 
-# a surface solved here with the rest of its results from a search worker, in ParallelWork's order
-class SolvedHere:
-    def __init__(self, surface, searched, unpack):
-        self.surface, self.searched, self.unpack = surface, searched, unpack
-
-    def result(self):
-        return (self.surface, *self.unpack(self.searched.result()))
-
-
-# ParallelWork's results with one model and factor: this process solves, workers get deck ordinates and search
-class SearchWork:
-    def __init__(self, pool, solver, model, bridge, girders, places):
-        search = (bridge.cross_section, bridge.span_m, bridge.wearing_course_thickness_m)
-        self.places = {(girder, place): self.place(pool, surface_for(solver, model, girder, place), place, search) for girder in girders for place in places}
-        self.deflections = {girder: self.deflection(pool, solver.for_deflection(f"girder {girder}, {MIDSPAN_DEFLECTION}", midspan_deck_node_over(model, girder)), search) for girder in girders}
-        self.stresses = {}
-        for girder in girders:
-            for face, y_m in (("steel top", model.girders[girder].depth_m), ("steel bottom", 0.0)):
-                for response, station in places:
-                    if response == MAX_MOMENT:
-                        surface = stress_surface(solver, model, girder, face, y_m, station)
-                        self.stresses[girder, face, station] = pool.submit(search_stress, surface.deck_only(), float(model.mesh.length_mesh_m[station]), bridge.cross_section, bridge.span_m)
-
-    @staticmethod
-    def place(pool, surface, place, search):
-        return SolvedHere(surface, pool.submit(search_place, surface.deck_only(), place, *search), lambda found: found)
-
-    @staticmethod
-    def deflection(pool, surface, search):
-        return SolvedHere(surface, pool.submit(search_deflection, surface.deck_only(), *search), lambda ranked: (ranked,))
+# one direction's worst traffic for a place searched in this process; the place is counted done with its last direction
+def searched_here(surface, bridge, adverse):
+    found = find_critical_position(surface, bridge.cross_section, bridge.span_m, adverse, bridge.wearing_course_thickness_m)
+    if adverse == BOTH_DIRECTIONS[-1]:
+        progress.step()
+    return found
 
 
-def girder_values(analysis, bridge, seismic, temperature, braking_height_above_deck_m, *, search_pool=None):
+def girder_values(analysis, bridge, seismic, temperature, braking_height_above_deck_m):
     dead, model, solver = analysis.dead, analysis.model, analysis.solver
     girders = range(bridge.girders.count)
     places = places_to_design(model)
-    work = analysis.work if search_pool is None else SearchWork(search_pool, solver, model, bridge, girders, places)
-    surfaces = {(girder, place): work.places[girder, place].result()[0] if work is not None else surface_for(solver, model, girder, place) for girder in girders for place in places}
+    work = analysis.work
+    progress.start(len(girders) * len(places))  # each place counted once it is solved and searched
+    surfaces = {(girder, place): progress.passing(work.places[girder, place].result()[0]) if work is not None else surface_for(solver, model, girder, place) for girder in girders for place in places}
     deflection_surfaces = {girder: work.deflections[girder].result()[0] if work is not None else solver.for_deflection(f"girder {girder}, {MIDSPAN_DEFLECTION}", midspan_deck_node_over(model, girder)) for girder in girders}
 
-    live = {(girder, place, adverse): work.places[girder, place].result()[1][adverse] if work is not None else find_critical_position(surfaces[girder, place], bridge.cross_section, bridge.span_m, adverse, bridge.wearing_course_thickness_m) for girder in girders for place in places for adverse in BOTH_DIRECTIONS}
+    live = {(girder, place, adverse): work.places[girder, place].result()[1][adverse] if work is not None else searched_here(surfaces[girder, place], bridge, adverse) for girder in girders for place in places for adverse in BOTH_DIRECTIONS}
     read = reader(surfaces)
     searched = dict(live)
     by_place, combinations_at_place, braking = {}, {}, {}
     for girder in girders:
         for place in places:
-            settled = settle_braking(model, {adverse: live[girder, place, adverse] for adverse in BOTH_DIRECTIONS}, read, (girder, place), braking_height_above_deck_m)
+            settled = settle_braking(model, {adverse: live[girder, place, adverse] for adverse in BOTH_DIRECTIONS}, read, (girder, place), braking_height_above_deck_m,
+                                     surfaces[girder, place])
             live.update({(girder, place, adverse): critical for adverse, critical in settled.items()})
             effects = load_effects(analysis, dead.stages, settled, read,
                                    (girder, place), (girder, place), seismic, braking_height_above_deck_m, braking)
@@ -359,13 +342,25 @@ def stress_surface(solver, model, girder, face, y_m, station):
 
 # of each direction's candidate placements (the search's worst and every other arrangement's worst), the one whose live load plus
 # braking is worst: vehicles 'occupy any position which will produce maximum load effects' (cl. 204.1.2) and braking is part of them
-def settle_braking(model, live, read, target, height_above_deck_m):
+# With the solved surface, each candidate's total is first estimated from its braking field and only those within a margin of the
+# worst estimate are worked out exactly; the measured gap between estimate and exact total is below 1e-12, so the margin keeps
+# every candidate that could be the worst and the choice is the one the exact totals give.
+def settle_braking(model, live, read, target, height_above_deck_m, surface=None):
     settled = {}
+    field = BrakingField(model, surface, height_above_deck_m) if surface is not None else None
     for adverse, critical in live.items():
         candidates = [critical, *critical.alternatives]
-        totals = [live_with_braking(model, candidate, read, *target, height_above_deck_m=height_above_deck_m) for candidate in candidates]
-        worst = max(totals) if adverse == BIGGER_IS_WORSE else min(totals)
-        chosen = candidates[totals.index(worst)]
+        if field is None:
+            worth_working_out = range(len(candidates))
+        else:
+            sign = adverse_sign(adverse)
+            estimates = [sign * field.estimate(candidate, adverse == BIGGER_IS_WORSE) for candidate in candidates]
+            worst_estimate = max(estimates)
+            margin = ESTIMATE_MARGIN * (1.0 + abs(worst_estimate))
+            worth_working_out = [k for k, estimate in enumerate(estimates) if estimate >= worst_estimate - margin]
+        totals = {k: live_with_braking(model, candidates[k], read, *target, height_above_deck_m=height_above_deck_m) for k in worth_working_out}
+        sign = adverse_sign(adverse)
+        chosen = candidates[max(totals, key=lambda k: (sign * totals[k], -k))]  # the worst total, the earliest candidate on a tie
         if chosen is not critical:
             chosen.searched = critical
         settled[adverse] = chosen

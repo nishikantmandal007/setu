@@ -4,6 +4,7 @@ from setu.helpers import DEFAULT_SAMPLING, adverse_sign
 from setu.irc6.combinations import Combination, design_value
 from setu.irc6.irc_constants import PERMANENT_LOAD_FACTORS, SPECIAL_VEHICLE_FACTORS, VARIABLE_LOAD_FACTORS
 from setu.postprocess.brace_design_values import brace_reader, brace_surface
+from setu.postprocess import progress
 from setu.postprocess.design_values import BOTH_DIRECTIONS, GoverningValue, live_with_braking, places_to_design, reader, surface_for
 from setu.postprocess.girder_response import STAGE_IS_FACTORED_AS
 from setu.postprocess.parallel import analysis_for
@@ -63,6 +64,15 @@ def keep_worst(by_limit_state, effects_by_carriageway, combinations, at_m):
                     by_limit_state[combination.limit_state][adverse] = GoverningValue(value, combination.name, adverse, shares, at_m)
 
 
+# one brace member's Class SV values from its surface, solved once for the brace values and the SV alike; braces are cross girders /
+# diaphragms, so no Table 8 reduction (note 3, Amendment 10)
+def special_vehicle_member(analysis, bridge, member, surface):
+    found = special_vehicle_effects(analysis, bridge, surface, brace_reader({member: surface}), (member, None), analysis.dead.brace_stages, lane_reduction=False)
+    by_limit_state = {}
+    keep_worst(by_limit_state, found, special_vehicle_combinations(), None)
+    return by_limit_state
+
+
 # Class SV design values for every girder place and brace member (cl. 204.5; required for new bridges except on rural, district
 # and village roads, cl. 201.1 as amended)
 def special_vehicle_design_values(bridge, *, workers=1):
@@ -71,13 +81,15 @@ def special_vehicle_design_values(bridge, *, workers=1):
 
 
 # Class SV design values from an analysis already set up, reusing its dead stages, model, solver and any already-solved place surfaces
-def special_vehicle_values(analysis, bridge, place_surfaces=None):
+# brace_by_member: the members' SV values when the brace pass already worked them out from its own surfaces
+def special_vehicle_values(analysis, bridge, place_surfaces=None, brace_by_member=None):
     combinations = special_vehicle_combinations()
     girders, braces, placements = {}, {}, {}
     model, solver, work = analysis.model, analysis.solver, analysis.work
     places = places_to_design(model)
     for girder in range(bridge.girders.count):
         girders[girder] = {response: {} for response in RESPONSES}
+    progress.start(bridge.girders.count * len(places) + (len(model.brace_elements) if brace_by_member is None else 0))
     if hasattr(work, "special_vehicle_places"):
         for girder, place, by_limit_state, pair in work.special_vehicle_places(range(bridge.girders.count), places):
             for limit_state, by_adverse in by_limit_state.items():
@@ -86,6 +98,7 @@ def special_vehicle_values(analysis, bridge, place_surfaces=None):
                     if current is None or adverse_sign(adverse) * candidate.value > adverse_sign(adverse) * current.value:
                         girders[girder][place[0]][limit_state][adverse] = candidate
             placements[girder, place] = pair
+            progress.step()
     else:
         for girder in range(bridge.girders.count):
             for place in places:
@@ -93,9 +106,9 @@ def special_vehicle_values(analysis, bridge, place_surfaces=None):
                 found = special_vehicle_effects(analysis, bridge, surface, reader({(girder, place): surface}), (girder, place), analysis.dead.stages)
                 keep_worst(girders[girder][place[0]], found, combinations, float(model.mesh.length_mesh_m[place[1]]))
                 placements[girder, place] = [placement for _, pair in found for placement in pair]
-    if hasattr(work, "special_vehicle_members"):
-        for member, by_limit_state in work.special_vehicle_members(model):
-            braces[member] = by_limit_state
+                progress.step()
+    if brace_by_member is not None:
+        braces = dict(brace_by_member)
     else:
         for member in model.brace_elements:
             surface = brace_surface(solver, model, member)
@@ -104,4 +117,5 @@ def special_vehicle_values(analysis, bridge, place_surfaces=None):
             analysis.solver.surfaces.pop(surface.name, None)
             braces[member] = {}
             keep_worst(braces[member], found, combinations, None)
+            progress.step()
     return SpecialVehicleValues(girders, braces, placements)

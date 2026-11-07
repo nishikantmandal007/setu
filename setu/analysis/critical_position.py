@@ -66,6 +66,32 @@ def crowd_everywhere(surface, cross_section, adverse, sampling, like):
     return crowd
 
 
+# turn one lane layout into a CriticalPosition with its vehicles and strips
+def describe(placement, carriageways, envelopes, responses, permitted, footway, footway_strips, name, adverse, wearing_course_thickness_m, placed_cache=None):
+    placed_vehicles = []
+    pattern = []
+    residual_udl_strips = []
+    for carriageway, case in enumerate(placement.per_carriageway):
+        pattern.append(' + '.join(case.lane_pattern))
+        for block, z_centre_m in zip(case.lane_pattern, case.vehicle_centres_m, strict=True):
+            key = (carriageway, block, float(z_centre_m), adverse)
+            if placed_cache is not None and key in placed_cache:
+                placed = placed_cache[key]
+            else:
+                winner = envelopes[carriageway][block].winner_at(z_centre_m)
+                placed = place_exactly(responses, permitted[block], winner, z_centre_m, adverse)
+                if placed_cache is not None:
+                    placed_cache[key] = placed
+            placed_vehicles.append(placed)
+            on = carriageways[carriageway]
+            if carries_a_residual_udl(block, on):
+                residual_udl_strips += strips_beside_class_a(float(z_centre_m), on.left_m, on.right_m)
+    return CriticalPosition(response_name=name or 'response', adverse=adverse, response=placement.response + footway * placement.lane_reduction,
+                            response_before_reduction=placement.response_before_reduction + footway, lane_reduction=placement.lane_reduction,
+                            design_lanes=placement.design_lanes, lane_pattern=' | '.join(pattern), vehicles=placed_vehicles, footway_response=footway,
+                            residual_udl_strips=residual_udl_strips, footway_strips=footway_strips, wearing_course_thickness_m=wearing_course_thickness_m)
+
+
 # describe layouts on demand so a winning-only search stops after the first
 def described_positions(surface, cross_section, span_m, adverse, wearing_course_thickness_m, sampling, lane_reduction=True):
     carriageways = cross_section.carriageways()
@@ -78,27 +104,9 @@ def described_positions(surface, cross_section, span_m, adverse, wearing_course_
     placements = find_worst_placement(carriageways, envelopes, adverse, z_positions_m, sampling, lane_reduction)
     footway = footway_response(on_the_mesh, cross_section, adverse, span_m, sampling)
     footway_strips = footway_loaded_strips(cross_section, span_m)
+    placed_cache = {}
     for placement in placements:
-        yield describe(placement, carriageways, envelopes, responses, permitted, footway, footway_strips, on_the_mesh.name, adverse, wearing_course_thickness_m)
-
-
-# turn one lane layout into a CriticalPosition with its vehicles and strips
-def describe(placement, carriageways, envelopes, responses, permitted, footway, footway_strips, name, adverse, wearing_course_thickness_m):
-    placed_vehicles = []
-    pattern = []
-    residual_udl_strips = []
-    for carriageway, case in enumerate(placement.per_carriageway):
-        pattern.append(' + '.join(case.lane_pattern))
-        for block, z_centre_m in zip(case.lane_pattern, case.vehicle_centres_m, strict=True):
-            winner = envelopes[carriageway][block].winner_at(z_centre_m)
-            placed_vehicles.append(place_exactly(responses, permitted[block], winner, z_centre_m, adverse))
-            on = carriageways[carriageway]
-            if carries_a_residual_udl(block, on):
-                residual_udl_strips += strips_beside_class_a(float(z_centre_m), on.left_m, on.right_m)
-    return CriticalPosition(response_name=name or 'response', adverse=adverse, response=placement.response + footway * placement.lane_reduction,
-                            response_before_reduction=placement.response_before_reduction + footway, lane_reduction=placement.lane_reduction,
-                            design_lanes=placement.design_lanes, lane_pattern=' | '.join(pattern), vehicles=placed_vehicles, footway_response=footway,
-                            residual_udl_strips=residual_udl_strips, footway_strips=footway_strips, wearing_course_thickness_m=wearing_course_thickness_m)
+        yield describe(placement, carriageways, envelopes, responses, permitted, footway, footway_strips, on_the_mesh.name, adverse, wearing_course_thickness_m, placed_cache)
 
 
 # re-solve the winning vehicle exactly at its centre for x and impact

@@ -111,7 +111,7 @@ class DeckModel:
     # what the influence solver needs: mesh, deck nodes, girder section and elements
     def __init__(self, length_mesh_m, width_mesh_m, deck_nodes, girder_section,
                  girder_local_axis=(0.0, 0.0, 1.0), skew=0.0, composite_lever_arm_m=0.0, girder_elements=None,
-                 *, girder_sections=None, composite_lever_arms_m=None, brace_area_m2=None):
+                 *, girder_sections=None, composite_lever_arms_m=None, brace_area_m2=None, slab_moments=None, slab_shears=None, girder_station_of_element=None):
         self.length_mesh_m = length_mesh_m
         self.width_mesh_m = width_mesh_m
         self.deck_nodes = deck_nodes
@@ -123,6 +123,9 @@ class DeckModel:
         self.girder_sections = girder_sections
         self.composite_lever_arms_m = composite_lever_arms_m
         self.brace_area_m2 = brace_area_m2
+        self.slab_moments = slab_moments  # the slab's own bending shared to the girders, None without a composite deck
+        self.slab_shears = slab_shears  # and its vertical shear
+        self.girder_station_of_element = girder_station_of_element or {}
 
         if len(length_mesh_m) < 2 or len(width_mesh_m) < 2:
             raise InfluenceSurfaceError(

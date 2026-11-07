@@ -1,6 +1,5 @@
 import multiprocessing
 import time
-from concurrent.futures import ProcessPoolExecutor
 
 # Expected runtime: ~10-15 s (solves and searches 36 brace influence surfaces across both adverse directions).
 import pytest
@@ -204,30 +203,26 @@ def test_brace_design_values_keys_match_brace_forces_keys(results):
     assert set(results.criticals.keys()) == {(*key, adverse) for key in direct_keys for adverse in (BIGGER_IS_WORSE, SMALLER_IS_WORSE)}
 
 
-# light search workers and freed surfaces give the same girder and brace values, bit for bit
-def test_search_workers_match_the_serial_search():
-    bridge = BRACE_BRIDGE
-    with analysis_for(bridge, None, (), (), 1, girders=True, braces=True) as analysis:
-        serial_girders = girder_values(analysis, bridge, None, None, None)
-        serial = brace_values(analysis, bridge, None, None)
-    with ProcessPoolExecutor(2, mp_context=multiprocessing.get_context("spawn")) as pool:
-        with analysis_for(bridge, None, (), (), 1, girders=True, braces=True) as analysis:
-            parallel_girders = girder_values(analysis, bridge, None, None, None, search_pool=pool)
-            kept = len(analysis.solver.surfaces)
-            parallel = brace_values(analysis, bridge, None, None, keep_surfaces=False, search_pool=pool)
-            assert len(analysis.solver.surfaces) == kept
-    assert parallel.surfaces == {}
-    assert set(parallel.members) == set(serial.members)
-    for member, by_state in serial.members.items():
-        for state, by_direction in by_state.items():
-            for direction, governing in by_direction.items():
-                assert parallel.members[member][state][direction].value == governing.value
-    assert parallel_girders.fatigue_stresses_mpa.keys() == serial_girders.fatigue_stresses_mpa.keys()
-    for girder, by_response in serial_girders.girders.items():
-        for response, by_state in by_response.items():
-            for state, by_direction in by_state.items():
-                for direction, governing in by_direction.items():
-                    assert parallel_girders.girders[girder][response][state][direction].value == governing.value
+# every governing value of a run, girders, braces and Class SV, keyed by where it is
+def every_value(values):
+    found = {}
+    for kind, tree in (("girder", values.girders.girders), ("brace", values.braces.members),
+                       ("sv girder", values.special_vehicle.girders), ("sv brace", values.special_vehicle.braces)):
+        for key, by_next in tree.items():
+            for next_key, by_more in by_next.items():
+                for more_key, deeper in by_more.items():
+                    for last_key, governing in (deeper.items() if isinstance(deeper, dict) else [((), deeper)]):
+                        found[kind, key, next_key, more_key, last_key] = governing.value
+    return found
+
+
+# workers build their own model and give the serial values, bit for bit, Class SV included
+def test_workers_match_the_serial_values():
+    from setu.postprocess import own_process
+    serial, _ = own_process.run_analysis(BRACE_BRIDGE, None, None, None, None, 1, lambda text: None, special_vehicle=True)
+    spawned, _ = own_process.run_analysis(BRACE_BRIDGE, None, None, None, None, 2, lambda text: None, special_vehicle=True)
+    assert every_value(spawned) == every_value(serial)
+    assert spawned.diagrams.governing.keys() == serial.diagrams.governing.keys()
 
 
 # an array seismic load case is the same load case as the list it replaces
@@ -238,7 +233,7 @@ def test_array_load_case_holds_the_same_loads():
     assert nodes.tolist() == [5, 9] and forces[:, 2].tolist() == [1.0, 1.5]
 
 
-# the whole analysis in its own process with forked workers gives the serial values, bit for bit
+# the whole analysis in its own process with workers gives the serial values, bit for bit
 def test_own_process_matches_the_serial_values():
     with analysis_for(BRACE_BRIDGE, None, (), (), 1, girders=True, braces=True) as analysis:
         girders = girder_values(analysis, BRACE_BRIDGE, None, None, None)

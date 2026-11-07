@@ -9,6 +9,7 @@ Three claims:
 
 import pytest
 
+from slab_reading import VERTICAL, slab_moment_read_off_the_shells
 from setu.analysis.critical_position import find_critical_position
 from setu.analysis.influence_surface import InfluenceSolver
 from setu.builder.assembly import build_bridge_model
@@ -71,20 +72,26 @@ BRIDGE = BridgeInput(
 )
 
 
-def _read_directly(element, component, case, pattern_tag, lever_arm_m=0.0):
-    """Internal force at end i; with a lever arm, the composite moment M + N e."""
+def _read_directly(element, component, case, pattern_tag, lever_arm_m=0.0, model=None):
+    """Internal force at end i; with a lever arm, the composite moment M + N e, and with the model, plus the girder's share of the
+    slab's own bending (moment) or vertical shear (shear)."""
     with backend.solved(case.nodal_loads, case.element_loads, pattern=pattern_tag):
         forces = backend.element_local_forces(element)
-        return END_I_FORCE_TO_INTERNAL_FORCE * (forces[component] + lever_arm_m * forces[AXIAL_AT_END_I])
+        slab = 0.0
+        if model is not None and component == MOMENT_AT_END_I and lever_arm_m:
+            slab = slab_moment_read_off_the_shells(model, element)
+        elif model is not None and component == SHEAR_AT_END_I:
+            slab = slab_moment_read_off_the_shells(model, element, component=VERTICAL)
+        return END_I_FORCE_TO_INTERNAL_FORCE * (forces[component] + lever_arm_m * forces[AXIAL_AT_END_I]) + slab
 
 
-def _unit_load_response(deck, node, element, component, lever_arm_m=0.0):
+def _unit_load_response(deck, node, element, component, lever_arm_m=0.0, model=None):
     case = LoadCase("unit load", [(node, 0.0, -1.0, 0.0, 0.0, 0.0, 0.0)])
-    return _read_directly(element, component, case, UNIT_LOAD_PATTERN, lever_arm_m)
+    return _read_directly(element, component, case, UNIT_LOAD_PATTERN, lever_arm_m, model)
 
 
 def _live_load_response(model, critical, surface, element, component, lever_arm_m):
-    return _read_directly(element, component, live_load(model, critical, surface), LIVE_LOAD_PATTERN, lever_arm_m)
+    return _read_directly(element, component, live_load(model, critical, surface), LIVE_LOAD_PATTERN, lever_arm_m, model)
 
 
 def _critical(surface, adverse="maximum"):
@@ -128,7 +135,7 @@ def built():
                 float(deck.length_mesh_m[station_along]), float(deck.width_mesh_m[station_across])
             )
             reciprocity[name, (station_along, station_across)] = (
-                from_the_surface, _unit_load_response(deck, node, element, component, lever)
+                from_the_surface, _unit_load_response(deck, node, element, component, lever, model)
             )
 
     return model, checks, surfaces, reciprocity
@@ -243,7 +250,7 @@ def test_girder_forces_use_one_sign_along_the_whole_girder(built):
 
 
 def test_composite_moment_surface_is_the_response_to_a_unit_load():
-    """Composite moment = steel moment + steel axial force x its lever arm to the slab mid-plane."""
+    """Composite moment = steel moment + steel axial force x its lever arm to the slab mid-plane + the girder's share of the slab's own bending."""
     from setu.builder.assembly import girder_centroid_level_m
 
     model = build_bridge_model(BRIDGE)
@@ -256,8 +263,10 @@ def test_composite_moment_surface_is_the_response_to_a_unit_load():
         node = deck.deck_nodes[(station_along, station_across)]
         steel_moment = _unit_load_response(deck, node, element, MOMENT_AT_END_I)
         steel_axial = _unit_load_response(deck, node, element, AXIAL_AT_END_I)
+        composite = _unit_load_response(deck, node, element, MOMENT_AT_END_I, lever_arm_m, model)
+        slab = composite - steel_moment - lever_arm_m * steel_axial
         from_the_surface = surface.influence_at(float(deck.length_mesh_m[station_along]), float(deck.width_mesh_m[station_across]))
-        assert from_the_surface == pytest.approx(steel_moment + lever_arm_m * steel_axial, rel=1e-8, abs=1e-10)
+        assert from_the_surface == pytest.approx(steel_moment + lever_arm_m * steel_axial + slab, rel=1e-8, abs=1e-10)
 
 
 def test_composite_moments_of_all_girders_add_up_to_statics():

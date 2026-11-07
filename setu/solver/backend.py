@@ -1,5 +1,6 @@
 from contextlib import contextmanager
 from importlib import import_module
+from itertools import chain
 
 import numpy as np
 
@@ -125,6 +126,20 @@ def remove_loads(pattern):
     opensees.remove("timeSeries", pattern)
 
 
+# an element's stiffness, column by column: its nodal forces under a unit displacement of each of its degrees of freedom with every
+# other one at rest (OpenSees gives no element stiffness for shells); every node is put back at rest afterwards
+def element_stiffness_by_probing(element, nodes):
+    reset()
+    size = 6 * len(nodes)
+    stiffness = np.zeros((size, size))
+    for k, node in enumerate(nodes):
+        for dof in range(6):
+            opensees.setNodeDisp(int(node), dof + 1, 1.0)
+            stiffness[:, 6 * k + dof] = opensees.eleResponse(element, "forces")
+            opensees.setNodeDisp(int(node), dof + 1, 0.0)
+    return stiffness
+
+
 # reset displacements and the load clock
 def reset():
     opensees.reset()
@@ -201,11 +216,12 @@ def node_displacements(node):
     return opensees.nodeDisp(node)
 
 
-# every node tag in increasing order, and the six displacements of each in the same order
+# every node tag in increasing order, and the six displacements of each in the same order (read straight into one array: the same
+# numbers in about half the time of building a list of lists first)
 def every_node_displacement():
     nodes = np.sort(np.array(node_tags(), int))
     node_disp = opensees.nodeDisp  # called for every node of every influence surface
-    return nodes, np.array([node_disp(node) for node in nodes.tolist()], float)
+    return nodes, np.fromiter(chain.from_iterable(map(node_disp, nodes.tolist())), float, count=6 * len(nodes)).reshape(-1, 6)
 
 
 # calculate nodal reactions while the loads are active
