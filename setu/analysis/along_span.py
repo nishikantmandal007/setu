@@ -67,7 +67,7 @@ class VehicleResponses:
 
     # one vehicle's response at every position along and across, worked out once for both directions
     def grid_for(self, vehicle, z_positions_m):
-        key = (vehicle.name, len(z_positions_m), float(z_positions_m[0]), float(z_positions_m[-1]))
+        key = (vehicle.name, np.ascontiguousarray(z_positions_m, float).tobytes())  # the exact positions, as remembered_as
         if key not in self._grids:
             wheel_offsets = along_the_mesh(wheel_load_offsets(vehicle, self.wearing_course_thickness_m, self.sampling), self.skew)
             x_positions_m = with_every_train_spacing(positions_along_span(self.surface, wheel_offsets), vehicle)
@@ -106,9 +106,10 @@ def along_the_mesh(wheel_offsets, skew):
     sheared[:, OFFSET_DX_M] -= skew * sheared[:, OFFSET_DZ_M]
     return sheared
 
-# key a response curve is remembered by
+# key a response curve is remembered by: the exact positions across, so a curve is only reused for the very positions it was built at
+# (the count and the two ends alone could, in principle, match a different set of positions)
 def remembered_as(vehicle, z_positions_m, adverse):
-    return (vehicle.name, adverse, len(z_positions_m), float(z_positions_m[0]), float(z_positions_m[-1]))
+    return (vehicle.name, adverse, np.ascontiguousarray(z_positions_m, float).tobytes())
 
 # positions across to try: an even spread plus where wheels hit stations
 def positions_across_width(responses, vehicles, z_from_m, z_to_m):
