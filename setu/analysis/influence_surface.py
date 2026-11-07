@@ -30,6 +30,10 @@ class InfluenceSurface:
             raise KeyError(f"load on node(s) {sorted(set(np.asarray(nodes).tolist()) - set(self.node_tags.tolist()))} that the model does not have")
         return self.every_node_displacement[rows]
 
+    # the same surface without its adjoint displacements, for a process that only searches traffic
+    def deck_only(self):
+        return InfluenceSurface(self.values, self.length_mesh_m, self.width_mesh_m, self.name, self.skew)
+
     # influence at any (x, z), zero off the deck
     def influence_at(self, x_m, z_m):
         x_m = np.asarray(x_m, float)

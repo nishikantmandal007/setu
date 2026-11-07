@@ -2,6 +2,7 @@ import multiprocessing
 import os
 import signal
 import traceback
+from collections import deque
 from contextlib import nullcontext
 
 from setu.postprocess.brace_design_values import BridgeDesignValues, brace_values, member_values, search_member
@@ -11,7 +12,6 @@ from setu.postprocess import progress
 from setu.postprocess.construction import construction_design_values
 from setu.postprocess.governing_diagrams import bridge_diagrams
 from setu.postprocess.special_vehicle import keep_worst, special_vehicle_combinations, special_vehicle_effects, special_vehicle_member, special_vehicle_values
-from setu.postprocess.girder_response import analyze_with_braces
 from setu.loads.wind_loads import wind_load_cases
 from setu.loads.seismic_loads import seismic_load_cases
 from setu.utils.constants import BASIC, BIGGER_IS_WORSE
@@ -19,8 +19,8 @@ from setu.utils.constants import BASIC, BIGGER_IS_WORSE
 # BLAS threads do not survive a fork, and the workers already divide the work
 ONE_BLAS_THREAD = {"OMP_NUM_THREADS": "1", "OPENBLAS_NUM_THREADS": "1", "VECLIB_MAXIMUM_THREADS": "1", "MKL_NUM_THREADS": "1"}
 
-shared = None  # what a forked worker inherits: analysis, bridge, seismic site, braking height
-with_special_vehicle = False  # forked workers also work out each member's Class SV values from the surface they solved
+shared = None  # what a worker holds: analysis, bridge, seismic site, braking height
+with_special_vehicle = False  # workers also work out each place's and member's Class SV values from the surface sent to them
 
 
 def search_args():
@@ -28,29 +28,22 @@ def search_args():
     return bridge.cross_section, bridge.span_m, bridge.wearing_course_thickness_m
 
 
-# the worker tasks: each solves on the factor it inherited, read-only and shared with its siblings
-# the place's Class SV values come from the same surface when the run designs for it, instead of solving it again
-def place_task(girder, place):
+# the worker tasks: this process solves every surface and sends it; a worker searches its traffic, works out its Class SV values and
+# combines, and never calls OpenSees. A solve writes into every element and node, so a forked worker that solved copied the whole
+# model (about 1 GB of a wide deck's 1.45 GB per worker); the same surfaces give the same values wherever they are searched.
+def place_task(girder, place, surface):
     analysis = shared[0]
-    surface = surface_for(analysis.solver, analysis.model, girder, place)
-    analysis.solver.surfaces.clear()
     searched = search_place(surface, place, *search_args())
     special = special_vehicle_place(analysis, shared[1], surface, girder, place) if with_special_vehicle else None
-    return (surface, *searched, special)
+    return (*searched, special)
 
 
-def deflection_task(girder):
-    analysis = shared[0]
-    surface = analysis.solver.for_deflection(f"girder {girder}, {MIDSPAN_DEFLECTION}", midspan_deck_node_over(analysis.model, girder))
-    analysis.solver.surfaces.clear()
-    return surface, search_deflection(surface, *search_args())
+def deflection_task(surface):
+    return (search_deflection(surface, *search_args()),)
 
 
-def stress_task(girder, face, y_m, station):
-    analysis = shared[0]
-    surface = stress_surface(analysis.solver, analysis.model, girder, face, y_m, station)
-    analysis.solver.surfaces.clear()
-    return search_stress(surface, float(analysis.model.mesh.length_mesh_m[station]), *search_args()[:2])
+def stress_task(surface, station):
+    return search_stress(surface, float(shared[0].model.mesh.length_mesh_m[station]), *search_args()[:2])
 
 
 # Once braking has settled each direction's placement, the other arrangements' placements (hundreds per response on a wide deck) are
@@ -64,11 +57,8 @@ def settled_only(criticals):
             critical.searched.alternatives = []
 
 
-def member_task(member):
-    from setu.postprocess.brace_design_values import brace_surface
+def member_task(member, surface):
     analysis, bridge, seismic, braking_height_m = shared
-    surface = brace_surface(analysis.solver, analysis.model, member)
-    analysis.solver.surfaces.clear()
     found = search_member(surface, *search_args())
     special = special_vehicle_member(analysis, bridge, member, surface) if with_special_vehicle else None
     values = member_values(analysis, seismic, braking_height_m, member, surface, found)
@@ -85,10 +75,6 @@ def special_vehicle_place(analysis, bridge, surface, girder, place):
     return by_limit_state, [placement for _, pair in found for placement in pair]
 
 
-def load_task(load_case):
-    return analyze_with_braces(shared[0].model, load_case)
-
-
 class Pending:
     def __init__(self, waiting):
         self.waiting = waiting
@@ -97,24 +83,53 @@ class Pending:
         return self.waiting.get()
 
 
-# ParallelWork's results from workers forked after the factor exists, so every worker reads one copy of it
+# a surface solved here with the rest of its results from a worker, in the order ParallelWork gives them
+class Solved:
+    def __init__(self, surface, waiting):
+        self.surface, self.waiting = surface, waiting
+
+    def result(self):
+        return (self.surface, *self.waiting.get())
+
+
+# ParallelWork's results: this process solves each surface on its factor and a worker searches it; a search needs only the deck
+# ordinates, while a place or member also reads load cases by reciprocity and gets the whole surface
 class ForkedWork:
-    def __init__(self, pool, model, girders, places):
-        self.pool = pool
-        self.places = {(girder, place): Pending(pool.apply_async(place_task, (girder, place))) for girder in girders for place in places}
-        self.deflections = {girder: Pending(pool.apply_async(deflection_task, (girder,))) for girder in girders}
-        self.stresses = {(girder, face, station): Pending(pool.apply_async(stress_task, (girder, face, y_m, station)))
-                         for girder in girders for face, y_m in (("steel top", model.girders[girder].depth_m), ("steel bottom", 0.0))
-                         for response, station in places if response == MAX_MOMENT}
+    def __init__(self, pool, analysis, girders, places):
+        self.pool, self.analysis = pool, analysis
+        solver, model = analysis.solver, analysis.model
+        self.ahead = 2 * pool._processes  # members solved ahead of the workers: enough to keep them busy, few surfaces held at once
+        self.places, self.deflections, self.stresses = {}, {}, {}
+        for girder in girders:
+            for place in places:
+                surface = self.solved(surface_for(solver, model, girder, place))
+                self.places[girder, place] = Solved(surface, pool.apply_async(place_task, (girder, place, surface)))
+            surface = self.solved(solver.for_deflection(f"girder {girder}, {MIDSPAN_DEFLECTION}", midspan_deck_node_over(model, girder)))
+            self.deflections[girder] = Solved(surface, pool.apply_async(deflection_task, (surface.deck_only(),)))
+        for girder in girders:
+            for face, y_m in (("steel top", model.girders[girder].depth_m), ("steel bottom", 0.0)):
+                for response, station in places:
+                    if response == MAX_MOMENT:
+                        surface = self.solved(stress_surface(solver, model, girder, face, y_m, station))
+                        self.stresses[girder, face, station] = Pending(pool.apply_async(stress_task, (surface.deck_only(), station)))
+
+    def solved(self, surface):
+        self.analysis.solver.surfaces.clear()
+        return surface
 
     def members(self, model):
-        return self.pool.imap(member_task, list(model.brace_elements))
+        from setu.postprocess.brace_design_values import brace_surface
+        waiting = deque()
+        for member in model.brace_elements:
+            surface = self.solved(brace_surface(self.analysis.solver, model, member))
+            waiting.append(self.pool.apply_async(member_task, (member, surface)))
+            if len(waiting) > self.ahead:
+                yield waiting.popleft().get()
+        while waiting:
+            yield waiting.popleft().get()
 
     def special_vehicle_places(self, girders, places):
         return ((girder, place, *self.places[girder, place].result()[3]) for girder in girders for place in places)
-
-    def load(self, load_case):
-        return Pending(self.pool.apply_async(load_task, (load_case,)))
 
 
 # the raw wind and seismic forces behind a report's load tables
@@ -135,8 +150,8 @@ def progress_stays_here():
     progress.report = None
 
 
-# a spawned worker (no fork, as on Windows) cannot inherit the factor: it builds its own model and solver beside the parent's dead load
-# stages and factors them on its first solve, then works as a forked worker does; the same model and solves give the same values
+# a spawned worker (no fork, as on Windows) builds its own model beside the parent's dead load stages for what its searches and
+# combinations read; it never solves, so it never factors
 def spawned_worker(bridge, wind, dead, seismic, braking_height_m, special_vehicle):
     global shared, with_special_vehicle
     progress_stays_here()
@@ -144,7 +159,7 @@ def spawned_worker(bridge, wind, dead, seismic, braking_height_m, special_vehicl
     shared = (shared_analysis(bridge, wind, (), (), dead=dead), bridge, seismic, braking_height_m)
 
 
-# workers forked after the factor exists share one copy of it; where the platform cannot fork, each spawned worker builds its own
+# workers forked after the factor exists, or spawned where the platform cannot fork
 def worker_pool(workers, analysis, bridge, wind, seismic, braking_height_m):
     if "fork" in multiprocessing.get_all_start_methods():
         return multiprocessing.get_context("fork").Pool(workers, initializer=progress_stays_here)
@@ -168,7 +183,7 @@ def run_analysis(bridge, wind, seismic, temperature, braking_height_m, workers, 
     analysis.solver.surfaces.clear()
     with worker_pool(workers, analysis, bridge, wind, seismic, braking_height_m) if workers > 1 else nullcontext() as pool:
         if pool is not None:
-            analysis.work = ForkedWork(pool, analysis.model, girders_range, places)
+            analysis.work = ForkedWork(pool, analysis, girders_range, places)
         phase("solving and searching the girders")
         girder_results = girder_values(analysis, bridge, seismic, temperature, braking_height_m)
         phase("solving and searching the braces")
@@ -177,8 +192,11 @@ def run_analysis(bridge, wind, seismic, temperature, braking_height_m, workers, 
             phase("solving and searching the Class SV")
             special_vehicle = special_vehicle_values(analysis, bridge, girder_results.place_surfaces, brace_results.special_vehicle)
             special_vehicle.placements = {}
-        phase("replaying the governing load states")
-        diagrams = bridge_diagrams(analysis, girder_results, seismic, braking_height_m)
+    # The workers are gone before the replay, which holds the most here (about 1.6 GB on a 52 m deck); it solves in this process, as
+    # a run without workers does, with the same diagrams.
+    analysis.work = None
+    phase("replaying the governing load states")
+    diagrams = bridge_diagrams(analysis, girder_results, seismic, braking_height_m)
     forces = site_forces(analysis.model, wind, seismic, girder_results)
     # Only values leave this process: influence surfaces stay behind and vanish with it.
     girder_results.surfaces = girder_results.place_surfaces = {}
