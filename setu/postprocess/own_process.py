@@ -29,11 +29,14 @@ def search_args():
 
 
 # the worker tasks: each solves on the factor it inherited, read-only and shared with its siblings
+# the place's Class SV values come from the same surface when the run designs for it, instead of solving it again
 def place_task(girder, place):
     analysis = shared[0]
     surface = surface_for(analysis.solver, analysis.model, girder, place)
     analysis.solver.surfaces.clear()
-    return (surface, *search_place(surface, place, *search_args()))
+    searched = search_place(surface, place, *search_args())
+    special = special_vehicle_place(analysis, shared[1], surface, girder, place) if with_special_vehicle else None
+    return (surface, *searched, special)
 
 
 def deflection_task(girder):
@@ -73,27 +76,13 @@ def member_task(member):
     return (member, found, *values, special)
 
 
-def special_vehicle_place_task(args):
+# one girder place's worst Class SV value per limit state and direction, and the placements behind them
+def special_vehicle_place(analysis, bridge, surface, girder, place):
     from setu.postprocess.design_values import reader
-    girder, place = args
-    analysis, bridge, _, _ = shared
-    surface = surface_for(analysis.solver, analysis.model, girder, place)
-    analysis.solver.surfaces.clear()
     found = special_vehicle_effects(analysis, bridge, surface, reader({(girder, place): surface}), (girder, place), analysis.dead.stages)
     by_limit_state = {}
     keep_worst(by_limit_state, found, special_vehicle_combinations(), float(analysis.model.mesh.length_mesh_m[place[1]]))
-    return girder, place, by_limit_state, [placement for _, pair in found for placement in pair]
-
-
-def special_vehicle_member_task(member):
-    from setu.postprocess.brace_design_values import brace_reader, brace_surface
-    analysis, bridge, _, _ = shared
-    surface = brace_surface(analysis.solver, analysis.model, member)
-    analysis.solver.surfaces.clear()
-    found = special_vehicle_effects(analysis, bridge, surface, brace_reader({member: surface}), (member, None), analysis.dead.brace_stages, lane_reduction=False)
-    by_limit_state = {}
-    keep_worst(by_limit_state, found, special_vehicle_combinations(), None)
-    return member, by_limit_state
+    return by_limit_state, [placement for _, pair in found for placement in pair]
 
 
 def load_task(load_case):
@@ -122,10 +111,7 @@ class ForkedWork:
         return self.pool.imap(member_task, list(model.brace_elements))
 
     def special_vehicle_places(self, girders, places):
-        return self.pool.imap(special_vehicle_place_task, [(girder, place) for girder in girders for place in places])
-
-    def special_vehicle_members(self, model):
-        return self.pool.imap(special_vehicle_member_task, list(model.brace_elements))
+        return ((girder, place, *self.places[girder, place].result()[3]) for girder in girders for place in places)
 
     def load(self, load_case):
         return Pending(self.pool.apply_async(load_task, (load_case,)))

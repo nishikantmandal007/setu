@@ -109,10 +109,6 @@ def special_vehicle_values(analysis, bridge, place_surfaces=None, brace_by_membe
                 progress.step()
     if brace_by_member is not None:
         braces = dict(brace_by_member)
-    elif hasattr(work, "special_vehicle_members"):
-        for member, by_limit_state in work.special_vehicle_members(model):
-            braces[member] = by_limit_state
-            progress.step()
     else:
         for member in model.brace_elements:
             surface = brace_surface(solver, model, member)
