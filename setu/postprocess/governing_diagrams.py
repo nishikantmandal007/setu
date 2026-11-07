@@ -1,4 +1,5 @@
 import copy
+import hashlib
 import math
 
 import numpy as np
@@ -161,7 +162,8 @@ class LoadSolver:
             key = source_key(source)
             if key is not None and key not in self.pending:
                 case = live_load(self.model, source.critical, source.surface) if isinstance(source, LiveArrangement) else source
-                self.pending[key] = (source, self.work.load(case))
+                # a load case is not kept once queued: its forces are found again by its key
+                self.pending[key] = (source if isinstance(source, LiveArrangement) else None, self.work.load(case))
                 return True
         return False
 
@@ -189,8 +191,12 @@ def source_key(source):
     if isinstance(source, LiveArrangement):
         return ("live", id(source.critical), id(source.surface))
     if isinstance(source, LoadCase):
+        # the load's content, held as its shapes and a SHA-256 digest rather than a copy of every node's load
         nodes, loads = source.nodal_arrays
-        return (nodes.tobytes(), loads.tobytes(), repr(source.element_loads))
+        digest = hashlib.sha256(nodes.tobytes())
+        digest.update(loads.tobytes())
+        digest.update(repr(source.element_loads).encode())
+        return ("load", nodes.shape, loads.shape, digest.digest())
     return None
 
 
@@ -208,7 +214,8 @@ def diagram_sources(analysis, values, seismic, braking_height_above_deck_m, term
             for limit_state, by_adverse in by_limit_state.items():
                 for adverse, value in by_adverse.items():
                     terms = replayed_terms(analysis, values, seismic, braking_height_above_deck_m, girder, response, adverse, value)
-                    terms_by_key[girder, response, limit_state, adverse] = terms
+                    if terms_by_key is not None:
+                        terms_by_key[girder, response, limit_state, adverse] = terms
                     yield from (source for _, source in terms)
 
 
@@ -230,13 +237,14 @@ class SolvedHere:
 # The replay's loads, solved in this process while it would otherwise wait for its workers (the girder results already fix them):
 # solve_one() takes the next distinct load in source order. Every load is solved the same way wherever and whenever it is solved, so
 # the diagrams are the same as a replay solved all at once.
+# Nothing but the solved forces is kept: each value's terms are worked out again when the diagrams are put together, and its loads
+# are found by their keys.
 class ReplayInTheGaps:
     def __init__(self, analysis, values, seismic, braking_height_above_deck_m):
         self.model = analysis.model
         self.solver = LoadSolver(analysis.model, analysis.dead)
-        self.terms_by_key = {}
         self.latest = None
-        self.solver.queue(diagram_sources(analysis, values, seismic, braking_height_above_deck_m, self.terms_by_key), self)
+        self.solver.queue(diagram_sources(analysis, values, seismic, braking_height_above_deck_m, None), self)
 
     def load(self, case):
         self.latest = SolvedHere(self.model, case)
@@ -252,15 +260,17 @@ class ReplayInTheGaps:
 # every governing girder design value replayed as forces along all girders, with the dead stages, live arrangements, braking and wind
 # replay: a ReplayInTheGaps that has solved some of the loads already
 def bridge_diagrams(analysis, values, seismic, braking_height_above_deck_m, replay=None):
+    terms_by_key = {}
     if replay is not None:
-        solver, terms_by_key = replay.solver, replay.terms_by_key
+        solver = replay.solver
+        while replay.solve_one():  # one at a time, so no more than one load waits to be solved
+            pass
         solver.collect()
     else:
         solver = LoadSolver(analysis.model, analysis.dead)
-        terms_by_key = {}
         if analysis.work is not None:
             solver.prepare(diagram_sources(analysis, values, seismic, braking_height_above_deck_m, terms_by_key), analysis.work)
-    prepared = replay is not None or analysis.work is not None
+    prepared = analysis.work is not None  # the terms were kept while the loads were queued
     live = {key: solver.forces(LiveArrangement(critical, values.surfaces[key])) for key, critical in values.criticals.items()}
     braking = {}
     for (girder, response, adverse), station in values.stations.items():
