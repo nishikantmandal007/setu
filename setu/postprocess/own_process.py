@@ -14,9 +14,9 @@ from setu.postprocess.special_vehicle import keep_worst, special_vehicle_combina
 from setu.loads.wind_loads import wind_load_cases
 from setu.loads.seismic_loads import seismic_load_cases
 from setu.utils.constants import BASIC, BIGGER_IS_WORSE
-from setu.utils.os_specific import kill_with_its_group, lead_own_group, worker_context
+from setu.utils.os_specific import kill_with_its_group, lead_own_group
 
-# BLAS threads do not survive a fork, and the workers already divide the work
+# the workers already divide the work, so each process does its arithmetic on one thread
 ONE_BLAS_THREAD = {"OMP_NUM_THREADS": "1", "OPENBLAS_NUM_THREADS": "1", "VECLIB_MAXIMUM_THREADS": "1", "MKL_NUM_THREADS": "1"}
 
 shared = None  # what a worker holds: analysis, bridge, seismic site, braking height
@@ -29,8 +29,8 @@ def search_args():
 
 
 # the worker tasks: this process solves every surface and sends it; a worker searches its traffic, works out its Class SV values and
-# combines, and never calls OpenSees. A solve writes into every element and node, so a forked worker that solved copied the whole
-# model (about 1 GB of a wide deck's 1.45 GB per worker); the same surfaces give the same values wherever they are searched.
+# combines, and never calls OpenSees (a forked worker that solved copied the whole model: about 1 GB of a wide deck's 1.45 GB per
+# worker); the same surfaces give the same values wherever they are searched.
 def place_task(girder, place, surface):
     analysis = shared[0]
     searched = search_place(surface, place, *search_args())
@@ -89,7 +89,7 @@ class Pending:
         return self.waiting.get()
 
 
-# one of ForkedWork's tasks, started (solved here and sent) when it comes within reach of the workers
+# one of WorkersWork's tasks, started (solved here and sent) when it comes within reach of the workers
 class Later:
     def __init__(self, work, index, start):
         self.work, self.index, self.start_it, self.running = work, index, start, None
@@ -115,7 +115,7 @@ class Solved(Pending):
 # ParallelWork's results: this process solves each surface on its factor and a worker searches it; a search needs only the deck
 # ordinates, while a place or member also reads load cases by reciprocity and gets the whole surface. Surfaces are solved as the
 # workers come to need them, a few ahead, so no more than a few wait in this process at once.
-class ForkedWork:
+class WorkersWork:
     def __init__(self, pool, analysis, girders, places):
         self.pool, self.analysis = pool, analysis
         solver, model = analysis.solver, analysis.model
@@ -216,13 +216,13 @@ def site_forces(model, wind, seismic, girders):
     return forces
 
 
-# only this process talks to the caller: a forked worker that counted would write on its pipe alongside it
+# only this process talks to the caller
 def progress_stays_here():
     progress.report = None
 
 
-# a spawned worker (no fork, as on Windows) builds its own model beside the parent's dead load stages for what its searches and
-# combinations read; it never solves, so it never factors
+# a worker builds its own model beside the parent's dead load stages for what its searches and combinations read; it never solves,
+# so it never factors
 def spawned_worker(bridge, wind, dead, seismic, braking_height_m, special_vehicle):
     global shared, with_special_vehicle
     progress_stays_here()
@@ -230,15 +230,14 @@ def spawned_worker(bridge, wind, dead, seismic, braking_height_m, special_vehicl
     shared = (shared_analysis(bridge, wind, (), (), dead=dead), bridge, seismic, braking_height_m)
 
 
-# workers forked after the factor exists, or spawned where the platform cannot fork
+# Workers are spawned on every platform: a fresh process holds only its own model and searches (about 0.25 GB on a 52 m deck), where a
+# forked one gradually copies this process's memory as it touches it (about 0.5 GB); the same values either way.
 def worker_pool(workers, analysis, bridge, wind, seismic, braking_height_m):
-    context, forked = worker_context()
-    if forked:
-        return context.Pool(workers, initializer=progress_stays_here)
-    return context.Pool(workers, initializer=spawned_worker, initargs=(bridge, wind, analysis.dead, seismic, braking_height_m, with_special_vehicle))
+    return multiprocessing.get_context("spawn").Pool(workers, initializer=spawned_worker,
+                                                     initargs=(bridge, wind, analysis.dead, seismic, braking_height_m, with_special_vehicle))
 
 
-# girders, braces and diagrams: this process solves, and workers (forked, or spawned where the platform cannot fork) search and combine
+# girders, braces and diagrams: this process solves, and workers search and combine
 # special_vehicle: also design for Class SV; construction: a ConstructionLoads for the bare-steel stage (wind and construction_seismic,
 # a site with importance factor 1, go with it)
 def run_analysis(bridge, wind, seismic, temperature, braking_height_m, workers, phase, special_vehicle=False, construction=None, construction_seismic=None):
@@ -254,7 +253,7 @@ def run_analysis(bridge, wind, seismic, temperature, braking_height_m, workers, 
     analysis.solver.surfaces.clear()
     with worker_pool(workers, analysis, bridge, wind, seismic, braking_height_m) if workers > 1 else nullcontext() as pool:
         if pool is not None:
-            analysis.work = ForkedWork(pool, analysis, girders_range, places)
+            analysis.work = WorkersWork(pool, analysis, girders_range, places)
         phase("solving and searching the girders")
         girder_results = girder_values(analysis, bridge, seismic, temperature, braking_height_m)
         replay = None
@@ -291,7 +290,7 @@ def own_process_main(connection, arguments, options):
     connection.close()
 
 
-# run the whole analysis in a process of its own: no GUI to fork under, and every byte of it returns to the system when it ends.
+# run the whole analysis in a process of its own: no GUI around it, and every byte of it returns to the system when it ends.
 # check() may raise to stop the run; phase(text) names each stage as it starts and progress(done, total) counts its items.
 def solve_in_own_process(bridge, wind, seismic, temperature, braking_height_m, *, workers, phase=lambda text: None, check=lambda: None,
                          special_vehicle=False, construction=None, construction_seismic=None, progress=lambda done, total: None):

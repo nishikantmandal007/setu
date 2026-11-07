@@ -216,11 +216,10 @@ def every_value(values):
     return found
 
 
-# where the platform cannot fork (Windows), spawned workers build their own model and give the serial values, bit for bit
-def test_spawned_workers_match_the_serial_values(monkeypatch):
+# workers build their own model and give the serial values, bit for bit, Class SV included
+def test_workers_match_the_serial_values():
     from setu.postprocess import own_process
     serial, _ = own_process.run_analysis(BRACE_BRIDGE, None, None, None, None, 1, lambda text: None, special_vehicle=True)
-    monkeypatch.setattr(own_process.multiprocessing, "get_all_start_methods", lambda: ["spawn"])
     spawned, _ = own_process.run_analysis(BRACE_BRIDGE, None, None, None, None, 2, lambda text: None, special_vehicle=True)
     assert every_value(spawned) == every_value(serial)
     assert spawned.diagrams.governing.keys() == serial.diagrams.governing.keys()
@@ -234,7 +233,7 @@ def test_array_load_case_holds_the_same_loads():
     assert nodes.tolist() == [5, 9] and forces[:, 2].tolist() == [1.0, 1.5]
 
 
-# the whole analysis in its own process with forked workers gives the serial values, bit for bit
+# the whole analysis in its own process with workers gives the serial values, bit for bit
 def test_own_process_matches_the_serial_values():
     with analysis_for(BRACE_BRIDGE, None, (), (), 1, girders=True, braces=True) as analysis:
         girders = girder_values(analysis, BRACE_BRIDGE, None, None, None)
