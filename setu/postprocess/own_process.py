@@ -1,6 +1,5 @@
 import multiprocessing
 import os
-import signal
 import traceback
 from collections import deque
 from contextlib import nullcontext
@@ -15,6 +14,7 @@ from setu.postprocess.special_vehicle import keep_worst, special_vehicle_combina
 from setu.loads.wind_loads import wind_load_cases
 from setu.loads.seismic_loads import seismic_load_cases
 from setu.utils.constants import BASIC, BIGGER_IS_WORSE
+from setu.utils.os_specific import kill_with_its_group, lead_own_group, worker_context
 
 # BLAS threads do not survive a fork, and the workers already divide the work
 ONE_BLAS_THREAD = {"OMP_NUM_THREADS": "1", "OPENBLAS_NUM_THREADS": "1", "VECLIB_MAXIMUM_THREADS": "1", "MKL_NUM_THREADS": "1"}
@@ -232,10 +232,10 @@ def spawned_worker(bridge, wind, dead, seismic, braking_height_m, special_vehicl
 
 # workers forked after the factor exists, or spawned where the platform cannot fork
 def worker_pool(workers, analysis, bridge, wind, seismic, braking_height_m):
-    if "fork" in multiprocessing.get_all_start_methods():
-        return multiprocessing.get_context("fork").Pool(workers, initializer=progress_stays_here)
-    return multiprocessing.get_context("spawn").Pool(workers, initializer=spawned_worker,
-                                                     initargs=(bridge, wind, analysis.dead, seismic, braking_height_m, with_special_vehicle))
+    context, forked = worker_context()
+    if forked:
+        return context.Pool(workers, initializer=progress_stays_here)
+    return context.Pool(workers, initializer=spawned_worker, initargs=(bridge, wind, analysis.dead, seismic, braking_height_m, with_special_vehicle))
 
 
 # girders, braces and diagrams: this process solves, and workers (forked, or spawned where the platform cannot fork) search and combine
@@ -282,8 +282,7 @@ def run_analysis(bridge, wind, seismic, temperature, braking_height_m, workers, 
 
 
 def own_process_main(connection, arguments, options):
-    if hasattr(os, "setsid"):
-        os.setsid()  # so a Stop can end this process and its forked workers together
+    lead_own_group()  # so a Stop can end this process and its workers together
     try:
         progress.report = lambda done, total: connection.send(("progress", (done, total)))
         connection.send(("done", run_analysis(*arguments, lambda text: connection.send(("phase", text)), **options)))
@@ -332,11 +331,5 @@ def solve_in_own_process(bridge, wind, seismic, temperature, braking_height_m, *
                 return payload
     finally:
         if process.is_alive():
-            if hasattr(os, "killpg"):
-                try:
-                    os.killpg(process.pid, signal.SIGKILL)
-                except (ProcessLookupError, PermissionError):
-                    process.kill()
-            else:
-                process.kill()
+            kill_with_its_group(process)
             process.join()
