@@ -13,6 +13,7 @@ from setu.irc6.temperature import effective_temperature_range, temperature_diffe
 from setu.postprocess import progress
 from setu.loads.braking_loads import BrakingField, braking_load_cases
 from setu.loads.custom_loads import custom_load_cases
+from setu.loads.load_builders import live_load
 from setu.loads.load_cases import LoadCase
 from setu.loads.seismic_loads import seismic_load_cases
 from setu.loads.wind_loads import WITH_LIVE_LOAD, WITHOUT_LIVE_LOAD, wind_load_cases
@@ -189,6 +190,7 @@ def girder_values(analysis, bridge, seismic, temperature, braking_height_above_d
     live = {(girder, place, adverse): work.places[girder, place].result()[1][adverse] if work is not None else searched_here(surfaces[girder, place], bridge, adverse) for girder in girders for place in places for adverse in BOTH_DIRECTIONS}
     read = reader(surfaces)
     searched = dict(live)
+    live = with_other_places_traffic(model, live, surfaces, places, girders)
     by_place, combinations_at_place, braking = {}, {}, {}
     for girder in girders:
         for place in places:
@@ -216,6 +218,28 @@ def girder_values(analysis, bridge, seismic, temperature, braking_height_above_d
                            for girder in girders}
     return DesignValues(results, dead, deflections, fatigue, live_shear_range_kn, thermal_results(bridge, temperature), surfaces_out, criticals, stations,
                         fatigue_stresses, combined, braking, surfaces, live)
+
+
+# Each place's search samples positions, so the worst traffic found for another girder or section can be slightly worse here
+# (an edge girder's midspan moment 0.12 % above its own search: 35 m, four girders, 0.5 m elements). Every place's worst traffic for
+# the same response rides along here as an alternative, rebuilt on this place's surface (its UDL and footway patches where they
+# hurt here, as the replay builds it); settle_braking keeps the worst.
+def with_other_places_traffic(model, live, surfaces, places, girders):
+    widened = {}
+    for (girder, place, adverse), own in live.items():
+        others = [live[g, p, adverse] for g in girders for p in places if p[0] == place[0] and (g, p) != (girder, place)]
+        widened[girder, place, adverse] = copy.copy(own)
+        widened[girder, place, adverse].alternatives = own.alternatives + [placed_here(model, other, surfaces[girder, place]) for other in others]
+    return widened
+
+
+# a placement found for another place, read on this surface
+def placed_here(model, critical, surface):
+    here = copy.copy(critical)
+    here.alternatives, here.searched = [], None
+    here.response = response_to_load_case(surface, live_load(model, critical, surface))
+    here.response_before_reduction = here.response / critical.lane_reduction
+    return here
 
 
 # (response, station) of every place a design value is read; unequal girders check both ends
