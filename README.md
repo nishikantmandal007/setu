@@ -13,7 +13,7 @@ Built as the analysis backend for [OsdagBridge](https://github.com/osdag-admin/O
 
 ## Install
 
-Requires Python 3.12 and [uv](https://docs.astral.sh/uv/). The project pins 3.12 for OpenSeesPy native-library compatibility; `uv sync` selects it automatically.
+Requires Python 3.11 or 3.12 and [uv](https://docs.astral.sh/uv/). On 3.11, OpenSeesPy resolves to 3.7.x on Linux and Windows (3.8.0.0 needs 3.12 there); `uv sync` selects a supported version automatically.
 
 ```bash
 uv sync
